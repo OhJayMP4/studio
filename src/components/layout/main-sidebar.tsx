@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -72,12 +73,12 @@ export default function MainSidebar() {
                   <SidebarMenuItem key={workspace.id}>
                     <Accordion type="single" collapsible className="w-full" disabled={!isSubActive(`/workspaces/${workspace.id}`)}>
                       <AccordionItem value={`ws-${workspace.id}`} className="border-b-0">
-                        <AccordionTrigger asChild>
+                        <AccordionTrigger>
                           <SidebarMenuButton tooltip={workspace.name} isActive={isSubActive(`/workspaces/${workspace.id}`)} asChild>
-                            <div>
-                               <Building2 />
-                               <Link href={`/workspaces/${workspace.id}`} className="flex-1 text-left">{workspace.name}</Link>
-                            </div>
+                               <Link href={`/workspaces/${workspace.id}`}>
+                                   <Building2 />
+                                   <span>{workspace.name}</span>
+                               </Link>
                           </SidebarMenuButton>
                         </AccordionTrigger>
                         <AccordionContent className="p-0">
@@ -86,12 +87,12 @@ export default function MainSidebar() {
                               <SidebarMenuSubItem key={company.id}>
                                 <Accordion type="single" collapsible className="w-full">
                                   <AccordionItem value={`co-${company.id}`} className="border-b-0">
-                                    <AccordionTrigger asChild>
+                                    <AccordionTrigger>
                                       <SidebarMenuSubButton isActive={isSubActive(`/workspaces/${workspace.id}/companies/${company.id}`)} asChild>
-                                        <div>
+                                        <Link href={`/workspaces/${workspace.id}/companies/${company.id}`}>
                                           <Building />
-                                          <Link href={`/workspaces/${workspace.id}/companies/${company.id}`} className="flex-1 text-left">{company.name}</Link>
-                                        </div>
+                                          <span>{company.name}</span>
+                                        </Link>
                                       </SidebarMenuSubButton>
                                     </AccordionTrigger>
                                     <AccordionContent className="p-0">
