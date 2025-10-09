@@ -1,3 +1,22 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "user-1",
+      "description": "Avatar for Alex Doe",
+      "imageUrl": "https://picsum.photos/seed/user-1/100/100",
+      "imageHint": "person portrait"
+    },
+    {
+      "id": "user-2",
+      "description": "Avatar for Jane Smith",
+      "imageUrl": "https://picsum.photos/seed/user-2/100/100",
+      "imageHint": "person portrait"
+    },
+    {
+      "id": "user-3",
+      "description": "Avatar for Bob Johnson",
+      "imageUrl": "https://picsum.photos/seed/user-3/100/100",
+      "imageHint": "person portrait"
+    }
+  ]
 }
