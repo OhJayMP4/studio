@@ -12,16 +12,19 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { addSilo } from "@/lib/data";
+import { addSilo, getCompanyById } from "@/lib/data";
 import React, { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+import type { Project } from "@/lib/types";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+
 
 interface AddSiloDialogProps {
   children: React.ReactNode;
   workspaceId: string;
   companyId: string;
-  projectId: string;
+  projectId?: string;
 }
 
 export function AddSiloDialog({ children, workspaceId, companyId, projectId }: AddSiloDialogProps) {
@@ -30,11 +33,21 @@ export function AddSiloDialog({ children, workspaceId, companyId, projectId }: A
   const [open, setOpen] = useState(false);
   const [siloName, setSiloName] = useState("");
 
+  const company = getCompanyById(workspaceId, companyId);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(
+    projectId ? company?.projects.find(p => p.id === projectId) || null : null
+  );
+
+  const handleProjectChange = (id: string) => {
+    const project = company?.projects.find(p => p.id === id) || null;
+    setSelectedProject(project);
+  };
+
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!siloName) return;
+    if (!siloName || !selectedProject) return;
 
-    addSilo(workspaceId, companyId, projectId, siloName);
+    addSilo(workspaceId, companyId, selectedProject.id, siloName);
 
     toast({
         title: "Silo Created",
@@ -58,6 +71,23 @@ export function AddSiloDialog({ children, workspaceId, companyId, projectId }: A
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+             <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="project" className="text-right">
+                Project
+              </Label>
+              <Select onValueChange={handleProjectChange} defaultValue={selectedProject?.id} required>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select a project" />
+                </SelectTrigger>
+                <SelectContent>
+                  {company?.projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="name" className="text-right">
                 Name

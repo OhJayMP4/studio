@@ -12,15 +12,18 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { addProject } from "@/lib/data";
+import { addProject, getWorkspaceById } from "@/lib/data";
 import React, { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import type { Company } from "@/lib/types";
+
 
 interface AddProjectDialogProps {
   children: React.ReactNode;
   workspaceId: string;
-  companyId: string;
+  companyId?: string;
 }
 
 export function AddProjectDialog({ children, workspaceId, companyId }: AddProjectDialogProps) {
@@ -29,11 +32,21 @@ export function AddProjectDialog({ children, workspaceId, companyId }: AddProjec
   const [open, setOpen] = useState(false);
   const [projectName, setProjectName] = useState("");
 
+  const workspace = getWorkspaceById(workspaceId);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(
+    companyId ? workspace?.companies.find(c => c.id === companyId) || null : null
+  );
+
+  const handleCompanyChange = (id: string) => {
+    const company = workspace?.companies.find(c => c.id === id) || null;
+    setSelectedCompany(company);
+  };
+
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!projectName) return;
+    if (!projectName || !selectedCompany) return;
 
-    addProject(workspaceId, companyId, projectName);
+    addProject(workspaceId, selectedCompany.id, projectName);
 
     toast({
         title: "Project Created",
@@ -53,10 +66,27 @@ export function AddProjectDialog({ children, workspaceId, companyId }: AddProjec
           <DialogHeader>
             <DialogTitle className="font-headline">Add New Project</DialogTitle>
             <DialogDescription>
-              Create a new project for this company.
+              Create a new project for a company.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+             <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="company" className="text-right">
+                Company
+              </Label>
+              <Select onValueChange={handleCompanyChange} defaultValue={selectedCompany?.id} required>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select a company" />
+                </SelectTrigger>
+                <SelectContent>
+                  {workspace?.companies.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="name" className="text-right">
                 Name

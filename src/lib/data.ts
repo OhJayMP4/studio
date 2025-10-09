@@ -1,6 +1,28 @@
 import type { AppData, Company, Project, Silo, Task, Workspace } from './types';
+import fs from 'fs';
+import path from 'path';
 
-export const mockData: AppData = {
+// Path to the JSON file that acts as a simple database.
+const dbPath = path.join(process.cwd(), 'src', 'lib', 'db.json');
+
+// Function to read data from the database file.
+const readData = (): AppData => {
+  if (!fs.existsSync(dbPath)) {
+    // If the file doesn't exist, create it with initial data.
+    writeData(initialMockData);
+    return initialMockData;
+  }
+  const fileContent = fs.readFileSync(dbPath, 'utf-8');
+  return JSON.parse(fileContent);
+};
+
+// Function to write data to the database file.
+const writeData = (data: AppData) => {
+  fs.writeFileSync(dbPath, JSON.stringify(data, null, 2), 'utf-8');
+};
+
+// The initial data structure, used if the db.json file doesn't exist.
+const initialMockData: AppData = {
   currentUser: {
     id: 'user-1',
     name: 'Alex Doe',
@@ -106,16 +128,57 @@ export const mockData: AppData = {
   ],
 };
 
-// Helper functions to navigate the mock data
-export const getWorkspaces = () => mockData.workspaces;
-export const getWorkspaceById = (id: string) => mockData.workspaces.find(ws => ws.id === id);
-export const getCompanyById = (wsId: string, compId: string) => getWorkspaceById(wsId)?.companies.find(c => c.id === compId);
-export const getProjectById = (wsId: string, compId: string, projId: string) => getCompanyById(wsId, compId)?.projects.find(p => p.id === projId);
-export const getSiloById = (wsId: string, compId: string, projId: string, siloId: string) => getProjectById(wsId, compId, projId)?.silos.find(s => s.id === siloId);
 
-// Helper functions to add data
+// --- Data Access Functions ---
+
+export const getCurrentUser = () => {
+    const data = readData();
+    return data.currentUser;
+};
+
+export const getWorkspaces = () => {
+    const data = readData();
+    return data.workspaces;
+};
+
+export const getWorkspaceById = (id: string) => {
+    const data = readData();
+    return data.workspaces.find(ws => ws.id === id);
+};
+
+export const getCompanyById = (wsId: string, compId: string) => {
+    const workspace = getWorkspaceById(wsId);
+    return workspace?.companies.find(c => c.id === compId);
+};
+
+export const getProjectById = (wsId: string, compId: string, projId: string) => {
+    const company = getCompanyById(wsId, compId);
+    return company?.projects.find(p => p.id === projId);
+};
+
+export const getSiloById = (wsId: string, compId: string, projId: string, siloId: string) => {
+    const project = getProjectById(wsId, compId, projId);
+    return project?.silos.find(s => s.id === siloId);
+};
+
+export const getAllCompanies = () => {
+    const data = readData();
+    return data.workspaces.flatMap(ws => ws.companies);
+}
+
+export const getAllProjects = () => {
+    return getAllCompanies().flatMap(c => c.projects);
+}
+
+export const getAllSilos = () => {
+    return getAllProjects().flatMap(p => p.silos);
+}
+
+// --- Data Mutation Functions ---
+
 export const addCompany = (workspaceId: string, companyName: string) => {
-    const workspace = getWorkspaceById(workspaceId);
+    const data = readData();
+    const workspace = data.workspaces.find(ws => ws.id === workspaceId);
     if (!workspace) return;
     const newCompany: Company = {
         id: `comp-${Date.now()}`,
@@ -124,10 +187,14 @@ export const addCompany = (workspaceId: string, companyName: string) => {
         projects: [],
     };
     workspace.companies.push(newCompany);
+    writeData(data);
 };
 
 export const addProject = (workspaceId: string, companyId: string, projectName: string) => {
-    const company = getCompanyById(workspaceId, companyId);
+    const data = readData();
+    const company = data.workspaces
+        .find(ws => ws.id === workspaceId)?.companies
+        .find(c => c.id === companyId);
     if (!company) return;
     const newProject: Project = {
         id: `proj-${Date.now()}`,
@@ -136,10 +203,15 @@ export const addProject = (workspaceId: string, companyId: string, projectName: 
         silos: [],
     };
     company.projects.push(newProject);
+    writeData(data);
 };
 
 export const addSilo = (workspaceId: string, companyId: string, projectId: string, siloName: string) => {
-    const project = getProjectById(workspaceId, companyId, projectId);
+    const data = readData();
+    const project = data.workspaces
+        .find(ws => ws.id === workspaceId)?.companies
+        .find(c => c.id === companyId)?.projects
+        .find(p => p.id === projectId);
     if (!project) return;
     const newSilo: Silo = {
         id: `silo-${Date.now()}`,
@@ -148,10 +220,16 @@ export const addSilo = (workspaceId: string, companyId: string, projectId: strin
         tasks: [],
     };
     project.silos.push(newSilo);
+    writeData(data);
 };
 
 export const addTask = (workspaceId: string, companyId: string, projectId: string, siloId: string, task: Omit<Task, 'id' | 'siloId'>) => {
-    const silo = getSiloById(workspaceId, companyId, projectId, siloId);
+    const data = readData();
+    const silo = data.workspaces
+        .find(ws => ws.id === workspaceId)?.companies
+        .find(c => c.id === companyId)?.projects
+        .find(p => p.id === projectId)?.silos
+        .find(s => s.id === siloId);
     if (!silo) return;
     const newTask: Task = {
         ...task,
@@ -159,6 +237,7 @@ export const addTask = (workspaceId: string, companyId: string, projectId: strin
         siloId,
     };
     silo.tasks.push(newTask);
+    writeData(data);
 }
 
 
@@ -166,12 +245,12 @@ export const addTask = (workspaceId: string, companyId: string, projectId: strin
 export const calculateCompletion = (items: { completed: boolean }[] | { silos: { tasks: { completed: boolean }[] }[] } | { projects: { silos: { tasks: { completed: boolean }[] }[] }[] }) => {
   let tasks: { completed: boolean }[] = [];
 
-  if (Array.isArray(items) && items.every(item => 'completed' in item)) {
+  if (Array.isArray(items) && items.length > 0 && 'completed' in items[0]) {
     tasks = items as { completed: boolean }[];
-  } else if ('silos' in items) {
+  } else if (typeof items === 'object' && items !== null && 'silos' in items) {
     const project = items as { silos: { tasks: { completed: boolean }[] }[] };
     tasks = project.silos.flatMap(silo => silo.tasks);
-  } else if ('projects' in items) {
+  } else if (typeof items === 'object' && items !== null && 'projects' in items) {
     const company = items as { projects: { silos: { tasks: { completed: boolean }[] }[] }[] };
     tasks = company.projects.flatMap(project => project.silos.flatMap(silo => silo.tasks));
   }

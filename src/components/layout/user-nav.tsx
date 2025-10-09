@@ -11,12 +11,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { mockData } from "@/lib/data";
+import { getCurrentUser } from "@/lib/data";
 import Link from "next/link";
 import { ChevronsUpDown } from "lucide-react";
 
 export function UserNav() {
-  const user = mockData.currentUser;
+  const user = getCurrentUser();
 
   return (
     <DropdownMenu>

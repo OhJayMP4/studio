@@ -60,10 +60,16 @@ export default function WorkspacePage({ params }: { params: { workspaceId: strin
                     })}
                 </div>
             ) : (
-                <Card className="text-center py-12">
+                <Card className="text-center py-20">
+                     <CardHeader>
+                        <div className="mx-auto bg-muted rounded-full p-3 w-fit">
+                            <Building className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                        <CardTitle className="font-headline text-2xl mt-4">No Companies Yet</CardTitle>
+                     </CardHeader>
                      <CardContent>
-                        <h3 className="text-lg font-medium">No Companies Yet</h3>
                         <p className="text-muted-foreground">Get started by creating a new company in this workspace.</p>
+                        <AddCompanyButton workspaceId={params.workspaceId} />
                     </CardContent>
                 </Card>
             )}

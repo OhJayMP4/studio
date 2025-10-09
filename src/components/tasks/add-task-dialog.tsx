@@ -20,9 +20,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "../ui/textarea";
-import { mockData, addTask } from "@/lib/data";
+import { getWorkspaces, addTask } from "@/lib/data";
 import React, { useState } from "react";
-import type { Company, Project, Silo, Task, Workspace } from "@/lib/types";
+import type { Company, Project, Silo, Workspace } from "@/lib/types";
 import { AiTaskSuggester } from "./ai-task-suggester";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
@@ -34,13 +34,14 @@ export function AddTaskDialog({ children }: { children: React.ReactNode }) {
   const [taskName, setTaskName] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
   
+  const workspaces = getWorkspaces();
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedSilo, setSelectedSilo] = useState<Silo | null>(null);
 
   const handleWorkspaceChange = (workspaceId: string) => {
-    const workspace = mockData.workspaces.find(ws => ws.id === workspaceId) || null;
+    const workspace = workspaces.find(ws => ws.id === workspaceId) || null;
     setSelectedWorkspace(workspace);
     setSelectedCompany(null);
     setSelectedProject(null);
@@ -119,7 +120,7 @@ export function AddTaskDialog({ children }: { children: React.ReactNode }) {
                 <SelectValue placeholder="Select a workspace" />
               </SelectTrigger>
               <SelectContent>
-                {mockData.workspaces.map((ws) => (
+                {workspaces.map((ws) => (
                   <SelectItem key={ws.id} value={ws.id}>
                     {ws.name}
                   </SelectItem>

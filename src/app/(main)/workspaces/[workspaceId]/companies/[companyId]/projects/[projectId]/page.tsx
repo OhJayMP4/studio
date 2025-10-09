@@ -59,10 +59,16 @@ export default function ProjectPage({ params }: { params: { workspaceId: string,
                     })}
                 </div>
             ) : (
-                <Card className="text-center py-12">
+                <Card className="text-center py-20">
+                     <CardHeader>
+                        <div className="mx-auto bg-muted rounded-full p-3 w-fit">
+                           <Container className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                        <CardTitle className="font-headline text-2xl mt-4">No Silos Yet</CardTitle>
+                     </CardHeader>
                      <CardContent>
-                        <h3 className="text-lg font-medium">No Silos Yet</h3>
-                        <p className="text-muted-foreground">Get started by creating a new silo for this project.</p>
+                        <p className="text-muted-foreground mb-4">Get started by creating a new silo for this project.</p>
+                         <AddSiloButton workspaceId={params.workspaceId} companyId={params.companyId} projectId={params.projectId} />
                     </CardContent>
                 </Card>
             )}

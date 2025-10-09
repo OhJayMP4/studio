@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { mockData } from "@/lib/data";
+import { getWorkspaces, getCurrentUser } from "@/lib/data";
 import {
   Accordion,
   AccordionContent,
@@ -36,10 +36,14 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { UserNav } from "./user-nav";
+import { AddCompanyButton } from "../common/add-company-button";
+import { AddProjectButton } from "../common/add-project-button";
+import { AddSiloButton } from "../common/add-silo-button";
 
 export default function MainSidebar() {
   const pathname = usePathname();
-  const { workspaces } = mockData;
+  const workspaces = getWorkspaces();
+  const user = getCurrentUser();
 
   const isActive = (path: string) => {
     return pathname === path;
@@ -81,6 +85,11 @@ export default function MainSidebar() {
           <AccordionItem value="workspaces">
             <AccordionTrigger className="px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:no-underline">Workspaces</AccordionTrigger>
             <AccordionContent>
+              {user.role === 'admin' && (
+                  <div className="px-2 pb-2">
+                     <AddCompanyButton />
+                  </div>
+              )}
               <SidebarMenu>
                 {workspaces.map((workspace) => (
                   <SidebarMenuItem key={workspace.id}>
@@ -94,7 +103,12 @@ export default function MainSidebar() {
                                </Link>
                            </SidebarMenuButton>
                         </AccordionTrigger>
-                        <AccordionContent className="p-0">
+                        <AccordionContent className="p-0 pl-4">
+                           {user.role === 'admin' && (
+                              <div className="pb-2">
+                                <AddProjectButton workspaceId={workspace.id} />
+                              </div>
+                            )}
                           <SidebarGroup className="p-0">
                             <SidebarMenuSub>
                               {workspace.companies.map((company) => (
@@ -109,7 +123,12 @@ export default function MainSidebar() {
                                           </Link>
                                         </SidebarMenuSubButton>
                                       </AccordionTrigger>
-                                      <AccordionContent className="p-0">
+                                      <AccordionContent className="p-0 pl-4">
+                                         {user.role === 'admin' && (
+                                            <div className="pb-2">
+                                                <AddSiloButton workspaceId={workspace.id} companyId={company.id} />
+                                            </div>
+                                         )}
                                          <SidebarGroup className="p-0">
                                             <SidebarMenuSub>
                                               {company.projects.map((project) => (

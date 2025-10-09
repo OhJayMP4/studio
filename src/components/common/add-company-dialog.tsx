@@ -12,7 +12,7 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { addCompany, mockData } from "@/lib/data";
+import { addCompany, getWorkspaces } from "@/lib/data";
 import React, { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
@@ -24,12 +24,14 @@ export function AddCompanyDialog({ children, workspaceId }: { children: React.Re
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [companyName, setCompanyName] = useState("");
+  
+  const workspaces = getWorkspaces();
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(
-    workspaceId ? mockData.workspaces.find(ws => ws.id === workspaceId) || null : null
+    workspaceId ? workspaces.find(ws => ws.id === workspaceId) || null : null
   );
 
   const handleWorkspaceChange = (id: string) => {
-    const workspace = mockData.workspaces.find(ws => ws.id === id) || null;
+    const workspace = workspaces.find(ws => ws.id === id) || null;
     setSelectedWorkspace(workspace);
   };
   
@@ -46,7 +48,9 @@ export function AddCompanyDialog({ children, workspaceId }: { children: React.Re
     
     setOpen(false);
     setCompanyName("");
-    setSelectedWorkspace(workspaceId ? mockData.workspaces.find(ws => ws.id === workspaceId) || null : null);
+    // Re-find the selected workspace from the updated list if needed
+    const updatedWorkspaces = getWorkspaces();
+    setSelectedWorkspace(workspaceId ? updatedWorkspaces.find(ws => ws.id === workspaceId) || null : null);
     router.refresh();
   }
 
@@ -71,7 +75,7 @@ export function AddCompanyDialog({ children, workspaceId }: { children: React.Re
                   <SelectValue placeholder="Select a workspace" />
                 </SelectTrigger>
                 <SelectContent>
-                  {mockData.workspaces.map((ws) => (
+                  {workspaces.map((ws) => (
                     <SelectItem key={ws.id} value={ws.id}>
                       {ws.name}
                     </SelectItem>
