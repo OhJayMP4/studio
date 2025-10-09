@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import {
@@ -14,6 +15,7 @@ import {
   SidebarMenuSubItem,
   SidebarMenuSubButton,
   SidebarFooter,
+  SidebarGroupAction,
 } from "@/components/ui/sidebar";
 import {
   Building2,
@@ -25,6 +27,7 @@ import {
   Archive,
   FileText,
   Settings,
+  PlusCircle,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -36,10 +39,14 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { UserNav } from "./user-nav";
+import { AddCompanyDialog } from "../common/add-company-dialog";
+import { AddProjectDialog } from "../common/add-project-dialog";
+import { AddSiloDialog } from "../common/add-silo-dialog";
 
 export default function MainSidebar() {
   const pathname = usePathname();
-  const workspaces = mockData.workspaces;
+  const { workspaces, currentUser } = mockData;
+  const isAdmin = currentUser.role === 'admin';
 
   const isActive = (path: string) => {
     return pathname === path;
@@ -74,46 +81,93 @@ export default function MainSidebar() {
                     <Accordion type="single" collapsible className="w-full" disabled={!isSubActive(`/workspaces/${workspace.id}`)}>
                       <AccordionItem value={`ws-${workspace.id}`} className="border-b-0">
                         <AccordionTrigger>
-                          <SidebarMenuButton tooltip={workspace.name} isActive={isSubActive(`/workspaces/${workspace.id}`)} asChild>
+                            <SidebarMenuButton tooltip={workspace.name} isActive={isSubActive(`/workspaces/${workspace.id}`)} asChild>
                                <Link href={`/workspaces/${workspace.id}`}>
                                    <Building2 />
                                    <span>{workspace.name}</span>
                                </Link>
-                          </SidebarMenuButton>
+                           </SidebarMenuButton>
                         </AccordionTrigger>
                         <AccordionContent className="p-0">
-                          <SidebarMenuSub>
-                            {workspace.companies.map((company) => (
-                              <SidebarMenuSubItem key={company.id}>
-                                <Accordion type="single" collapsible className="w-full">
-                                  <AccordionItem value={`co-${company.id}`} className="border-b-0">
-                                    <AccordionTrigger>
-                                      <SidebarMenuSubButton isActive={isSubActive(`/workspaces/${workspace.id}/companies/${company.id}`)} asChild>
-                                        <Link href={`/workspaces/${workspace.id}/companies/${company.id}`}>
-                                          <Building />
-                                          <span>{company.name}</span>
-                                        </Link>
-                                      </SidebarMenuSubButton>
-                                    </AccordionTrigger>
-                                    <AccordionContent className="p-0">
-                                      <SidebarMenuSub>
-                                        {company.projects.map((project) => (
-                                          <SidebarMenuSubItem key={project.id}>
-                                            <SidebarMenuSubButton isActive={isSubActive(`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}`)} asChild>
-                                              <Link href={`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}`}>
-                                                <FolderKanban />
-                                                <span>{project.name}</span>
-                                              </Link>
-                                            </SidebarMenuSubButton>
-                                          </SidebarMenuSubItem>
-                                        ))}
-                                      </SidebarMenuSub>
-                                    </AccordionContent>
-                                  </AccordionItem>
-                                </Accordion>
-                              </SidebarMenuSubItem>
-                            ))}
-                          </SidebarMenuSub>
+                          <SidebarGroup>
+                            {isAdmin && (
+                              <SidebarGroupAction asChild>
+                                <AddCompanyDialog workspaceId={workspace.id}>
+                                  <button><PlusCircle /></button>
+                                </AddCompanyDialog>
+                              </SidebarGroupAction>
+                            )}
+                            <SidebarMenuSub>
+                              {workspace.companies.map((company) => (
+                                <SidebarMenuSubItem key={company.id}>
+                                  <Accordion type="single" collapsible className="w-full" disabled={!isSubActive(`/workspaces/${workspace.id}/companies/${company.id}`)}>
+                                    <AccordionItem value={`co-${company.id}`} className="border-b-0">
+                                      <AccordionTrigger>
+                                        <SidebarMenuSubButton isActive={isSubActive(`/workspaces/${workspace.id}/companies/${company.id}`)} asChild>
+                                          <Link href={`/workspaces/${workspace.id}/companies/${company.id}`}>
+                                            <Building />
+                                            <span>{company.name}</span>
+                                          </Link>
+                                        </SidebarMenuSubButton>
+                                      </AccordionTrigger>
+                                      <AccordionContent className="p-0">
+                                         <SidebarGroup>
+                                            {isAdmin && (
+                                              <SidebarGroupAction asChild>
+                                                <AddProjectDialog workspaceId={workspace.id} companyId={company.id}>
+                                                  <button><PlusCircle /></button>
+                                                </AddProjectDialog>
+                                              </SidebarGroupAction>
+                                            )}
+                                            <SidebarMenuSub>
+                                              {company.projects.map((project) => (
+                                                <SidebarMenuSubItem key={project.id}>
+                                                   <Accordion type="single" collapsible className="w-full" disabled={!isSubActive(`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}`)}>
+                                                      <AccordionItem value={`proj-${project.id}`} className="border-b-0">
+                                                        <AccordionTrigger>
+                                                            <SidebarMenuSubButton isActive={isSubActive(`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}`)} asChild>
+                                                              <Link href={`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}`}>
+                                                                <FolderKanban />
+                                                                <span>{project.name}</span>
+                                                              </Link>
+                                                            </SidebarMenuSubButton>
+                                                        </AccordionTrigger>
+                                                        <AccordionContent className="p-0">
+                                                           <SidebarGroup>
+                                                              {isAdmin && (
+                                                                <SidebarGroupAction asChild>
+                                                                  <AddSiloDialog workspaceId={workspace.id} companyId={company.id} projectId={project.id}>
+                                                                    <button><PlusCircle /></button>
+                                                                  </AddSiloDialog>
+                                                                </SidebarGroupAction>
+                                                              )}
+                                                              <SidebarMenuSub>
+                                                                {project.silos.map(silo => (
+                                                                  <SidebarMenuSubItem key={silo.id}>
+                                                                      <SidebarMenuSubButton isActive={isSubActive(`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}/silos/${silo.id}`)} asChild>
+                                                                          <Link href={`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}/silos/${silo.id}`}>
+                                                                              <Container />
+                                                                              <span>{silo.name}</span>
+                                                                          </Link>
+                                                                      </SidebarMenuSubButton>
+                                                                  </SidebarMenuSubItem>
+                                                                ))}
+                                                              </SidebarMenuSub>
+                                                           </SidebarGroup>
+                                                        </AccordionContent>
+                                                      </AccordionItem>
+                                                    </Accordion>
+                                                </SidebarMenuSubItem>
+                                              ))}
+                                            </SidebarMenuSub>
+                                          </SidebarGroup>
+                                      </AccordionContent>
+                                    </AccordionItem>
+                                  </Accordion>
+                                </SidebarMenuSubItem>
+                              ))}
+                            </SidebarMenuSub>
+                          </SidebarGroup>
                         </AccordionContent>
                       </AccordionItem>
                     </Accordion>

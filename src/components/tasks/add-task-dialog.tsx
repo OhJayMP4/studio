@@ -20,25 +20,35 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "../ui/textarea";
-import { mockData } from "@/lib/data";
+import { mockData, addTask } from "@/lib/data";
 import React, { useState } from "react";
-import type { Company, Project, Silo } from "@/lib/types";
+import type { Company, Project, Silo, Task, Workspace } from "@/lib/types";
 import { AiTaskSuggester } from "./ai-task-suggester";
 import { useToast } from "@/hooks/use-toast";
+import { useRouter } from "next/navigation";
 
 export function AddTaskDialog({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [taskName, setTaskName] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
-
+  
+  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedSilo, setSelectedSilo] = useState<Silo | null>(null);
 
-  const allCompanies = mockData.workspaces.flatMap((ws) => ws.companies);
+  const handleWorkspaceChange = (workspaceId: string) => {
+    const workspace = mockData.workspaces.find(ws => ws.id === workspaceId) || null;
+    setSelectedWorkspace(workspace);
+    setSelectedCompany(null);
+    setSelectedProject(null);
+    setSelectedSilo(null);
+  };
 
   const handleCompanyChange = (companyId: string) => {
-    const company = allCompanies.find((c) => c.id === companyId) || null;
+    const company = selectedWorkspace?.companies.find((c) => c.id === companyId) || null;
     setSelectedCompany(company);
     setSelectedProject(null);
     setSelectedSilo(null);
@@ -57,17 +67,29 @@ export function AddTaskDialog({ children }: { children: React.ReactNode }) {
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    // Logic to add the task would go here
+    if (!selectedWorkspace || !selectedCompany || !selectedProject || !selectedSilo || !taskName) return;
+
+    addTask(selectedWorkspace.id, selectedCompany.id, selectedProject.id, selectedSilo.id, {
+        name: taskName,
+        description: taskDescription,
+        completed: false,
+        priority: 'medium' // default priority
+    });
+
     toast({
         title: "Task Created",
         description: "The new task has been successfully added.",
     });
+    
     setOpen(false);
     // Reset form state
+    setTaskName("");
     setTaskDescription("");
+    setSelectedWorkspace(null);
     setSelectedCompany(null);
     setSelectedProject(null);
     setSelectedSilo(null);
+    router.refresh();
   }
 
   return (
@@ -86,18 +108,35 @@ export function AddTaskDialog({ children }: { children: React.ReactNode }) {
             <Label htmlFor="name" className="text-right">
               Task
             </Label>
-            <Input id="name" placeholder="E.g. Finalize Q4 budget" className="col-span-3" required />
+            <Input id="name" value={taskName} onChange={(e) => setTaskName(e.target.value)} placeholder="E.g. Finalize Q4 budget" className="col-span-3" required />
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="workspace" className="text-right">
+              Workspace
+            </Label>
+            <Select onValueChange={handleWorkspaceChange} required>
+              <SelectTrigger className="col-span-3">
+                <SelectValue placeholder="Select a workspace" />
+              </SelectTrigger>
+              <SelectContent>
+                {mockData.workspaces.map((ws) => (
+                  <SelectItem key={ws.id} value={ws.id}>
+                    {ws.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="company" className="text-right">
               Company
             </Label>
-            <Select onValueChange={handleCompanyChange} required>
+            <Select onValueChange={handleCompanyChange} disabled={!selectedWorkspace} required>
               <SelectTrigger className="col-span-3">
                 <SelectValue placeholder="Select a company" />
               </SelectTrigger>
               <SelectContent>
-                {allCompanies.map((company) => (
+                {selectedWorkspace?.companies.map((company) => (
                   <SelectItem key={company.id} value={company.id}>
                     {company.name}
                   </SelectItem>

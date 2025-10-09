@@ -1,4 +1,4 @@
-import type { AppData } from './types';
+import type { AppData, Company, Project, Silo, Task, Workspace } from './types';
 
 export const mockData: AppData = {
   currentUser: {
@@ -112,6 +112,55 @@ export const getWorkspaceById = (id: string) => mockData.workspaces.find(ws => w
 export const getCompanyById = (wsId: string, compId: string) => getWorkspaceById(wsId)?.companies.find(c => c.id === compId);
 export const getProjectById = (wsId: string, compId: string, projId: string) => getCompanyById(wsId, compId)?.projects.find(p => p.id === projId);
 export const getSiloById = (wsId: string, compId: string, projId: string, siloId: string) => getProjectById(wsId, compId, projId)?.silos.find(s => s.id === siloId);
+
+// Helper functions to add data
+export const addCompany = (workspaceId: string, companyName: string) => {
+    const workspace = getWorkspaceById(workspaceId);
+    if (!workspace) return;
+    const newCompany: Company = {
+        id: `comp-${Date.now()}`,
+        name: companyName,
+        workspaceId,
+        projects: [],
+    };
+    workspace.companies.push(newCompany);
+};
+
+export const addProject = (workspaceId: string, companyId: string, projectName: string) => {
+    const company = getCompanyById(workspaceId, companyId);
+    if (!company) return;
+    const newProject: Project = {
+        id: `proj-${Date.now()}`,
+        name: projectName,
+        companyId,
+        silos: [],
+    };
+    company.projects.push(newProject);
+};
+
+export const addSilo = (workspaceId: string, companyId: string, projectId: string, siloName: string) => {
+    const project = getProjectById(workspaceId, companyId, projectId);
+    if (!project) return;
+    const newSilo: Silo = {
+        id: `silo-${Date.now()}`,
+        name: siloName,
+        projectId,
+        tasks: [],
+    };
+    project.silos.push(newSilo);
+};
+
+export const addTask = (workspaceId: string, companyId: string, projectId: string, siloId: string, task: Omit<Task, 'id' | 'siloId'>) => {
+    const silo = getSiloById(workspaceId, companyId, projectId, siloId);
+    if (!silo) return;
+    const newTask: Task = {
+        ...task,
+        id: `task-${Date.now()}`,
+        siloId,
+    };
+    silo.tasks.push(newTask);
+}
+
 
 // Helper function to calculate completion percentages
 export const calculateCompletion = (items: { completed: boolean }[] | { silos: { tasks: { completed: boolean }[] }[] } | { projects: { silos: { tasks: { completed: boolean }[] }[] }[] }) => {
