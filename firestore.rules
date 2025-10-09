@@ -1,0 +1,211 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * @description Controls access to user profiles.  Users can only read/write their own profile.
+     * @path /users/{userId}
+     * @allow (create) - Authenticated user can create their own profile if the userId matches their auth.uid.
+     * @allow (get, update, delete) - Authenticated user can get, update, and delete their profile if the userId matches their auth.uid.
+     * @deny (create) - Unauthenticated user cannot create a profile.
+     * @deny (get, update, delete) - User cannot access another user's profile.
+     * @principle Enforces document ownership for writes.
+     */
+    match /users/{userId} {
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
+
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      allow get: if isSignedIn() && isOwner(userId);
+      allow list: if false;
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isSignedIn() && isOwner(userId);
+      allow delete: if isSignedIn() && isOwner(userId);
+    }
+
+    /**
+     * @description Controls access to workspaces. Only authenticated users can create workspaces.
+     *              The owner of the workspace can read, update, and delete it.
+     * @path /workspaces/{workspaceId}
+     * @allow (create) - Authenticated user can create a workspace with their UID as the ownerId.
+     * @allow (get, update, delete) - Workspace owner can get, update, and delete the workspace.
+     * @deny (create) - Unauthenticated users cannot create workspaces.
+     * @deny (get, update, delete) - Non-owners cannot access or modify workspaces.
+     * @principle Enforces workspace ownership for writes.
+     */
+    match /workspaces/{workspaceId} {
+      function isWorkspaceOwner(workspaceId) {
+        return request.auth.uid == resource.data.ownerId;
+      }
+
+      function isWorkspaceOwnerOnCreate(workspaceId) {
+        return request.auth.uid == request.resource.data.ownerId;
+      }
+
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      allow get: if isSignedIn() && isWorkspaceOwner(workspaceId);
+      allow list: if false;
+      allow create: if isSignedIn() && isWorkspaceOwnerOnCreate(workspaceId);
+      allow update: if isSignedIn() && isWorkspaceOwner(workspaceId);
+      allow delete: if isSignedIn() && isWorkspaceOwner(workspaceId);
+    }
+
+    /**
+     * @description Controls access to workspace users.  Workspace users define roles within a workspace.
+     * @path /workspaces/{workspaceId}/workspaceUsers/{workspaceUserId}
+     * @allow (create) - Authenticated user can create a workspaceUser.
+     * @allow (get, update, delete) - Authenticated user can get, update, and delete a workspaceUser.
+     * @deny (create) - Unauthenticated users cannot create workspaceUsers.
+     * @principle Workspace membership management.
+     */
+    match /workspaces/{workspaceId}/workspaceUsers/{workspaceUserId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      // Placeholder for workspace membership check.  Replace with your actual logic.
+      function isWorkspaceMember(workspaceId) {
+        return true;
+      }
+
+      allow get: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow list: if false;
+      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow delete: if isSignedIn() && isWorkspaceMember(workspaceId);
+    }
+
+    /**
+     * @description Controls access to companies within a workspace.  Requires workspace membership.
+     * @path /workspaces/{workspaceId}/companies/{companyId}
+     * @allow (create) - Authenticated user can create a company within a workspace if they are a member.
+     * @allow (get, update, delete) - Authenticated user can get, update, and delete a company within a workspace if they are a member.
+     * @deny (create) - Unauthenticated users cannot create companies.
+     * @principle Workspace membership based access.
+     */
+    match /workspaces/{workspaceId}/companies/{companyId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      // Placeholder for workspace membership check.  Replace with your actual logic.
+      function isWorkspaceMember(workspaceId) {
+        return true;
+      }
+
+
+      allow get: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow list: if false;
+      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow delete: if isSignedIn() && isWorkspaceMember(workspaceId);
+    }
+
+    /**
+     * @description Controls access to projects within a company. Requires workspace membership.
+     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}
+     * @allow (create) - Authenticated user can create a project within a company if they are a member.
+     * @allow (get, update, delete) - Authenticated user can get, update, and delete a project within a company if they are a member.
+     * @deny (create) - Unauthenticated users cannot create projects.
+     * @principle Workspace membership based access.
+     */
+    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      // Placeholder for workspace membership check.  Replace with your actual logic.
+      function isWorkspaceMember(workspaceId) {
+        return true;
+      }
+
+      allow get: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow list: if false;
+      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow delete: if isSignedIn() && isWorkspaceMember(workspaceId);
+    }
+
+    /**
+     * @description Controls access to silos within a project. Requires workspace membership.
+     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}
+     * @allow (create) - Authenticated user can create a silo within a project if they are a member.
+     * @allow (get, update, delete) - Authenticated user can get, update, and delete a silo within a project if they are a member.
+     * @deny (create) - Unauthenticated users cannot create silos.
+     * @principle Workspace membership based access.
+     */
+    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      // Placeholder for workspace membership check.  Replace with your actual logic.
+      function isWorkspaceMember(workspaceId) {
+        return true;
+      }
+
+      allow get: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow list: if false;
+      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow delete: if isSignedIn() && isWorkspaceMember(workspaceId);
+    }
+
+    /**
+     * @description Controls access to tasks within a silo. Requires workspace membership.
+     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}
+     * @allow (create) - Authenticated user can create a task within a silo if they are a member.
+     * @allow (get, update, delete) - Authenticated user can get, update, and delete a task within a silo if they are a member.
+     * @deny (create) - Unauthenticated users cannot create tasks.
+     * @principle Workspace membership based access.
+     */
+    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      // Placeholder for workspace membership check.  Replace with your actual logic.
+      function isWorkspaceMember(workspaceId) {
+        return true;
+      }
+
+      allow get: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow list: if false;
+      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow delete: if isSignedIn() && isWorkspaceMember(workspaceId);
+    }
+
+    /**
+     * @description Controls access to reports within a workspace. Requires workspace membership.
+     * @path /workspaces/{workspaceId}/reports/{reportId}
+     * @allow (create) - Authenticated user can create a report within a workspace if they are a member.
+     * @allow (get, update, delete) - Authenticated user can get, update, and delete a report within a workspace if they are a member.
+     * @deny (create) - Unauthenticated users cannot create reports.
+     * @principle Workspace membership based access.
+     */
+    match /workspaces/{workspaceId}/reports/{reportId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      // Placeholder for workspace membership check.  Replace with your actual logic.
+      function isWorkspaceMember(workspaceId) {
+        return true;
+      }
+
+      allow get: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow list: if false;
+      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow delete: if isSignedIn() && isWorkspaceMember(workspaceId);
+    }
+  }
+}
