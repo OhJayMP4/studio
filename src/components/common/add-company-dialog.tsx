@@ -12,22 +12,32 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { addCompany } from "@/lib/data";
+import { addCompany, mockData } from "@/lib/data";
 import React, { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import type { Workspace } from "@/lib/types";
 
-export function AddCompanyDialog({ children, workspaceId }: { children: React.ReactNode, workspaceId: string }) {
+export function AddCompanyDialog({ children, workspaceId }: { children: React.ReactNode, workspaceId?: string }) {
   const { toast } = useToast();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [companyName, setCompanyName] = useState("");
+  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(
+    workspaceId ? mockData.workspaces.find(ws => ws.id === workspaceId) || null : null
+  );
 
+  const handleWorkspaceChange = (id: string) => {
+    const workspace = mockData.workspaces.find(ws => ws.id === id) || null;
+    setSelectedWorkspace(workspace);
+  };
+  
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!companyName) return;
+    if (!companyName || !selectedWorkspace) return;
 
-    addCompany(workspaceId, companyName);
+    addCompany(selectedWorkspace.id, companyName);
 
     toast({
         title: "Company Created",
@@ -36,6 +46,7 @@ export function AddCompanyDialog({ children, workspaceId }: { children: React.Re
     
     setOpen(false);
     setCompanyName("");
+    setSelectedWorkspace(workspaceId ? mockData.workspaces.find(ws => ws.id === workspaceId) || null : null);
     router.refresh();
   }
 
@@ -47,10 +58,27 @@ export function AddCompanyDialog({ children, workspaceId }: { children: React.Re
           <DialogHeader>
             <DialogTitle className="font-headline">Add New Company</DialogTitle>
             <DialogDescription>
-              Create a new company within your workspace.
+              Create a new company within a workspace.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="workspace" className="text-right">
+                Workspace
+              </Label>
+              <Select onValueChange={handleWorkspaceChange} defaultValue={selectedWorkspace?.id} required>
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select a workspace" />
+                </SelectTrigger>
+                <SelectContent>
+                  {mockData.workspaces.map((ws) => (
+                    <SelectItem key={ws.id} value={ws.id}>
+                      {ws.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="name" className="text-right">
                 Name

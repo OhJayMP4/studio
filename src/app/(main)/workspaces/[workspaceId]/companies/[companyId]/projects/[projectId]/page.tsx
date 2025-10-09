@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { notFound } from "next/navigation";
+import { AddSiloButton } from "@/components/common/add-silo-button";
 
 export default function ProjectPage({ params }: { params: { workspaceId: string, companyId: string, projectId: string } }) {
     const project = getProjectById(params.workspaceId, params.companyId, params.projectId);
@@ -15,10 +16,14 @@ export default function ProjectPage({ params }: { params: { workspaceId: string,
 
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-3xl font-headline">{project.name}</h1>
-                <p className="text-muted-foreground">Overview of silos for this project.</p>
+            <div className="flex justify-between items-start">
+                <div>
+                    <h1 className="text-3xl font-headline">{project.name}</h1>
+                    <p className="text-muted-foreground">Overview of silos for this project.</p>
+                </div>
+                 <AddSiloButton workspaceId={params.workspaceId} companyId={params.companyId} projectId={params.projectId} />
             </div>
+
 
             {project.silos.length > 0 ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

@@ -4,15 +4,19 @@ import { ArrowRight, Building2, Users } from "lucide-react";
 import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import { AddCompanyButton } from "@/components/common/add-company-button";
 
 export default function DashboardPage() {
     const workspaces = getWorkspaces();
 
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-3xl font-headline">Dashboard</h1>
-                <p className="text-muted-foreground">Welcome back! Here's an overview of your workspaces.</p>
+            <div className="flex justify-between items-start">
+                <div>
+                    <h1 className="text-3xl font-headline">Dashboard</h1>
+                    <p className="text-muted-foreground">Welcome back! Here's an overview of your workspaces.</p>
+                </div>
+                <AddCompanyButton />
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

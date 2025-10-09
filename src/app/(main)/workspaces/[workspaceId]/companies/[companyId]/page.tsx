@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { notFound } from "next/navigation";
+import { AddProjectButton } from "@/components/common/add-project-button";
 
 export default function CompanyPage({ params }: { params: { workspaceId: string, companyId: string } }) {
     const company = getCompanyById(params.workspaceId, params.companyId);
@@ -15,10 +16,14 @@ export default function CompanyPage({ params }: { params: { workspaceId: string,
 
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-3xl font-headline">{company.name}</h1>
-                <p className="text-muted-foreground">Overview of projects for this company.</p>
+            <div className="flex justify-between items-start">
+                <div>
+                    <h1 className="text-3xl font-headline">{company.name}</h1>
+                    <p className="text-muted-foreground">Overview of projects for this company.</p>
+                </div>
+                <AddProjectButton workspaceId={params.workspaceId} companyId={params.companyId} />
             </div>
+
 
              {company.projects.length > 0 ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

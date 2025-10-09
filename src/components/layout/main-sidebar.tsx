@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import {
@@ -15,7 +13,6 @@ import {
   SidebarMenuSubItem,
   SidebarMenuSubButton,
   SidebarFooter,
-  SidebarGroupAction,
 } from "@/components/ui/sidebar";
 import {
   Building2,
@@ -27,7 +24,7 @@ import {
   Archive,
   FileText,
   Settings,
-  PlusCircle,
+  LayoutDashboard,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -39,14 +36,10 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { UserNav } from "./user-nav";
-import { AddCompanyDialog } from "../common/add-company-dialog";
-import { AddProjectDialog } from "../common/add-project-dialog";
-import { AddSiloDialog } from "../common/add-silo-dialog";
 
 export default function MainSidebar() {
   const pathname = usePathname();
-  const { workspaces, currentUser } = mockData;
-  const isAdmin = currentUser.role === 'admin';
+  const { workspaces } = mockData;
 
   const isActive = (path: string) => {
     return pathname === path;
@@ -71,6 +64,19 @@ export default function MainSidebar() {
         </div>
       </SidebarHeader>
       <SidebarContent className="p-2">
+         <SidebarGroup>
+          <SidebarMenu>
+             <SidebarMenuItem>
+                <SidebarMenuButton tooltip="Dashboard" asChild isActive={isActive('/dashboard')}>
+                  <Link href="/dashboard">
+                    <LayoutDashboard />
+                    <span>Dashboard</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+
         <Accordion type="multiple" defaultValue={['workspaces']} className="w-full">
           <AccordionItem value="workspaces">
             <AccordionTrigger className="px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:no-underline">Workspaces</AccordionTrigger>
@@ -89,14 +95,7 @@ export default function MainSidebar() {
                            </SidebarMenuButton>
                         </AccordionTrigger>
                         <AccordionContent className="p-0">
-                          <SidebarGroup>
-                            {isAdmin && (
-                              <SidebarGroupAction asChild>
-                                <AddCompanyDialog workspaceId={workspace.id}>
-                                  <button><PlusCircle /></button>
-                                </AddCompanyDialog>
-                              </SidebarGroupAction>
-                            )}
+                          <SidebarGroup className="p-0">
                             <SidebarMenuSub>
                               {workspace.companies.map((company) => (
                                 <SidebarMenuSubItem key={company.id}>
@@ -111,14 +110,7 @@ export default function MainSidebar() {
                                         </SidebarMenuSubButton>
                                       </AccordionTrigger>
                                       <AccordionContent className="p-0">
-                                         <SidebarGroup>
-                                            {isAdmin && (
-                                              <SidebarGroupAction asChild>
-                                                <AddProjectDialog workspaceId={workspace.id} companyId={company.id}>
-                                                  <button><PlusCircle /></button>
-                                                </AddProjectDialog>
-                                              </SidebarGroupAction>
-                                            )}
+                                         <SidebarGroup className="p-0">
                                             <SidebarMenuSub>
                                               {company.projects.map((project) => (
                                                 <SidebarMenuSubItem key={project.id}>
@@ -133,14 +125,7 @@ export default function MainSidebar() {
                                                             </SidebarMenuSubButton>
                                                         </AccordionTrigger>
                                                         <AccordionContent className="p-0">
-                                                           <SidebarGroup>
-                                                              {isAdmin && (
-                                                                <SidebarGroupAction asChild>
-                                                                  <AddSiloDialog workspaceId={workspace.id} companyId={company.id} projectId={project.id}>
-                                                                    <button><PlusCircle /></button>
-                                                                  </AddSiloDialog>
-                                                                </SidebarGroupAction>
-                                                              )}
+                                                           <SidebarGroup className="p-0">
                                                               <SidebarMenuSub>
                                                                 {project.silos.map(silo => (
                                                                   <SidebarMenuSubItem key={silo.id}>
