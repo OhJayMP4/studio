@@ -12,8 +12,7 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { addCompany, getWorkspaces } from "@/lib/data";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
@@ -25,10 +24,21 @@ export function AddCompanyDialog({ children, workspaceId }: { children: React.Re
   const [open, setOpen] = useState(false);
   const [companyName, setCompanyName] = useState("");
   
-  const workspaces = getWorkspaces();
-  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(
-    workspaceId ? workspaces.find(ws => ws.id === workspaceId) || null : null
-  );
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      import('@/lib/data').then(dataLib => {
+        const fetchedWorkspaces = dataLib.getWorkspaces();
+        setWorkspaces(fetchedWorkspaces);
+        if (workspaceId) {
+          setSelectedWorkspace(fetchedWorkspaces.find(ws => ws.id === workspaceId) || null);
+        }
+      });
+    }
+  }, [open, workspaceId]);
+
 
   const handleWorkspaceChange = (id: string) => {
     const workspace = workspaces.find(ws => ws.id === id) || null;
@@ -39,19 +49,18 @@ export function AddCompanyDialog({ children, workspaceId }: { children: React.Re
     event.preventDefault();
     if (!companyName || !selectedWorkspace) return;
 
-    addCompany(selectedWorkspace.id, companyName);
+    import('@/lib/data').then(dataLib => {
+        dataLib.addCompany(selectedWorkspace.id, companyName);
 
-    toast({
-        title: "Company Created",
-        description: "The new company has been successfully added.",
+        toast({
+            title: "Company Created",
+            description: "The new company has been successfully added.",
+        });
+        
+        setOpen(false);
+        setCompanyName("");
+        router.refresh();
     });
-    
-    setOpen(false);
-    setCompanyName("");
-    // Re-find the selected workspace from the updated list if needed
-    const updatedWorkspaces = getWorkspaces();
-    setSelectedWorkspace(workspaceId ? updatedWorkspaces.find(ws => ws.id === workspaceId) || null : null);
-    router.refresh();
   }
 
   return (

@@ -12,11 +12,10 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { addSilo, getCompanyById } from "@/lib/data";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import type { Project } from "@/lib/types";
+import type { Project, Company } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 
 
@@ -33,10 +32,20 @@ export function AddSiloDialog({ children, workspaceId, companyId, projectId }: A
   const [open, setOpen] = useState(false);
   const [siloName, setSiloName] = useState("");
 
-  const company = getCompanyById(workspaceId, companyId);
-  const [selectedProject, setSelectedProject] = useState<Project | null>(
-    projectId ? company?.projects.find(p => p.id === projectId) || null : null
-  );
+  const [company, setCompany] = useState<Company | null>(null);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      import('@/lib/data').then(dataLib => {
+        const fetchedCompany = dataLib.getCompanyById(workspaceId, companyId);
+        setCompany(fetchedCompany || null);
+        if (projectId && fetchedCompany) {
+          setSelectedProject(fetchedCompany.projects.find(p => p.id === projectId) || null);
+        }
+      });
+    }
+  }, [open, workspaceId, companyId, projectId]);
 
   const handleProjectChange = (id: string) => {
     const project = company?.projects.find(p => p.id === id) || null;
@@ -47,16 +56,18 @@ export function AddSiloDialog({ children, workspaceId, companyId, projectId }: A
     event.preventDefault();
     if (!siloName || !selectedProject) return;
 
-    addSilo(workspaceId, companyId, selectedProject.id, siloName);
+    import('@/lib/data').then(dataLib => {
+        dataLib.addSilo(workspaceId, companyId, selectedProject.id, siloName);
 
-    toast({
-        title: "Silo Created",
-        description: "The new silo has been successfully added.",
+        toast({
+            title: "Silo Created",
+            description: "The new silo has been successfully added.",
+        });
+        
+        setOpen(false);
+        setSiloName("");
+        router.refresh();
     });
-    
-    setOpen(false);
-    setSiloName("");
-    router.refresh();
   }
 
   return (

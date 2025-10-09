@@ -1,4 +1,5 @@
-import { getSiloById, calculateCompletion } from "@/lib/data";
+import { getSiloById } from "@/lib/data";
+import { calculateCompletion } from "@/lib/data-client";
 import { notFound } from "next/navigation";
 import { TaskList } from "@/components/tasks/task-list";
 import { Progress } from "@/components/ui/progress";

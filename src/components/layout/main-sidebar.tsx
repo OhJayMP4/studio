@@ -28,7 +28,6 @@ import {
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { getWorkspaces, getCurrentUser } from "@/lib/data";
 import {
   Accordion,
   AccordionContent,
@@ -39,11 +38,21 @@ import { UserNav } from "./user-nav";
 import { AddCompanyButton } from "../common/add-company-button";
 import { AddProjectButton } from "../common/add-project-button";
 import { AddSiloButton } from "../common/add-silo-button";
+import { useEffect, useState } from "react";
+import type { Workspace, User } from "@/lib/types";
 
 export default function MainSidebar() {
   const pathname = usePathname();
-  const workspaces = getWorkspaces();
-  const user = getCurrentUser();
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    import('@/lib/data').then(dataLib => {
+      setWorkspaces(dataLib.getWorkspaces());
+      setUser(dataLib.getCurrentUser());
+    });
+  }, [pathname]);
+
 
   const isActive = (path: string) => {
     return pathname === path;
@@ -51,6 +60,10 @@ export default function MainSidebar() {
 
   const isSubActive = (path: string) => {
     return pathname.startsWith(path);
+  }
+
+  if (!user) {
+    return null; // or a loading skeleton
   }
 
   return (

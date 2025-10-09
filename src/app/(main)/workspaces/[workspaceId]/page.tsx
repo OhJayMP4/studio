@@ -1,5 +1,6 @@
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { getWorkspaceById, calculateCompletion } from "@/lib/data";
+import { getWorkspaceById } from "@/lib/data";
+import { calculateCompletion } from "@/lib/data-client";
 import { ArrowRight, Building } from "lucide-react";
 import Link from "next/link";
 import { Progress } from "@/components/ui/progress";

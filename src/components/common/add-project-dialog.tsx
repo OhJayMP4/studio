@@ -12,12 +12,11 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { addProject, getWorkspaceById } from "@/lib/data";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import type { Company } from "@/lib/types";
+import type { Company, Workspace } from "@/lib/types";
 
 
 interface AddProjectDialogProps {
@@ -32,10 +31,20 @@ export function AddProjectDialog({ children, workspaceId, companyId }: AddProjec
   const [open, setOpen] = useState(false);
   const [projectName, setProjectName] = useState("");
 
-  const workspace = getWorkspaceById(workspaceId);
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(
-    companyId ? workspace?.companies.find(c => c.id === companyId) || null : null
-  );
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      import('@/lib/data').then(dataLib => {
+        const fetchedWorkspace = dataLib.getWorkspaceById(workspaceId);
+        setWorkspace(fetchedWorkspace || null);
+        if (companyId && fetchedWorkspace) {
+          setSelectedCompany(fetchedWorkspace.companies.find(c => c.id === companyId) || null);
+        }
+      });
+    }
+  }, [open, workspaceId, companyId]);
 
   const handleCompanyChange = (id: string) => {
     const company = workspace?.companies.find(c => c.id === id) || null;
@@ -46,16 +55,18 @@ export function AddProjectDialog({ children, workspaceId, companyId }: AddProjec
     event.preventDefault();
     if (!projectName || !selectedCompany) return;
 
-    addProject(workspaceId, selectedCompany.id, projectName);
+    import('@/lib/data').then(dataLib => {
+        dataLib.addProject(workspaceId, selectedCompany.id, projectName);
 
-    toast({
-        title: "Project Created",
-        description: "The new project has been successfully added.",
+        toast({
+            title: "Project Created",
+            description: "The new project has been successfully added.",
+        });
+        
+        setOpen(false);
+        setProjectName("");
+        router.refresh();
     });
-    
-    setOpen(false);
-    setProjectName("");
-    router.refresh();
   }
 
   return (

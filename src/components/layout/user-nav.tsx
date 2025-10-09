@@ -11,12 +11,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getCurrentUser } from "@/lib/data";
 import Link from "next/link";
 import { ChevronsUpDown } from "lucide-react";
+import { useEffect, useState } from "react";
+import type { User } from "@/lib/types";
 
 export function UserNav() {
-  const user = getCurrentUser();
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    import('@/lib/data').then(dataLib => {
+      setUser(dataLib.getCurrentUser());
+    });
+  }, []);
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <DropdownMenu>

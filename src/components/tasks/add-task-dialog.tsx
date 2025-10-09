@@ -20,8 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "../ui/textarea";
-import { getWorkspaces, addTask } from "@/lib/data";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { Company, Project, Silo, Workspace } from "@/lib/types";
 import { AiTaskSuggester } from "./ai-task-suggester";
 import { useToast } from "@/hooks/use-toast";
@@ -34,11 +33,19 @@ export function AddTaskDialog({ children }: { children: React.ReactNode }) {
   const [taskName, setTaskName] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
   
-  const workspaces = getWorkspaces();
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [selectedSilo, setSelectedSilo] = useState<Silo | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      import('@/lib/data').then(dataLib => {
+        setWorkspaces(dataLib.getWorkspaces());
+      });
+    }
+  }, [open]);
 
   const handleWorkspaceChange = (workspaceId: string) => {
     const workspace = workspaces.find(ws => ws.id === workspaceId) || null;
@@ -70,27 +77,29 @@ export function AddTaskDialog({ children }: { children: React.ReactNode }) {
     event.preventDefault();
     if (!selectedWorkspace || !selectedCompany || !selectedProject || !selectedSilo || !taskName) return;
 
-    addTask(selectedWorkspace.id, selectedCompany.id, selectedProject.id, selectedSilo.id, {
-        name: taskName,
-        description: taskDescription,
-        completed: false,
-        priority: 'medium' // default priority
-    });
+    import('@/lib/data').then(dataLib => {
+      dataLib.addTask(selectedWorkspace.id, selectedCompany.id, selectedProject.id, selectedSilo.id, {
+          name: taskName,
+          description: taskDescription,
+          completed: false,
+          priority: 'medium' // default priority
+      });
 
-    toast({
-        title: "Task Created",
-        description: "The new task has been successfully added.",
+      toast({
+          title: "Task Created",
+          description: "The new task has been successfully added.",
+      });
+      
+      setOpen(false);
+      // Reset form state
+      setTaskName("");
+      setTaskDescription("");
+      setSelectedWorkspace(null);
+      setSelectedCompany(null);
+      setSelectedProject(null);
+      setSelectedSilo(null);
+      router.refresh();
     });
-    
-    setOpen(false);
-    // Reset form state
-    setTaskName("");
-    setTaskDescription("");
-    setSelectedWorkspace(null);
-    setSelectedCompany(null);
-    setSelectedProject(null);
-    setSelectedSilo(null);
-    router.refresh();
   }
 
   return (
