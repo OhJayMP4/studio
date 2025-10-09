@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import {
   Dialog,
@@ -12,12 +12,14 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import type { Company, Workspace } from "@/lib/types";
-
+import type { Company } from "@/lib/types";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { addDocumentNonBlocking } from "@/firebase";
+import { collection, doc } from "firebase/firestore";
 
 interface AddProjectDialogProps {
   children: React.ReactNode;
@@ -28,45 +30,36 @@ interface AddProjectDialogProps {
 export function AddProjectDialog({ children, workspaceId, companyId }: AddProjectDialogProps) {
   const { toast } = useToast();
   const router = useRouter();
+  const firestore = useFirestore();
   const [open, setOpen] = useState(false);
   const [projectName, setProjectName] = useState("");
-
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
-
-  useEffect(() => {
-    if (open) {
-      import('@/lib/data').then(dataLib => {
-        const fetchedWorkspace = dataLib.getWorkspaceById(workspaceId);
-        setWorkspace(fetchedWorkspace || null);
-        if (companyId && fetchedWorkspace) {
-          setSelectedCompany(fetchedWorkspace.companies.find(c => c.id === companyId) || null);
-        }
-      });
-    }
-  }, [open, workspaceId, companyId]);
+  
+  const companiesRef = useMemoFirebase(() => collection(firestore, "workspaces", workspaceId, "companies"), [firestore, workspaceId]);
+  const { data: companies } = useCollection<Company>(companiesRef);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | undefined>(companyId);
 
   const handleCompanyChange = (id: string) => {
-    const company = workspace?.companies.find(c => c.id === id) || null;
-    setSelectedCompany(company);
+    setSelectedCompanyId(id);
   };
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!projectName || !selectedCompany) return;
+    if (!projectName || !selectedCompanyId) return;
 
-    import('@/lib/data').then(dataLib => {
-        dataLib.addProject(workspaceId, selectedCompany.id, projectName);
-
-        toast({
-            title: "Project Created",
-            description: "The new project has been successfully added.",
-        });
-        
-        setOpen(false);
-        setProjectName("");
-        router.refresh();
+    const projectsCol = collection(firestore, `companies/${selectedCompanyId}/projects`);
+    addDocumentNonBlocking(projectsCol, {
+      name: projectName,
+      companyId: selectedCompanyId
     });
+
+    toast({
+        title: "Project Created",
+        description: "The new project has been successfully added.",
+    });
+    
+    setOpen(false);
+    setProjectName("");
+    router.refresh();
   }
 
   return (
@@ -85,12 +78,12 @@ export function AddProjectDialog({ children, workspaceId, companyId }: AddProjec
               <Label htmlFor="company" className="text-right">
                 Company
               </Label>
-              <Select onValueChange={handleCompanyChange} defaultValue={selectedCompany?.id} required>
+              <Select onValueChange={handleCompanyChange} defaultValue={selectedCompanyId} required>
                 <SelectTrigger className="col-span-3">
                   <SelectValue placeholder="Select a company" />
                 </SelectTrigger>
                 <SelectContent>
-                  {workspace?.companies.map((c) => (
+                  {companies?.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.name}
                     </SelectItem>

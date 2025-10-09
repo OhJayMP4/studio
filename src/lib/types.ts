@@ -20,31 +20,38 @@ export type Silo = {
   id: string;
   name: string;
   projectId: string;
-  tasks: Task[];
+  tasks?: Task[]; // Now optional as it's a subcollection
 };
 
 export type Project = {
   id: string;
   name: string;
   companyId: string;
-  silos: Silo[];
-  turnoverTarget?: number;
-  currentTurnover?: number;
+  silos?: Silo[]; // Now optional as it's a subcollection
 };
 
 export type Company = {
   id: string;
   name: string;
   workspaceId: string;
-  projects: Project[];
+  projects?: Project[]; // Now optional as it's a subcollection
 };
 
 export type Workspace = {
   id: string;
   name: string;
-  users: User[];
-  companies: Company[];
+  ownerId: string;
+  users?: User[]; // Now optional as it's a subcollection
+  companies?: Company[]; // Now optional as it's a subcollection
 };
+
+// This represents the top-level user profile stored in the /users collection
+export type UserProfile = {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl: string;
+}
 
 export type AppData = {
   workspaces: Workspace[];

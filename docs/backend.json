@@ -1,160 +1,6 @@
 {
   "entities": {
-    "Workspace": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Workspace",
-      "type": "object",
-      "description": "Represents a workspace within the SaturnSync application.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Workspace entity."
-        },
-        "name": {
-          "type": "string",
-          "description": "The name of the workspace."
-        },
-        "description": {
-          "type": "string",
-          "description": "A description of the workspace."
-        },
-        "ownerId": {
-          "type": "string",
-          "description": "Reference to User who owns the workspace. (Relationship: User 1:N Workspace)"
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "ownerId"
-      ]
-    },
-    "Company": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Company",
-      "type": "object",
-      "description": "Represents a company within a workspace.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Company entity."
-        },
-        "name": {
-          "type": "string",
-          "description": "The name of the company."
-        },
-        "workspaceId": {
-          "type": "string",
-          "description": "Reference to Workspace that contains this company. (Relationship: Workspace 1:N Company)"
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "workspaceId"
-      ]
-    },
-    "Project": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Project",
-      "type": "object",
-      "description": "Represents a project within a company.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Project entity."
-        },
-        "name": {
-          "type": "string",
-          "description": "The name of the project."
-        },
-        "companyId": {
-          "type": "string",
-          "description": "Reference to Company that contains this project. (Relationship: Company 1:N Project)"
-        },
-        "completionPercentage": {
-          "type": "number",
-          "description": "Automated completion percentage for the project."
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "companyId"
-      ]
-    },
-    "Silo": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Silo",
-      "type": "object",
-      "description": "Represents a silo within a project.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Silo entity."
-        },
-        "name": {
-          "type": "string",
-          "description": "The name of the silo."
-        },
-        "projectId": {
-          "type": "string",
-          "description": "Reference to Project that contains this silo. (Relationship: Project 1:N Silo)"
-        },
-        "completionPercentage": {
-          "type": "number",
-          "description": "Automated completion percentage for the Silo."
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "projectId"
-      ]
-    },
-    "Task": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Task",
-      "type": "object",
-      "description": "Represents a task within a silo.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Task entity."
-        },
-        "name": {
-          "type": "string",
-          "description": "The name of the task."
-        },
-        "siloId": {
-          "type": "string",
-          "description": "Reference to Silo that contains this task. (Relationship: Silo 1:N Task)"
-        },
-        "description": {
-          "type": "string",
-          "description": "A description of the task."
-        },
-        "isCompleted": {
-          "type": "boolean",
-          "description": "Indicates whether the task is completed."
-        },
-        "priority": {
-          "type": "string",
-          "description": "Priority level of the task (low, medium, high)."
-        },
-        "assigneeId": {
-          "type": "string",
-          "description": "Reference to User assigned to the task. (Relationship: User 1:N Task)"
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "siloId"
-      ]
-    },
     "User": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "User",
       "type": "object",
       "description": "Represents a user within the SaturnSync application.",
@@ -168,273 +14,181 @@
           "description": "The email address of the user.",
           "format": "email"
         },
-        "firstName": {
+        "name": {
           "type": "string",
-          "description": "The first name of the user."
+          "description": "The full name of the user."
         },
-        "lastName": {
+        "avatarUrl": {
           "type": "string",
-          "description": "The last name of the user."
+          "description": "URL for the user's avatar."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "contributor", "viewer"]
         }
       },
       "required": [
         "id",
         "email",
-        "firstName",
-        "lastName"
+        "name"
+      ]
+    },
+    "Workspace": {
+      "title": "Workspace",
+      "type": "object",
+      "description": "Represents a workspace containing companies and users.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the workspace."
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "The ID of the user who owns the workspace."
+        }
+      },
+      "required": [
+        "name",
+        "ownerId"
       ]
     },
     "WorkspaceUser": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "WorkspaceUser",
-      "type": "object",
-      "description": "Represents the association between a user and a workspace, including the user's role.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the WorkspaceUser entity."
+        "title": "WorkspaceUser",
+        "type": "object",
+        "description": "The association between a user and a workspace.",
+        "properties": {
+            "userId": { "type": "string" },
+            "name": { "type": "string" },
+            "email": { "type": "string", "format": "email" },
+            "avatarUrl": { "type": "string" },
+            "role": { "type": "string", "enum": ["admin", "contributor", "viewer"] }
         },
-        "workspaceId": {
-          "type": "string",
-          "description": "Reference to the Workspace. (Relationship: Workspace 1:N WorkspaceUser)"
-        },
-        "userId": {
-          "type": "string",
-          "description": "Reference to the User. (Relationship: User 1:N WorkspaceUser)"
-        },
-        "role": {
-          "type": "string",
-          "description": "The role of the user within the workspace (e.g., admin, contributor, viewer)."
-        }
-      },
-      "required": [
-        "id",
-        "workspaceId",
-        "userId",
-        "role"
-      ]
+        "required": ["userId", "name", "email", "role"]
     },
-    "Report": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Report",
+    "Company": {
+      "title": "Company",
       "type": "object",
-      "description": "Represents a generated report.",
+      "description": "Represents a company within a workspace.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Report entity."
-        },
         "name": {
           "type": "string",
-          "description": "Name of the report."
-        },
-        "reportType": {
-          "type": "string",
-          "description": "Type of the report, e.g., PDF overview, live link."
-        },
-        "data": {
-          "type": "string",
-          "description": "The data associated with the report, potentially a URL or JSON structure."
+          "description": "The name of the company."
         },
         "workspaceId": {
           "type": "string",
-          "description": "Reference to the Workspace this report belongs to. (Relationship: Workspace 1:N Report)"
+          "description": "ID of the parent workspace."
         }
       },
       "required": [
-        "id",
         "name",
-        "reportType",
-        "data",
         "workspaceId"
+      ]
+    },
+    "Project": {
+      "title": "Project",
+      "type": "object",
+      "description": "Represents a project within a company.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the project."
+        },
+        "companyId": {
+          "type": "string",
+          "description": "ID of the parent company."
+        }
+      },
+      "required": [
+        "name",
+        "companyId"
+      ]
+    },
+    "Silo": {
+      "title": "Silo",
+      "type": "object",
+      "description": "Represents a silo within a project.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the silo."
+        },
+        "projectId": {
+          "type": "string",
+          "description": "ID of the parent project."
+        }
+      },
+      "required": [
+        "name",
+        "projectId"
+      ]
+    },
+    "Task": {
+      "title": "Task",
+      "type": "object",
+      "description": "Represents a task within a silo.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the task."
+        },
+        "siloId": {
+          "type": "string",
+          "description": "ID of the parent silo."
+        },
+        "description": {
+          "type": "string",
+          "description": "A description of the task."
+        },
+        "completed": {
+          "type": "boolean",
+          "description": "Indicates whether the task is completed."
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        }
+      },
+      "required": [
+        "name",
+        "siloId",
+        "completed",
+        "priority"
       ]
     }
   },
   "auth": {
     "providers": [
-      "password",
       "anonymous"
     ]
   },
   "firestore": {
-    "structure": [
-      {
-        "path": "/users/{userId}",
-        "definition": {
-          "entityName": "User",
-          "schema": {
-            "$ref": "#/backend/entities/User"
-          },
-          "description": "Stores user profiles.  Path-based ownership for private user data.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique identifier of the user."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/workspaces/{workspaceId}",
-        "definition": {
-          "entityName": "Workspace",
-          "schema": {
-            "$ref": "#/backend/entities/Workspace"
-          },
-          "description": "Stores workspace information. The `ownerId` field indicates the workspace owner.",
-          "params": [
-            {
-              "name": "workspaceId",
-              "description": "The unique identifier of the workspace."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/workspaces/{workspaceId}/workspaceUsers/{workspaceUserId}",
-        "definition": {
-          "entityName": "WorkspaceUser",
-          "schema": {
-            "$ref": "#/backend/entities/WorkspaceUser"
-          },
-          "description": "Stores the association between users and workspaces, including their roles.  Used to build the denormalized 'members' map in subcollections.",
-          "params": [
-            {
-              "name": "workspaceId",
-              "description": "The unique identifier of the workspace."
-            },
-            {
-              "name": "workspaceUserId",
-              "description": "The unique identifier of the workspace user entry."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/workspaces/{workspaceId}/companies/{companyId}",
-        "definition": {
-          "entityName": "Company",
-          "schema": {
-            "$ref": "#/backend/entities/Company"
-          },
-          "description": "Stores company information within a workspace. Includes denormalized 'members' map for authorization independence.",
-          "params": [
-            {
-              "name": "workspaceId",
-              "description": "The unique identifier of the workspace."
-            },
-            {
-              "name": "companyId",
-              "description": "The unique identifier of the company."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}",
-        "definition": {
-          "entityName": "Project",
-          "schema": {
-            "$ref": "#/backend/entities/Project"
-          },
-          "description": "Stores project information within a company. Includes denormalized 'members' map for authorization independence.",
-          "params": [
-            {
-              "name": "workspaceId",
-              "description": "The unique identifier of the workspace."
-            },
-            {
-              "name": "companyId",
-              "description": "The unique identifier of the company."
-            },
-            {
-              "name": "projectId",
-              "description": "The unique identifier of the project."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}",
-        "definition": {
-          "entityName": "Silo",
-          "schema": {
-            "$ref": "#/backend/entities/Silo"
-          },
-          "description": "Stores silo information within a project. Includes denormalized 'members' map for authorization independence.",
-          "params": [
-            {
-              "name": "workspaceId",
-              "description": "The unique identifier of the workspace."
-            },
-            {
-              "name": "companyId",
-              "description": "The unique identifier of the company."
-            },
-            {
-              "name": "projectId",
-              "description": "The unique identifier of the project."
-            },
-            {
-              "name": "siloId",
-              "description": "The unique identifier of the silo."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}",
-        "definition": {
-          "entityName": "Task",
-          "schema": {
-            "$ref": "#/backend/entities/Task"
-          },
-          "description": "Stores task information within a silo. Includes denormalized 'members' map for authorization independence.",
-          "params": [
-            {
-              "name": "workspaceId",
-              "description": "The unique identifier of the workspace."
-            },
-            {
-              "name": "companyId",
-              "description": "The unique identifier of the company."
-            },
-            {
-              "name": "projectId",
-              "description": "The unique identifier of the project."
-            },
-            {
-              "name": "siloId",
-              "description": "The unique identifier of the silo."
-            },
-            {
-              "name": "taskId",
-              "description": "The unique identifier of the task."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/workspaces/{workspaceId}/reports/{reportId}",
-        "definition": {
-          "entityName": "Report",
-          "schema": {
-            "$ref": "#/backend/entities/Report"
-          },
-          "description": "Stores report information within a workspace.",
-          "params": [
-            {
-              "name": "workspaceId",
-              "description": "The unique identifier of the workspace."
-            },
-            {
-              "name": "reportId",
-              "description": "The unique identifier of the report."
-            }
-          ]
-        }
-      }
-    ],
-    "reasoning": "The Firestore structure is designed to support the SaturnSync application's requirements, focusing on secure access control, scalability, and maintainability. It leverages path-based ownership for user-related data and membership maps for collaborative access. Authorization Independence is achieved through denormalization of workspace membership data. Segregation of data based on access needs ensures that security rules are simplified and efficient. The structure is optimized for querying and listing operations (QAPs) by adhering to a consistent and predictable schema.\n\nSpecifically:\n\n*   **Users:** User data is stored in a top-level `/users/{userId}` collection, ensuring easy access and management of individual user profiles. This path-based ownership is fundamental to private user data.\n*   **Workspaces:** Workspaces are stored at `/workspaces/{workspaceId}`. The `ownerId` field establishes ownership. The `workspaceUsers` subcollection stores membership information.\n*   **Workspace Users:** The `/workspaces/{workspaceId}/workspaceUsers/{workspaceUserId}` collection stores workspace user role information.\n*   **Companies, Projects, Silos, Tasks:** These entities are nested under workspaces using hierarchical paths (e.g., `/workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}`). This structure enforces ownership and simplifies security rules based on workspace membership. Each document in the subcollections will contain workspace membership information to ensure authorization independence.\n*   **Reports:** Reports are stored as `/workspaces/{workspaceId}/reports/{reportId}`. Access is controlled via workspace membership.\n\n**Authorization Independence:**\n\n*   The key to authorization independence lies in denormalizing workspace membership information into subcollections. For instance, when creating a new `Company` under a `Workspace`, the `members` map (derived from `/workspaces/{workspaceId}/workspaceUsers/{workspaceUserId}`) is copied into the `Company` document, as well as the `Project`, `Silo`, and `Task` documents. This allows security rules to validate access at each level without needing to perform costly `get()` operations to check parent-level permissions.\n\n**QAPs (Rules Are Not Filters):**\n\n*   The data structure supports secure list operations by ensuring all documents within a collection share the same security requirements. Path-based ownership (`/users/{userId}`) and workspace-based access control (`/workspaces/{workspaceId}/...`) guarantee that queries can be performed without exposing unauthorized data. The denormalized membership information enables rules to efficiently filter data based on the current user's role within the workspace."
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles."
+    },
+    "/workspaces/{workspaceId}": {
+        "schema": { "$ref": "#/entities/Workspace" },
+        "description": "Top-level collection for workspaces."
+    },
+    "/workspaces/{workspaceId}/users/{userId}": {
+        "schema": { "$ref": "#/entities/WorkspaceUser" },
+        "description": "Sub-collection for users within a workspace."
+    },
+    "/workspaces/{workspaceId}/companies/{companyId}": {
+        "schema": { "$ref": "#/entities/Company" },
+        "description": "Sub-collection for companies within a workspace."
+    },
+    "/companies/{companyId}/projects/{projectId}": {
+        "schema": { "$ref": "#/entities/Project" },
+        "description": "Sub-collection for projects within a company."
+    },
+    "/projects/{projectId}/silos/{siloId}": {
+        "schema": { "$ref": "#/entities/Silo" },
+        "description": "Sub-collection for silos within a project."
+    },
+    "/silos/{siloId}/tasks/{taskId}": {
+        "schema": { "$ref": "#/entities/Task" },
+        "description": "Sub-collection for tasks within a silo."
+    }
   }
 }

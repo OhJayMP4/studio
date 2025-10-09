@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import {
   Dialog,
@@ -15,8 +15,11 @@ import { Label } from "../ui/label";
 import React, { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import type { Project, Company } from "@/lib/types";
+import type { Project } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { addDocumentNonBlocking } from "@/firebase";
+import { collection } from "firebase/firestore";
 
 
 interface AddSiloDialogProps {
@@ -29,45 +32,43 @@ interface AddSiloDialogProps {
 export function AddSiloDialog({ children, workspaceId, companyId, projectId }: AddSiloDialogProps) {
   const { toast } = useToast();
   const router = useRouter();
+  const firestore = useFirestore();
   const [open, setOpen] = useState(false);
   const [siloName, setSiloName] = useState("");
 
-  const [company, setCompany] = useState<Company | null>(null);
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const projectsRef = useMemoFirebase(() => collection(firestore, "companies", companyId, "projects"), [firestore, companyId]);
+  const { data: projects } = useCollection<Project>(projectsRef);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(projectId);
+
 
   useEffect(() => {
-    if (open) {
-      import('@/lib/data').then(dataLib => {
-        const fetchedCompany = dataLib.getCompanyById(workspaceId, companyId);
-        setCompany(fetchedCompany || null);
-        if (projectId && fetchedCompany) {
-          setSelectedProject(fetchedCompany.projects.find(p => p.id === projectId) || null);
-        }
-      });
+    if (projectId) {
+      setSelectedProjectId(projectId);
     }
-  }, [open, workspaceId, companyId, projectId]);
+  }, [projectId]);
 
   const handleProjectChange = (id: string) => {
-    const project = company?.projects.find(p => p.id === id) || null;
-    setSelectedProject(project);
+    setSelectedProjectId(id);
   };
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!siloName || !selectedProject) return;
+    if (!siloName || !selectedProjectId) return;
 
-    import('@/lib/data').then(dataLib => {
-        dataLib.addSilo(workspaceId, companyId, selectedProject.id, siloName);
-
-        toast({
-            title: "Silo Created",
-            description: "The new silo has been successfully added.",
-        });
-        
-        setOpen(false);
-        setSiloName("");
-        router.refresh();
+    const silosCol = collection(firestore, `projects/${selectedProjectId}/silos`);
+    addDocumentNonBlocking(silosCol, {
+      name: siloName,
+      projectId: selectedProjectId
     });
+
+    toast({
+        title: "Silo Created",
+        description: "The new silo has been successfully added.",
+    });
+    
+    setOpen(false);
+    setSiloName("");
+    router.refresh();
   }
 
   return (
@@ -86,12 +87,12 @@ export function AddSiloDialog({ children, workspaceId, companyId, projectId }: A
               <Label htmlFor="project" className="text-right">
                 Project
               </Label>
-              <Select onValueChange={handleProjectChange} defaultValue={selectedProject?.id} required>
+              <Select onValueChange={handleProjectChange} defaultValue={selectedProjectId} required>
                 <SelectTrigger className="col-span-3">
                   <SelectValue placeholder="Select a project" />
                 </SelectTrigger>
                 <SelectContent>
-                  {company?.projects.map((p) => (
+                  {projects?.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.name}
                     </SelectItem>

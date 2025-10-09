@@ -1,19 +1,34 @@
+'use client';
+
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { getWorkspaceById } from "@/lib/data";
-import { calculateCompletion } from "@/lib/data-client";
+import { useDoc, useCollection, useFirestore, useMemoFirebase } from "@/firebase";
 import { ArrowRight, Building } from "lucide-react";
 import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { notFound } from "next/navigation";
 import { AddCompanyButton } from "@/components/common/add-company-button";
+import { collection, doc } from "firebase/firestore";
+import type { Workspace, Company } from "@/lib/types";
 
 export default function WorkspacePage({ params }: { params: { workspaceId: string } }) {
-    const workspace = getWorkspaceById(params.workspaceId);
+    const firestore = useFirestore();
+
+    const workspaceRef = useMemoFirebase(() => doc(firestore, "workspaces", params.workspaceId), [firestore, params.workspaceId]);
+    const { data: workspace, isLoading: isWorkspaceLoading } = useDoc<Workspace>(workspaceRef);
+
+    const companiesRef = useMemoFirebase(() => collection(firestore, "workspaces", params.workspaceId, "companies"), [firestore, params.workspaceId]);
+    const { data: companies, isLoading: areCompaniesLoading } = useCollection<Company>(companiesRef);
+
+    if (isWorkspaceLoading || areCompaniesLoading) {
+        return <div>Loading...</div>;
+    }
 
     if (!workspace) {
         notFound();
     }
+    
+    const completion = 0; // Placeholder
 
     return (
         <div className="space-y-6">
@@ -26,18 +41,16 @@ export default function WorkspacePage({ params }: { params: { workspaceId: strin
             </div>
 
 
-            {workspace.companies.length > 0 ? (
+            {(companies?.length || 0) > 0 ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {workspace.companies.map(company => {
-                        const completion = calculateCompletion({ projects: company.projects });
-
+                    {companies?.map(company => {
                         return (
                             <Card key={company.id} className="flex flex-col">
                                 <CardHeader>
                                     <div className="flex items-start justify-between">
                                         <div>
                                             <CardTitle className="font-headline text-xl">{company.name}</CardTitle>
-                                            <CardDescription>{company.projects.length} projects</CardDescription>
+                                            <CardDescription>{company.projects?.length || 0} projects</CardDescription>
                                         </div>
                                         <Building className="h-8 w-8 text-muted-foreground" />
                                     </div>

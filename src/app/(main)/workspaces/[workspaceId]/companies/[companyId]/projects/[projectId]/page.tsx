@@ -1,19 +1,34 @@
+'use client';
+
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { getProjectById } from "@/lib/data";
-import { calculateCompletion } from "@/lib/data-client";
+import { useDoc, useCollection, useFirestore, useMemoFirebase } from "@/firebase";
 import { ArrowRight, Container } from "lucide-react";
 import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { notFound } from "next/navigation";
 import { AddSiloButton } from "@/components/common/add-silo-button";
+import { collection, doc } from "firebase/firestore";
+import type { Project, Silo } from "@/lib/types";
 
 export default function ProjectPage({ params }: { params: { workspaceId: string, companyId: string, projectId: string } }) {
-    const project = getProjectById(params.workspaceId, params.companyId, params.projectId);
+    const firestore = useFirestore();
+
+    const projectRef = useMemoFirebase(() => doc(firestore, "companies", params.companyId, "projects", params.projectId), [firestore, params.companyId, params.projectId]);
+    const { data: project, isLoading: isProjectLoading } = useDoc<Project>(projectRef);
+    
+    const silosRef = useMemoFirebase(() => collection(firestore, "projects", params.projectId, "silos"), [firestore, params.projectId]);
+    const { data: silos, isLoading: areSilosLoading } = useCollection<Silo>(silosRef);
+    
+    if (isProjectLoading || areSilosLoading) {
+        return <div>Loading...</div>
+    }
 
     if (!project) {
         notFound();
     }
+    
+    const completion = 0; // Placeholder
 
     return (
         <div className="space-y-6">
@@ -26,17 +41,16 @@ export default function ProjectPage({ params }: { params: { workspaceId: string,
             </div>
 
 
-            {project.silos.length > 0 ? (
+            {(silos?.length || 0) > 0 ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {project.silos.map(silo => {
-                        const completion = calculateCompletion(silo.tasks);
+                    {silos?.map(silo => {
                         return (
                             <Card key={silo.id} className="flex flex-col">
                                 <CardHeader>
                                     <div className="flex items-start justify-between">
                                         <div>
                                             <CardTitle className="font-headline text-xl">{silo.name}</CardTitle>
-                                            <CardDescription>{silo.tasks.length} tasks</CardDescription>
+                                            <CardDescription>{silo.tasks?.length || 0} tasks</CardDescription>
                                         </div>
                                         <Container className="h-8 w-8 text-muted-foreground" />
                                     </div>

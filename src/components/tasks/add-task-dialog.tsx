@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import {
   Dialog,
@@ -25,81 +25,98 @@ import type { Company, Project, Silo, Workspace } from "@/lib/types";
 import { AiTaskSuggester } from "./ai-task-suggester";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+import { useFirestore, useUser, useCollection, useMemoFirebase, addDocumentNonBlocking } from "@/firebase";
+import { collection, query, where } from "firebase/firestore";
 
 export function AddTaskDialog({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
   const router = useRouter();
+  const firestore = useFirestore();
+  const { user } = useUser();
+
   const [open, setOpen] = useState(false);
   const [taskName, setTaskName] = useState("");
   const [taskDescription, setTaskDescription] = useState("");
   
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [selectedSilo, setSelectedSilo] = useState<Silo | null>(null);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedSiloId, setSelectedSiloId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (open) {
-      import('@/lib/data').then(dataLib => {
-        setWorkspaces(dataLib.getWorkspaces());
-      });
-    }
-  }, [open]);
+  const workspacesQuery = useMemoFirebase(() => {
+    if (!user) return null;
+    return query(collection(firestore, "workspaces"), where("ownerId", "==", user.uid));
+  }, [firestore, user]);
+  const { data: workspaces } = useCollection<Workspace>(workspacesQuery);
+
+  const companiesQuery = useMemoFirebase(() => {
+    if (!selectedWorkspaceId) return null;
+    return collection(firestore, `workspaces/${selectedWorkspaceId}/companies`);
+  }, [firestore, selectedWorkspaceId]);
+  const { data: companies } = useCollection<Company>(companiesQuery);
+
+  const projectsQuery = useMemoFirebase(() => {
+    if (!selectedCompanyId) return null;
+    return collection(firestore, `companies/${selectedCompanyId}/projects`);
+  }, [firestore, selectedCompanyId]);
+  const { data: projects } = useCollection<Project>(projectsQuery);
+
+  const silosQuery = useMemoFirebase(() => {
+    if (!selectedProjectId) return null;
+    return collection(firestore, `projects/${selectedProjectId}/silos`);
+  }, [firestore, selectedProjectId]);
+  const { data: silos } = useCollection<Silo>(silosQuery);
+
 
   const handleWorkspaceChange = (workspaceId: string) => {
-    const workspace = workspaces.find(ws => ws.id === workspaceId) || null;
-    setSelectedWorkspace(workspace);
-    setSelectedCompany(null);
-    setSelectedProject(null);
-    setSelectedSilo(null);
+    setSelectedWorkspaceId(workspaceId);
+    setSelectedCompanyId(null);
+    setSelectedProjectId(null);
+    setSelectedSiloId(null);
   };
 
   const handleCompanyChange = (companyId: string) => {
-    const company = selectedWorkspace?.companies.find((c) => c.id === companyId) || null;
-    setSelectedCompany(company);
-    setSelectedProject(null);
-    setSelectedSilo(null);
+    setSelectedCompanyId(companyId);
+    setSelectedProjectId(null);
+    setSelectedSiloId(null);
   };
 
   const handleProjectChange = (projectId: string) => {
-    const project = selectedCompany?.projects.find((p) => p.id === projectId) || null;
-    setSelectedProject(project);
-    setSelectedSilo(null);
+    setSelectedProjectId(projectId);
+    setSelectedSiloId(null);
   };
 
   const handleSiloChange = (siloId: string) => {
-    const silo = selectedProject?.silos.find((s) => s.id === siloId) || null;
-    setSelectedSilo(silo);
+    setSelectedSiloId(siloId);
   };
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selectedWorkspace || !selectedCompany || !selectedProject || !selectedSilo || !taskName) return;
+    if (!selectedSiloId || !taskName) return;
 
-    import('@/lib/data').then(dataLib => {
-      dataLib.addTask(selectedWorkspace.id, selectedCompany.id, selectedProject.id, selectedSilo.id, {
-          name: taskName,
-          description: taskDescription,
-          completed: false,
-          priority: 'medium' // default priority
-      });
-
-      toast({
-          title: "Task Created",
-          description: "The new task has been successfully added.",
-      });
-      
-      setOpen(false);
-      // Reset form state
-      setTaskName("");
-      setTaskDescription("");
-      setSelectedWorkspace(null);
-      setSelectedCompany(null);
-      setSelectedProject(null);
-      setSelectedSilo(null);
-      router.refresh();
+    const tasksCol = collection(firestore, `silos/${selectedSiloId}/tasks`);
+    addDocumentNonBlocking(tasksCol, {
+      name: taskName,
+      description: taskDescription,
+      completed: false,
+      priority: 'medium', // default priority
+      siloId: selectedSiloId,
     });
+
+    toast({
+        title: "Task Created",
+        description: "The new task has been successfully added.",
+    });
+    
+    setOpen(false);
+    // Reset form state
+    setTaskName("");
+    setTaskDescription("");
+    setSelectedWorkspaceId(null);
+    setSelectedCompanyId(null);
+    setSelectedProjectId(null);
+    setSelectedSiloId(null);
+    router.refresh();
   }
 
   return (
@@ -129,7 +146,7 @@ export function AddTaskDialog({ children }: { children: React.ReactNode }) {
                 <SelectValue placeholder="Select a workspace" />
               </SelectTrigger>
               <SelectContent>
-                {workspaces.map((ws) => (
+                {workspaces?.map((ws) => (
                   <SelectItem key={ws.id} value={ws.id}>
                     {ws.name}
                   </SelectItem>
@@ -141,12 +158,12 @@ export function AddTaskDialog({ children }: { children: React.ReactNode }) {
             <Label htmlFor="company" className="text-right">
               Company
             </Label>
-            <Select onValueChange={handleCompanyChange} disabled={!selectedWorkspace} required>
+            <Select onValueChange={handleCompanyChange} disabled={!selectedWorkspaceId} required>
               <SelectTrigger className="col-span-3">
                 <SelectValue placeholder="Select a company" />
               </SelectTrigger>
               <SelectContent>
-                {selectedWorkspace?.companies.map((company) => (
+                {companies?.map((company) => (
                   <SelectItem key={company.id} value={company.id}>
                     {company.name}
                   </SelectItem>
@@ -160,14 +177,14 @@ export function AddTaskDialog({ children }: { children: React.ReactNode }) {
             </Label>
             <Select
               onValueChange={handleProjectChange}
-              disabled={!selectedCompany}
+              disabled={!selectedCompanyId}
               required
             >
               <SelectTrigger className="col-span-3">
                 <SelectValue placeholder="Select a project" />
               </SelectTrigger>
               <SelectContent>
-                {selectedCompany?.projects.map((project) => (
+                {projects?.map((project) => (
                   <SelectItem key={project.id} value={project.id}>
                     {project.name}
                   </SelectItem>
@@ -181,14 +198,14 @@ export function AddTaskDialog({ children }: { children: React.ReactNode }) {
             </Label>
             <Select
               onValueChange={handleSiloChange}
-              disabled={!selectedProject}
+              disabled={!selectedProjectId}
               required
             >
               <SelectTrigger className="col-span-3">
                 <SelectValue placeholder="Select a silo" />
               </SelectTrigger>
               <SelectContent>
-                {selectedProject?.silos.map((silo) => (
+                {silos?.map((silo) => (
                   <SelectItem key={silo.id} value={silo.id}>
                     {silo.name}
                   </SelectItem>

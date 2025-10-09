@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import {
   Sidebar,
@@ -38,21 +38,121 @@ import { UserNav } from "./user-nav";
 import { AddCompanyButton } from "../common/add-company-button";
 import { AddProjectButton } from "../common/add-project-button";
 import { AddSiloButton } from "../common/add-silo-button";
-import { useEffect, useState } from "react";
-import type { Workspace, User } from "@/lib/types";
+import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
+import { collection, query, where } from "firebase/firestore";
+import type { Workspace, Company, Project, Silo, UserProfile } from "@/lib/types";
+
+
+function SiloSubMenu({ workspace, company, project }: { workspace: Workspace, company: Company, project: Project }) {
+  const firestore = useFirestore();
+  const silosRef = useMemoFirebase(() => collection(firestore, `projects/${project.id}/silos`), [firestore, project.id]);
+  const { data: silos } = useCollection<Silo>(silosRef);
+  const pathname = usePathname();
+  const isSubActive = (path: string) => pathname.startsWith(path);
+
+  return (
+    <SidebarMenuSub>
+      {silos?.map(silo => (
+        <SidebarMenuSubItem key={silo.id}>
+            <SidebarMenuSubButton isActive={isSubActive(`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}/silos/${silo.id}`)} asChild>
+                <Link href={`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}/silos/${silo.id}`}>
+                    <Container />
+                    <span>{silo.name}</span>
+                </Link>
+            </SidebarMenuSubButton>
+        </SidebarMenuSubItem>
+      ))}
+    </SidebarMenuSub>
+  );
+}
+
+function ProjectSubMenu({ workspace, company }: { workspace: Workspace, company: Company }) {
+    const firestore = useFirestore();
+    const projectsRef = useMemoFirebase(() => collection(firestore, `companies/${company.id}/projects`), [firestore, company.id]);
+    const { data: projects } = useCollection<Project>(projectsRef);
+    const { user } = useUser();
+    const pathname = usePathname();
+    const isSubActive = (path: string) => pathname.startsWith(path);
+
+    return (
+        <SidebarMenuSub>
+            {projects?.map((project) => (
+            <SidebarMenuSubItem key={project.id}>
+                <Accordion type="single" collapsible className="w-full" disabled={!isSubActive(`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}`)}>
+                    <AccordionItem value={`proj-${project.id}`} className="border-b-0">
+                    <AccordionTrigger>
+                        <SidebarMenuSubButton isActive={isSubActive(`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}`)} asChild>
+                            <Link href={`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}`}>
+                                <FolderKanban />
+                                <span>{project.name}</span>
+                            </Link>
+                        </SidebarMenuSubButton>
+                    </AccordionTrigger>
+                    <AccordionContent className="p-0">
+                        <SidebarGroup className="p-0">
+                            {user && <SiloSubMenu workspace={workspace} company={company} project={project} />}
+                        </SidebarGroup>
+                    </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
+            </SidebarMenuSubItem>
+            ))}
+        </SidebarMenuSub>
+    );
+}
+
+function CompanySubMenu({ workspace }: { workspace: Workspace }) {
+    const firestore = useFirestore();
+    const companiesRef = useMemoFirebase(() => collection(firestore, `workspaces/${workspace.id}/companies`), [firestore, workspace.id]);
+    const { data: companies } = useCollection<Company>(companiesRef);
+    const { user } = useUser();
+    const pathname = usePathname();
+    const isSubActive = (path: string) => pathname.startsWith(path);
+    
+    return (
+        <SidebarMenuSub>
+        {companies?.map((company) => (
+            <SidebarMenuSubItem key={company.id}>
+            <Accordion type="single" collapsible className="w-full" disabled={!isSubActive(`/workspaces/${workspace.id}/companies/${company.id}`)}>
+                <AccordionItem value={`co-${company.id}`} className="border-b-0">
+                <AccordionTrigger>
+                    <SidebarMenuSubButton isActive={isSubActive(`/workspaces/${workspace.id}/companies/${company.id}`)} asChild>
+                    <Link href={`/workspaces/${workspace.id}/companies/${company.id}`}>
+                        <Building />
+                        <span>{company.name}</span>
+                    </Link>
+                    </SidebarMenuSubButton>
+                </AccordionTrigger>
+                <AccordionContent className="p-0 pl-4">
+                    {user && (
+                        <div className="pb-2">
+                            <AddSiloButton workspaceId={workspace.id} companyId={company.id} />
+                        </div>
+                    )}
+                    <SidebarGroup className="p-0">
+                        {user && <ProjectSubMenu workspace={workspace} company={company} />}
+                    </SidebarGroup>
+                </AccordionContent>
+                </AccordionItem>
+            </Accordion>
+            </SidebarMenuSubItem>
+        ))}
+        </SidebarMenuSub>
+    );
+}
 
 export default function MainSidebar() {
   const pathname = usePathname();
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [user, setUser] = useState<User | null>(null);
+  const firestore = useFirestore();
+  const { user } = useUser();
 
-  useEffect(() => {
-    import('@/lib/data').then(dataLib => {
-      setWorkspaces(dataLib.getWorkspaces());
-      setUser(dataLib.getCurrentUser());
-    });
-  }, [pathname]);
+  const workspacesQuery = useMemoFirebase(() => {
+    if (!user) return null;
+    // This is a simplification. In a real app, you'd likely have a 'members' subcollection or array.
+    return query(collection(firestore, "workspaces"), where("ownerId", "==", user.uid));
+  }, [firestore, user]);
 
+  const { data: workspaces } = useCollection<Workspace>(workspacesQuery);
 
   const isActive = (path: string) => {
     return pathname === path;
@@ -60,10 +160,6 @@ export default function MainSidebar() {
 
   const isSubActive = (path: string) => {
     return pathname.startsWith(path);
-  }
-
-  if (!user) {
-    return null; // or a loading skeleton
   }
 
   return (
@@ -98,13 +194,13 @@ export default function MainSidebar() {
           <AccordionItem value="workspaces">
             <AccordionTrigger className="px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:no-underline">Workspaces</AccordionTrigger>
             <AccordionContent>
-              {user.role === 'admin' && (
+              {user && (
                   <div className="px-2 pb-2">
                      <AddCompanyButton />
                   </div>
               )}
               <SidebarMenu>
-                {workspaces.map((workspace) => (
+                {workspaces?.map((workspace) => (
                   <SidebarMenuItem key={workspace.id}>
                     <Accordion type="single" collapsible className="w-full" disabled={!isSubActive(`/workspaces/${workspace.id}`)}>
                       <AccordionItem value={`ws-${workspace.id}`} className="border-b-0">
@@ -117,73 +213,13 @@ export default function MainSidebar() {
                            </SidebarMenuButton>
                         </AccordionTrigger>
                         <AccordionContent className="p-0 pl-4">
-                           {user.role === 'admin' && (
+                           {user && (
                               <div className="pb-2">
                                 <AddProjectButton workspaceId={workspace.id} />
                               </div>
                             )}
                           <SidebarGroup className="p-0">
-                            <SidebarMenuSub>
-                              {workspace.companies.map((company) => (
-                                <SidebarMenuSubItem key={company.id}>
-                                  <Accordion type="single" collapsible className="w-full" disabled={!isSubActive(`/workspaces/${workspace.id}/companies/${company.id}`)}>
-                                    <AccordionItem value={`co-${company.id}`} className="border-b-0">
-                                      <AccordionTrigger>
-                                        <SidebarMenuSubButton isActive={isSubActive(`/workspaces/${workspace.id}/companies/${company.id}`)} asChild>
-                                          <Link href={`/workspaces/${workspace.id}/companies/${company.id}`}>
-                                            <Building />
-                                            <span>{company.name}</span>
-                                          </Link>
-                                        </SidebarMenuSubButton>
-                                      </AccordionTrigger>
-                                      <AccordionContent className="p-0 pl-4">
-                                         {user.role === 'admin' && (
-                                            <div className="pb-2">
-                                                <AddSiloButton workspaceId={workspace.id} companyId={company.id} />
-                                            </div>
-                                         )}
-                                         <SidebarGroup className="p-0">
-                                            <SidebarMenuSub>
-                                              {company.projects.map((project) => (
-                                                <SidebarMenuSubItem key={project.id}>
-                                                   <Accordion type="single" collapsible className="w-full" disabled={!isSubActive(`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}`)}>
-                                                      <AccordionItem value={`proj-${project.id}`} className="border-b-0">
-                                                        <AccordionTrigger>
-                                                            <SidebarMenuSubButton isActive={isSubActive(`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}`)} asChild>
-                                                              <Link href={`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}`}>
-                                                                <FolderKanban />
-                                                                <span>{project.name}</span>
-                                                              </Link>
-                                                            </SidebarMenuSubButton>
-                                                        </AccordionTrigger>
-                                                        <AccordionContent className="p-0">
-                                                           <SidebarGroup className="p-0">
-                                                              <SidebarMenuSub>
-                                                                {project.silos.map(silo => (
-                                                                  <SidebarMenuSubItem key={silo.id}>
-                                                                      <SidebarMenuSubButton isActive={isSubActive(`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}/silos/${silo.id}`)} asChild>
-                                                                          <Link href={`/workspaces/${workspace.id}/companies/${company.id}/projects/${project.id}/silos/${silo.id}`}>
-                                                                              <Container />
-                                                                              <span>{silo.name}</span>
-                                                                          </Link>
-                                                                      </SidebarMenuSubButton>
-                                                                  </SidebarMenuSubItem>
-                                                                ))}
-                                                              </SidebarMenuSub>
-                                                           </SidebarGroup>
-                                                        </AccordionContent>
-                                                      </AccordionItem>
-                                                    </Accordion>
-                                                </SidebarMenuSubItem>
-                                              ))}
-                                            </SidebarMenuSub>
-                                          </SidebarGroup>
-                                      </AccordionContent>
-                                    </AccordionItem>
-                                  </Accordion>
-                                </SidebarMenuSubItem>
-                              ))}
-                            </SidebarMenuSub>
+                            {user && <CompanySubMenu workspace={workspace} />}
                           </SidebarGroup>
                         </AccordionContent>
                       </AccordionItem>

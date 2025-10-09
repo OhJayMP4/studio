@@ -1,19 +1,33 @@
+'use client';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { getCompanyById } from "@/lib/data";
-import { calculateCompletion } from "@/lib/data-client";
+import { useDoc, useCollection, useFirestore, useMemoFirebase } from "@/firebase";
 import { ArrowRight, FolderKanban } from "lucide-react";
 import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { notFound } from "next/navigation";
 import { AddProjectButton } from "@/components/common/add-project-button";
+import { collection, doc } from "firebase/firestore";
+import type { Company, Project } from "@/lib/types";
 
 export default function CompanyPage({ params }: { params: { workspaceId: string, companyId: string } }) {
-    const company = getCompanyById(params.workspaceId, params.companyId);
+    const firestore = useFirestore();
+
+    const companyRef = useMemoFirebase(() => doc(firestore, "workspaces", params.workspaceId, "companies", params.companyId), [firestore, params.workspaceId, params.companyId]);
+    const { data: company, isLoading: isCompanyLoading } = useDoc<Company>(companyRef);
+    
+    const projectsRef = useMemoFirebase(() => collection(firestore, "companies", params.companyId, "projects"), [firestore, params.companyId]);
+    const { data: projects, isLoading: areProjectsLoading } = useCollection<Project>(projectsRef);
+
+    if (isCompanyLoading || areProjectsLoading) {
+        return <div>Loading...</div>
+    }
 
     if (!company) {
         notFound();
     }
+
+    const completion = 0; // Placeholder
 
     return (
         <div className="space-y-6">
@@ -26,17 +40,16 @@ export default function CompanyPage({ params }: { params: { workspaceId: string,
             </div>
 
 
-             {company.projects.length > 0 ? (
+             {(projects?.length || 0) > 0 ? (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {company.projects.map(project => {
-                        const completion = calculateCompletion({ silos: project.silos });
+                    {projects?.map(project => {
                         return (
                             <Card key={project.id} className="flex flex-col">
                                 <CardHeader>
                                     <div className="flex items-start justify-between">
                                         <div>
                                             <CardTitle className="font-headline text-xl">{project.name}</CardTitle>
-                                            <CardDescription>{project.silos.length} silos</CardDescription>
+                                            <CardDescription>{project.silos?.length || 0} silos</CardDescription>
                                         </div>
                                         <FolderKanban className="h-8 w-8 text-muted-foreground" />
                                     </div>

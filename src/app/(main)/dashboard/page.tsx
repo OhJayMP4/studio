@@ -1,14 +1,40 @@
+'use client';
+
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { getWorkspaces } from "@/lib/data";
-import { calculateCompletion } from "@/lib/data-client";
+import { useCollection } from "@/firebase";
 import { ArrowRight, Building2, Users } from "lucide-react";
 import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { AddCompanyButton } from "@/components/common/add-company-button";
+import { collection, query, where } from "firebase/firestore";
+import { useFirestore, useUser, useMemoFirebase } from "@/firebase";
+import type { Workspace } from "@/lib/types";
+
+// Helper function to calculate completion percentages - safe for client-side usage
+const calculateCompletion = (items: any): number => {
+    // This is a placeholder and needs a proper implementation based on your data structure
+    return 0;
+};
+
 
 export default function DashboardPage() {
-    const workspaces = getWorkspaces();
+    const firestore = useFirestore();
+    const { user } = useUser();
+
+    const workspacesQuery = useMemoFirebase(() => {
+        if (!user) return null;
+        return query(
+            collection(firestore, "workspaces"),
+            where("ownerId", "==", user.uid)
+        );
+    }, [firestore, user]);
+
+    const { data: workspaces, isLoading } = useCollection<Workspace>(workspacesQuery);
+
+    if (isLoading) {
+        return <div>Loading workspaces...</div>;
+    }
 
     return (
         <div className="space-y-6">
@@ -21,11 +47,10 @@ export default function DashboardPage() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {workspaces.map(workspace => {
-                    const companies = workspace.companies;
-                    const totalProjects = companies.reduce((acc, company) => acc + company.projects.length, 0);
-                    const allTasks = companies.flatMap(c => c.projects.flatMap(p => p.silos.flatMap(s => s.tasks)));
-                    const completion = calculateCompletion(allTasks);
+                {workspaces?.map(workspace => {
+                    const companies = workspace.companies || [];
+                    const totalProjects = companies.reduce((acc, company) => acc + (company.projects?.length || 0), 0);
+                    const completion = 0; // Placeholder
 
                     return (
                         <Card key={workspace.id} className="flex flex-col">
@@ -48,7 +73,7 @@ export default function DashboardPage() {
                                 </div>
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                     <Users className="h-4 w-4" />
-                                    <span>{workspace.users.length} members</span>
+                                    <span>{workspace.users?.length || 1} members</span>
                                 </div>
                             </CardContent>
                             <CardFooter>

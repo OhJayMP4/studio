@@ -1,21 +1,34 @@
-import { getSiloById } from "@/lib/data";
-import { calculateCompletion } from "@/lib/data-client";
+'use client';
+
+import { useDoc, useCollection, useFirestore, useMemoFirebase } from "@/firebase";
 import { notFound } from "next/navigation";
 import { TaskList } from "@/components/tasks/task-list";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Target, CheckCircle2 } from "lucide-react";
+import { collection, doc } from "firebase/firestore";
+import type { Silo, Task } from "@/lib/types";
 
 export default function SiloPage({ params }: { params: { workspaceId: string, companyId: string, projectId: string, siloId: string } }) {
-    const silo = getSiloById(params.workspaceId, params.companyId, params.projectId, params.siloId);
+    const firestore = useFirestore();
+
+    const siloRef = useMemoFirebase(() => doc(firestore, "projects", params.projectId, "silos", params.siloId), [firestore, params.projectId, params.siloId]);
+    const { data: silo, isLoading: isSiloLoading } = useDoc<Silo>(siloRef);
+    
+    const tasksRef = useMemoFirebase(() => collection(firestore, "silos", params.siloId, "tasks"), [firestore, params.siloId]);
+    const { data: tasks, isLoading: areTasksLoading } = useCollection<Task>(tasksRef);
+
+    if (isSiloLoading || areTasksLoading) {
+        return <div>Loading...</div>
+    }
 
     if (!silo) {
         notFound();
     }
     
-    const completionPercentage = calculateCompletion(silo.tasks);
-    const completedTasks = silo.tasks.filter(t => t.completed).length;
-    const totalTasks = silo.tasks.length;
+    const totalTasks = tasks?.length || 0;
+    const completedTasks = tasks?.filter(t => t.completed).length || 0;
+    const completionPercentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
     return (
         <div className="space-y-6">
@@ -54,7 +67,7 @@ export default function SiloPage({ params }: { params: { workspaceId: string, co
                 </Card>
             </div>
 
-            <TaskList tasks={silo.tasks} />
+            <TaskList tasks={tasks || []} />
         </div>
     );
 }
