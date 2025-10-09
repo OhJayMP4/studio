@@ -72,7 +72,7 @@ export default function MainSidebar() {
                   <SidebarMenuItem key={workspace.id}>
                     <Accordion type="single" collapsible className="w-full" disabled={!isSubActive(`/workspaces/${workspace.id}`)}>
                       <AccordionItem value={`ws-${workspace.id}`} className="border-b-0">
-                        <AccordionTrigger asChild className="[&[data-state=open]>div>svg]:rotate-180">
+                        <AccordionTrigger asChild>
                           <SidebarMenuButton tooltip={workspace.name} isActive={isSubActive(`/workspaces/${workspace.id}`)} asChild>
                             <div>
                                <Building2 />
@@ -86,7 +86,7 @@ export default function MainSidebar() {
                               <SidebarMenuSubItem key={company.id}>
                                 <Accordion type="single" collapsible className="w-full">
                                   <AccordionItem value={`co-${company.id}`} className="border-b-0">
-                                    <AccordionTrigger asChild className="[&[data-state=open]>div>svg]:rotate-180">
+                                    <AccordionTrigger asChild>
                                       <SidebarMenuSubButton isActive={isSubActive(`/workspaces/${workspace.id}/companies/${company.id}`)} asChild>
                                         <div>
                                           <Building />
