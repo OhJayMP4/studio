@@ -32,12 +32,12 @@ const formSchema = z.object({
   deadline: z.date({ required_error: 'A deadline is required.' }),
   hasMonetaryValue: z.boolean().default(false),
   monetaryValue: z.preprocess(
-    (a) => (a === '' ? undefined : parseFloat(z.string().parse(a))),
-    z.number().positive().optional()
+    (a) => (a === '' || a === undefined ? undefined : parseFloat(String(a))),
+    z.number().positive('Value must be a positive number.').optional()
   ),
 }).refine(data => {
     if (data.hasMonetaryValue) {
-        return data.monetaryValue !== undefined && data.monetaryValue > 0;
+        return data.monetaryValue !== undefined;
     }
     return true;
 }, {
