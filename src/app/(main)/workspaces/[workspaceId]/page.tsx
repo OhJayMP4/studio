@@ -10,6 +10,7 @@ import { notFound } from "next/navigation";
 import { AddCompanyButton } from "@/components/common/add-company-button";
 import { collection, doc } from "firebase/firestore";
 import type { Workspace, Company } from "@/lib/types";
+import { InviteUserButton } from "@/components/common/invite-user-button";
 
 export default function WorkspacePage({ params }: { params: { workspaceId: string } }) {
     const firestore = useFirestore();
@@ -37,7 +38,10 @@ export default function WorkspacePage({ params }: { params: { workspaceId: strin
                     <h1 className="text-3xl font-headline">{workspace.name}</h1>
                     <p className="text-muted-foreground">Overview of companies within this workspace.</p>
                 </div>
-                <AddCompanyButton workspaceId={params.workspaceId} />
+                <div className="flex gap-2">
+                    <InviteUserButton workspaceId={params.workspaceId} />
+                    <AddCompanyButton workspaceId={params.workspaceId} />
+                </div>
             </div>
 
 
@@ -82,7 +86,7 @@ export default function WorkspacePage({ params }: { params: { workspaceId: strin
                         <CardTitle className="font-headline text-2xl mt-4">No Companies Yet</CardTitle>
                      </CardHeader>
                      <CardContent>
-                        <p className="text-muted-foreground">Get started by creating a new company in this workspace.</p>
+                        <p className="text-muted-foreground mb-4">Get started by creating a new company in this workspace.</p>
                         <AddCompanyButton workspaceId={params.workspaceId} />
                     </CardContent>
                 </Card>
