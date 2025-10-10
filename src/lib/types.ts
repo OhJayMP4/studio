@@ -26,3 +26,12 @@ export type Company = {
   logoUrl?: string;
   yearlyTurnoverTarget?: number;
 };
+
+export type Project = {
+  id: string;
+  name: string;
+  deadline: string; // ISO 8601 date string
+  hasMonetaryValue: boolean;
+  monetaryValue?: number;
+  progress: number;
+};

@@ -110,6 +110,40 @@
         "name",
         "description"
       ]
+    },
+    "Project": {
+      "title": "Project",
+      "type": "object",
+      "description": "A project within a company.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the project."
+        },
+        "deadline": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The project deadline."
+        },
+        "hasMonetaryValue": {
+          "type": "boolean",
+          "description": "Whether the project has a monetary value."
+        },
+        "monetaryValue": {
+          "type": "number",
+          "description": "The monetary value of the project."
+        },
+        "progress": {
+            "type": "number",
+            "description": "The project's progress from 0 to 100."
+        }
+      },
+      "required": [
+        "name",
+        "deadline",
+        "hasMonetaryValue",
+        "progress"
+      ]
     }
   },
   "auth": {
@@ -135,6 +169,12 @@
         "$ref": "#/entities/Company"
       },
       "description": "Stores company data within a workspace."
+    },
+    "/workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}": {
+      "schema": {
+        "$ref": "#/entities/Project"
+      },
+      "description": "Stores project data within a company."
     }
   }
 }
