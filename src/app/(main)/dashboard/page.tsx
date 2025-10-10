@@ -20,10 +20,11 @@ function DashboardView() {
 
   const projectsQuery = useMemoFirebase(() => {
     if (!selectedWorkspace?.id) return null;
+    const pathPrefix = `workspaces/${selectedWorkspace.id}/companies`;
     return query(
       collectionGroup(firestore, 'projects'),
-      where(documentId(), '>=', `workspaces/${selectedWorkspace.id}/companies/`),
-      where(documentId(), '<', `workspaces/${selectedWorkspace.id}/companies0`)
+      where(documentId(), '>=', `${pathPrefix}/`),
+      where(documentId(), '<', `${pathPrefix}0`)
     );
   }, [firestore, selectedWorkspace]);
 
@@ -31,10 +32,11 @@ function DashboardView() {
 
   const tasksQuery = useMemoFirebase(() => {
       if (!selectedWorkspace?.id) return null;
+      const pathPrefix = `workspaces/${selectedWorkspace.id}/companies`;
       return query(
         collectionGroup(firestore, 'tasks'),
-        where(documentId(), '>=', `workspaces/${selectedWorkspace.id}/companies/`),
-        where(documentId(), '<', `workspaces/${selectedWorkspace.id}/companies0`)
+        where(documentId(), '>=', `${pathPrefix}/`),
+        where(documentId(), '<', `${pathPrefix}0`)
       );
   }, [firestore, selectedWorkspace]);
   

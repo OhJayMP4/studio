@@ -20,11 +20,11 @@ export default function ProjectStatusChart({ workspaceId }: { workspaceId: strin
             setIsLoading(true);
             
             try {
-                // Query the 'projects' collection group
+                const pathPrefix = `workspaces/${workspaceId}/companies`;
                 const projectsQuery = query(
                     collectionGroup(firestore, 'projects'),
-                    where(documentId(), '>=', `workspaces/${workspaceId}/companies/`),
-                    where(documentId(), '<', `workspaces/${workspaceId}/companies0`)
+                    where(documentId(), '>=', `${pathPrefix}/`),
+                    where(documentId(), '<', `${pathPrefix}0`)
                 );
             
                 const projectsSnap = await getDocs(projectsQuery);
