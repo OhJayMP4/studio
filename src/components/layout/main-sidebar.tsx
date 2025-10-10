@@ -9,13 +9,14 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarFooter,
+  SidebarGroupLabel,
 } from "@/components/ui/sidebar";
 import {
   Rocket,
   Settings,
   ChevronsUpDown,
   PlusCircle,
-  Building
+  Building,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -33,13 +34,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "../ui/button";
 import { AddWorkspaceDialog } from "../common/add-workspace-dialog";
-import { useState } from "react";
 import { Skeleton } from "../ui/skeleton";
+import { AddCompanyDialog } from "../common/add-company-dialog";
+
+// We'll get these from layout
+import { useSelectedWorkspace } from "@/app/(main)/layout";
 
 function WorkspaceSwitcher() {
   const { user } = useUser();
   const firestore = useFirestore();
-  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
+  const { selectedWorkspace, setSelectedWorkspace } = useSelectedWorkspace();
 
   const workspacesQuery = useMemoFirebase(() => {
     if (!user) return null;
@@ -93,9 +97,10 @@ function WorkspaceSwitcher() {
 
 export default function MainSidebar() {
   const pathname = usePathname();
+  const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
 
   const isActive = (path: string) => {
-    return pathname === path;
+    return pathname.startsWith(path);
   };
 
   return (
@@ -110,8 +115,32 @@ export default function MainSidebar() {
       </SidebarHeader>
       <SidebarContent className="p-2">
          <WorkspaceSwitcher />
+         {selectedWorkspace && (
+           <SidebarGroup>
+            <SidebarGroupLabel className="flex items-center">
+              <span>Companies</span>
+              {isUserAdmin && (
+                <AddCompanyDialog workspaceId={selectedWorkspace.id}>
+                  <Button variant="ghost" size="icon" className="ml-auto h-6 w-6">
+                    <PlusCircle className="h-4 w-4"/>
+                  </Button>
+                </AddCompanyDialog>
+              )}
+            </SidebarGroupLabel>
+
+            {/* We'll list companies here in the next step */}
+           </SidebarGroup>
+         )}
          <SidebarGroup>
           <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton tooltip="Dashboard" asChild isActive={isActive('/dashboard')}>
+                  <Link href="/dashboard">
+                    <Building />
+                    <span>Dashboard</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton tooltip="Settings" asChild isActive={isActive('/settings')}>
                   <Link href="/settings">

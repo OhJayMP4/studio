@@ -1,16 +1,20 @@
 /**
  * @file Firestore Security Rules
- * @core_philosophy This ruleset enforces a user-ownership model for user profiles and a shared access model for workspaces.
- *  - User profiles are only readable and writable by the user themselves.
- *  - Workspaces are shared between members, with different roles.  Only workspace members can read/write workspace data.
- * @data_structure
- *  - /users/{userId}: Stores public user profile information.
- *  - /workspaces/{workspaceId}: Stores workspace data, including member roles in the 'users' map and a 'memberIds' array for efficient querying.
- * @key_security_decisions
- *  - User profiles are strictly private; listing all user profiles is disallowed.
- *  - Workspace membership is managed via a `users` map (UID -> role) and a `memberIds` array on the workspace document for simpler, more performant rules.
- * @denormalization_for_authorization
- *  - Workspace documents denormalize user roles directly into the `users` map and maintain a `memberIds` array.  This avoids costly `get()` operations to a separate collection for determining a user's role within a workspace.
+ * @description This ruleset enforces a role-based access control model for workspaces,
+ *              where users have specific roles (admin, contributor, viewer) within each workspace.
+ *              User profiles are also secured, allowing only the user to read and write their own profile.
+ *
+ * Data Structure:
+ * - /users/{userId}: Stores public user profile information. Only the user can read/write their own profile.
+ * - /workspaces/{workspaceId}: Stores workspace data, including member roles in the `users` map.
+ *
+ * Key Security Decisions:
+ * - Workspaces: Only workspace admins can create companies within a workspace (this rule will be added once the company collection is defined).
+ * - User Profiles: Users can only read and write their own profile data. User listing is disallowed.
+ *
+ * Denormalization for Authorization:
+ * - Workspace roles are denormalized into the `workspaces/{workspaceId}/users` map, allowing for efficient role checks.
+ *   This avoids the need for separate membership collections and `get()` calls.
  */
 rules_version = '2';
 service cloud.firestore {
@@ -19,73 +23,64 @@ service cloud.firestore {
     /**
      * @description Controls access to user profile documents.
      * @path /users/{userId}
-     * @allow (get, create, update, delete) if the user is the owner of the profile.
-     * @deny (get, create, update, delete) if the user is not the owner of the profile.
-     * @principle Enforces document ownership for all operations.
+     * @allow (get, update, delete) if the user is the owner of the profile.
+     * @allow (create) if the user's UID matches the document ID.
+     * @deny (get, update, delete) if the user is not the owner of the profile.
+     * @principle Enforces document ownership for user profiles.
      */
     match /users/{userId} {
-      // Function to check if the request is made by the owner of the user profile.
-      function isOwner(userId) {
-        return request.auth != null && request.auth.uid == userId;
-      }
+      // Allow the user to read their own profile.
+      allow get: if isSignedIn() && isOwner(userId);
 
-      // Allow a user to read their own profile.
-      allow get: if isOwner(userId);
+      // Allow the user to create their own profile, but only if the userId matches their auth.uid
+      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.uid == userId;
 
-      // Only the authenticated user can create their own profile,
-      // and the 'uid' field must match their auth.uid.
-      allow create: if isOwner(userId) && request.resource.data.uid == request.auth.uid;
+      // Allow the user to update their own profile. Enforce immutability of the UID.
+      allow update: if isSignedIn() && isOwner(userId) && resource.data.uid == request.resource.data.uid;
 
-      // Only the owner can update their profile, and the 'uid' field is immutable.
-      allow update: if isOwner(userId) && resource.data.uid == request.resource.data.uid;
+      // Allow the user to delete their own profile.
+      allow delete: if isSignedIn() && isExistingOwner(userId);
 
-      // Only the owner can delete their profile.
-      allow delete: if isOwner(userId);
-
-      // Do not allow listing all user profiles.
+      // Disallow listing all users.
       allow list: if false;
     }
 
     /**
      * @description Controls access to workspace documents.
      * @path /workspaces/{workspaceId}
-     * @allow (get, list) if the user is a member of the workspace.
-     * @allow (create) if the user is creating their own workspace and sets themselves as the owner.
-     * @allow (update, delete) if the user is the owner or an admin of the workspace.
-     * @deny (get, list, create, update, delete) if the user is not a member/owner/admin.
-     * @principle Enforces shared access based on workspace membership and owner/admin roles.
+     * @allow (get, list) to all signed-in users.
+     * @allow (create) if the user is creating their own workspace and sets the ownerId correctly.
+     * @allow (update, delete) if the user is an admin of the workspace.
+     * @deny (create, update, delete) if the user is not an admin or owner.
+     * @principle Enforces role-based access control for workspaces.
      */
     match /workspaces/{workspaceId} {
-      // Function to check if the request is made by a member of the workspace.
-      function isWorkspaceMember(workspaceId) {
-        return request.auth != null && (resource.data.memberIds is list && resource.data.memberIds.hasAny([request.auth.uid]));
-      }
+      // Allow any signed-in user to read workspace details and list workspaces.
+      allow get, list: if isSignedIn();
 
-      // Function to check if the request is made by the owner of the workspace.
-      function isWorkspaceOwner(workspaceId) {
-        return request.auth != null && resource.data.ownerId == request.auth.uid;
-      }
+      // Allow creation of a workspace if the ownerId is set to the user's UID and the user is setting themselves as the admin.
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid && request.resource.data.users[request.auth.uid].role == 'admin';
 
-      // Function to check if the request is made by a workspace admin.
-      function isWorkspaceAdmin(workspaceId) {
-          return request.auth != null && resource.data.users[request.auth.uid].role == 'admin';
-      }
+      // Allow updates and deletes only if the user is an admin of the workspace and the workspace exists.
+      allow update, delete: if isSignedIn() && isWorkspaceAdmin(workspaceId) && resource != null;
+    }
 
-      // Allow any workspace member to read the workspace.
-      allow get: if isWorkspaceMember(workspaceId);
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
 
-      // Allow listing of workspaces for workspace members
-      allow list: if request.auth.uid != null;
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
 
-      // Allow creating a workspace if the ownerId is set to the user's UID.
-      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid && request.resource.data.users[request.auth.uid].role == 'admin';
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
 
-      // Allow updates if the user is the owner or an admin, and verify that certain core fields are immutable.
-      allow update: if (isWorkspaceOwner(workspaceId) || isWorkspaceAdmin(workspaceId))
-                   && resource.data.ownerId == request.resource.data.ownerId; // Owner ID immutable.
-
-      // Allow deletion if the user is the owner.
-      allow delete: if isWorkspaceOwner(workspaceId);
+    // Check if the current user is an admin of the workspace based on the workspaceId
+    function isWorkspaceAdmin(workspaceId) {
+      return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == 'admin';
     }
   }
 }

@@ -5,9 +5,26 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import Header from "@/components/layout/header";
 import { useUser } from "@/firebase";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState, createContext, useContext } from "react";
 import { doc, setDoc } from "firebase/firestore";
 import { useFirestore } from "@/firebase";
+import type { Workspace } from "@/lib/types";
+
+interface SelectedWorkspaceContextType {
+  selectedWorkspace: Workspace | null;
+  setSelectedWorkspace: (workspace: Workspace | null) => void;
+  isUserAdmin: boolean;
+}
+
+const SelectedWorkspaceContext = createContext<SelectedWorkspaceContextType | undefined>(undefined);
+
+export const useSelectedWorkspace = () => {
+  const context = useContext(SelectedWorkspaceContext);
+  if (!context) {
+    throw new Error('useSelectedWorkspace must be used within a MainLayout');
+  }
+  return context;
+};
 
 export default function MainLayout({
   children,
@@ -17,6 +34,7 @@ export default function MainLayout({
   const { user, isUserLoading } = useUser();
   const router = useRouter();
   const firestore = useFirestore();
+  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
 
   useEffect(() => {
     // If auth state is not loading and there's no user, redirect to login.
@@ -38,6 +56,8 @@ export default function MainLayout({
     }
   }, [user, firestore]);
 
+  const isUserAdmin = selectedWorkspace?.users[user?.uid || '']?.role === 'admin';
+
   // While checking for user, show a loading state.
   if (isUserLoading || !user) {
     return (
@@ -49,12 +69,14 @@ export default function MainLayout({
   
   // If user is logged in, render the main app layout.
   return (
-    <SidebarProvider>
-      <MainSidebar />
-      <SidebarInset>
-        <Header />
-        <main className="p-4 lg:p-6">{children}</main>
-      </SidebarInset>
-    </SidebarProvider>
+    <SelectedWorkspaceContext.Provider value={{ selectedWorkspace, setSelectedWorkspace, isUserAdmin }}>
+      <SidebarProvider>
+        <MainSidebar />
+        <SidebarInset>
+          <Header />
+          <main className="p-4 lg:p-6">{children}</main>
+        </SidebarInset>
+      </SidebarProvider>
+    </SelectedWorkspaceContext.Provider>
   );
 }

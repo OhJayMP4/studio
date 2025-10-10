@@ -57,21 +57,59 @@
               "properties": {
                 "role": {
                   "type": "string",
-                  "enum": ["admin", "contributor", "viewer"]
+                  "enum": [
+                    "admin",
+                    "contributor",
+                    "viewer"
+                  ]
                 },
-                 "name": {
+                "name": {
                   "type": "string"
                 },
                 "avatarUrl": {
                   "type": "string"
                 }
               },
-              "required": ["role"]
+              "required": [
+                "role"
+              ]
             }
           }
         }
       },
-      "required": ["name", "ownerId", "users", "memberIds"]
+      "required": [
+        "name",
+        "ownerId",
+        "users",
+        "memberIds"
+      ]
+    },
+    "Company": {
+      "title": "Company",
+      "type": "object",
+      "description": "A company within a workspace.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the company."
+        },
+        "description": {
+          "type": "string",
+          "description": "A description of the company."
+        },
+        "logoUrl": {
+          "type": "string",
+          "description": "URL for the company's logo."
+        },
+        "yearlyTurnoverTarget": {
+          "type": "number",
+          "description": "The yearly turnover target for the company."
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ]
     }
   },
   "auth": {
@@ -91,6 +129,12 @@
         "$ref": "#/entities/Workspace"
       },
       "description": "Stores workspace data, including member roles."
+    },
+    "/workspaces/{workspaceId}/companies/{companyId}": {
+      "schema": {
+        "$ref": "#/entities/Company"
+      },
+      "description": "Stores company data within a workspace."
     }
   }
 }
