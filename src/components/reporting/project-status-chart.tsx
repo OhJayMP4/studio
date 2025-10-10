@@ -16,7 +16,10 @@ export default function ProjectStatusChart({ workspaceId }: { workspaceId: strin
 
     useEffect(() => {
         const fetchData = async () => {
-            if (!workspaceId || !firestore) return;
+            if (!workspaceId || !firestore) {
+                setIsLoading(false);
+                return;
+            };
             setIsLoading(true);
             
             try {

@@ -15,7 +15,10 @@ export default function TaskPriorityChart({ workspaceId }: { workspaceId: string
 
     useEffect(() => {
         const fetchData = async () => {
-            if (!workspaceId || !firestore) return;
+            if (!workspaceId || !firestore) {
+                setIsLoading(false);
+                return;
+            };
             setIsLoading(true);
 
             try {
