@@ -9,76 +9,27 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarFooter,
-  SidebarGroupLabel,
-  SidebarGroupAction,
 } from "@/components/ui/sidebar";
 import {
   Settings,
   LayoutDashboard,
-  Plus,
-  Building,
   BarChart,
+  Building,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { UserNav } from "./user-nav";
 import { WorkspaceSwitcher } from "../common/workspace-switcher";
 import { useSelectedWorkspace } from "@/app/(main)/layout";
-import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection } from "firebase/firestore";
-import type { Company } from "@/lib/types";
-import { AddCompanyDialog } from "../common/add-company-dialog";
-
-function CompaniesList() {
-  const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
-  const firestore = useFirestore();
-
-  const companiesQuery = useMemoFirebase(() => {
-    if (!selectedWorkspace) return null;
-    return collection(firestore, 'workspaces', selectedWorkspace.id, 'companies');
-  }, [firestore, selectedWorkspace]);
-
-  const { data: companies, isLoading } = useCollection<Company>(companiesQuery);
-
-  if (!selectedWorkspace) {
-    return null;
-  }
-
-  return (
-    <SidebarGroup>
-      <SidebarGroupLabel className="flex items-center">
-        <span>Companies</span>
-      </SidebarGroupLabel>
-      {isUserAdmin && (
-        <AddCompanyDialog>
-          <SidebarGroupAction tooltip="Add Company">
-            <Plus />
-          </SidebarGroupAction>
-        </AddCompanyDialog>
-      )}
-
-      {isLoading && <p className="p-2 text-xs">Loading...</p>}
-      <SidebarMenu>
-        {companies?.map((company) => (
-          <SidebarMenuItem key={company.id}>
-            <SidebarMenuButton tooltip={company.name} asChild>
-              <Link href={`/company/${company.id}`}>
-                <Building />
-                <span>{company.name}</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        ))}
-      </SidebarMenu>
-    </SidebarGroup>
-  )
-}
 
 export default function MainSidebar() {
   const pathname = usePathname();
   const { selectedWorkspace } = useSelectedWorkspace();
 
-  const isActive = (path: string) => {
+  const isActive = (path: string, exact: boolean = false) => {
+    if (exact) {
+      return pathname === path;
+    }
     return pathname.startsWith(path);
   };
 
@@ -91,10 +42,18 @@ export default function MainSidebar() {
          <SidebarGroup>
           <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton tooltip="Dashboard" asChild isActive={isActive('/dashboard')}>
+                <SidebarMenuButton tooltip="Dashboard" asChild isActive={isActive('/dashboard', true)}>
                   <Link href="/dashboard">
                     <LayoutDashboard />
                     <span>Dashboard</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton tooltip="Companies" asChild isActive={isActive('/companies')}>
+                  <Link href="/companies">
+                    <Building />
+                    <span>Companies</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -108,7 +67,6 @@ export default function MainSidebar() {
               </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
-        {selectedWorkspace && <CompaniesList />}
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>

@@ -32,7 +32,7 @@ function CompanyBreadcrumb({ companyName }: { companyName?: string }) {
       <BreadcrumbList>
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
-            <Link href="/dashboard">Dashboard</Link>
+            <Link href="/companies">Companies</Link>
           </BreadcrumbLink>
         </BreadcrumbItem>
         <BreadcrumbSeparator />
@@ -113,9 +113,8 @@ function ProjectActions({ project, companyId }: { project: Project, companyId: s
 }
 
 function ProjectsList({ companyId }: { companyId: string }) {
-    const { isUserAdmin } = useSelectedWorkspace();
+    const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
     const firestore = useFirestore();
-    const { selectedWorkspace } = useSelectedWorkspace();
     
     const projectsQuery = useMemoFirebase(() => {
         if (!selectedWorkspace) return null;

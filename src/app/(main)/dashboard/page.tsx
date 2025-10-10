@@ -4,121 +4,94 @@ import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, doc, deleteDoc } from "firebase/firestore";
-import type { Company } from "@/lib/types";
-import { AddCompanyDialog } from "@/components/common/add-company-dialog";
+import { collection, collectionGroup, query, where, documentId } from "firebase/firestore";
+import type { Company, Project, Task } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { MoreVertical } from "lucide-react";
-import { EditCompanyDialog } from "@/components/common/edit-company-dialog";
-import { DeleteDialog } from "@/components/common/delete-dialog";
 import { useToast } from "@/hooks/use-toast";
+import ProjectStatusChart from "@/components/reporting/project-status-chart";
+import TaskPriorityChart from "@/components/reporting/task-priority-chart";
+import { Skeleton } from "@/components/ui/skeleton";
 
 
-function CompanyActions({ company }: { company: Company }) {
-    const { toast } = useToast();
-    const firestore = useFirestore();
-    const { selectedWorkspace } = useSelectedWorkspace();
-
-    const handleDelete = async () => {
-        if (!selectedWorkspace) return;
-        const companyRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', company.id);
-        try {
-            await deleteDoc(companyRef);
-            toast({
-                title: "Company Deleted",
-                description: `"${company.name}" has been deleted.`,
-            });
-        } catch (error: any) {
-            toast({
-                variant: 'destructive',
-                title: "Error Deleting Company",
-                description: error.message,
-            });
-        }
-    };
-
-    return (
-        <div className="absolute top-2 right-2">
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon">
-                        <MoreVertical className="h-4 w-4" />
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                    <EditCompanyDialog company={company}>
-                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                            Edit
-                        </DropdownMenuItem>
-                    </EditCompanyDialog>
-                    <DeleteDialog onConfirm={handleDelete} itemName={company.name}>
-                        <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
-                            Delete
-                        </DropdownMenuItem>
-                    </DeleteDialog>
-                </DropdownMenuContent>
-            </DropdownMenu>
-        </div>
-    );
-}
-
-function WorkspaceView() {
-  const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
+function DashboardView() {
+  const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
 
-  const companiesQuery = useMemoFirebase(() => {
-    if (!selectedWorkspace) return null;
-    return collection(firestore, 'workspaces', selectedWorkspace.id, 'companies');
+  const projectsQuery = useMemoFirebase(() => {
+    if (!selectedWorkspace?.id) return null;
+    return query(
+      collectionGroup(firestore, 'projects'),
+      where(documentId(), '>=', `workspaces/${selectedWorkspace.id}/`),
+      where(documentId(), '<', `workspaces/${selectedWorkspace.id}/\uf8ff`)
+    );
   }, [firestore, selectedWorkspace]);
 
-  const { data: companies, isLoading } = useCollection<Company>(companiesQuery);
+  const { data: projects, isLoading: projectsLoading } = useCollection<Project>(projectsQuery);
 
-  if (isLoading) {
-    return <div>Loading companies...</div>;
-  }
+  const tasksQuery = useMemoFirebase(() => {
+      if (!selectedWorkspace?.id) return null;
+      return query(
+        collectionGroup(firestore, 'tasks'),
+        where(documentId(), '>=', `workspaces/${selectedWorkspace.id}/`),
+        where(documentId(), '<', `workspaces/${selectedWorkspace.id}/\uf8ff`)
+      );
+  }, [firestore, selectedWorkspace]);
+  
+  const { data: tasks, isLoading: tasksLoading } = useCollection<Task>(tasksQuery);
+  
+  const isLoading = projectsLoading || tasksLoading;
 
-  if (!companies || companies.length === 0) {
-    return (
-      <Card className="w-full max-w-md text-center mx-auto">
-        <CardHeader>
-          <CardTitle>No Companies Found</CardTitle>
-          <CardDescription>Get started by adding your first company to this workspace.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isUserAdmin ? (
-            <AddCompanyDialog>
-              <Button>Add Company</Button>
-            </AddCompanyDialog>
-          ) : (
-            <p className="text-sm text-muted-foreground">You do not have permission to add companies.</p>
-          )}
-        </CardContent>
-      </Card>
-    );
-  }
+  const completedProjects = projects?.filter(p => p.progress === 100).length || 0;
+  const overdueTasks = tasks?.filter(t => !t.completed && new Date(t.dueDate) < new Date()).length || 0;
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-         <h1 className="text-3xl font-headline">Companies</h1>
-         {isUserAdmin && <AddCompanyDialog />}
+      <div className="flex justify-between items-center mb-6">
+         <h1 className="text-3xl font-headline">Dashboard for {selectedWorkspace?.name}</h1>
       </div>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {companies.map((company) => (
-            <Card key={company.id} className="relative hover:shadow-lg transition-shadow">
-                 {isUserAdmin && <CompanyActions company={company} />}
-                <Link href={`/company/${company.id}`} passHref>
-                    <div className="cursor-pointer">
-                        <CardHeader>
-                            <CardTitle className="pr-8">{company.name}</CardTitle>
-                            <CardDescription>{company.description}</CardDescription>
-                        </CardHeader>
-                    </div>
-                </Link>
-            </Card>
-        ))}
+       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Total Projects</CardTitle>
+            <CardDescription>All projects in the workspace.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? <Skeleton className="h-8 w-1/4"/> : <p className="text-4xl font-bold">{projects?.length || 0}</p>}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Completed Projects</CardTitle>
+            <CardDescription>Projects marked as 100% complete.</CardDescription>
+          </CardHeader>
+          <CardContent>
+             {isLoading ? <Skeleton className="h-8 w-1/4"/> : <p className="text-4xl font-bold">{completedProjects}</p>}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Total Tasks</CardTitle>
+            <CardDescription>All tasks across all projects.</CardDescription>
+          </CardHeader>
+          <CardContent>
+             {isLoading ? <Skeleton className="h-8 w-1/4"/> : <p className="text-4xl font-bold">{tasks?.length || 0}</p>}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-destructive">Overdue Tasks</CardTitle>
+            <CardDescription>Tasks past their due date.</CardDescription>
+          </CardHeader>
+          <CardContent>
+             {isLoading ? <Skeleton className="h-8 w-1/4"/> : <p className="text-4xl font-bold text-destructive">{overdueTasks}</p>}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-8 md:grid-cols-2">
+        <ProjectStatusChart workspaceId={selectedWorkspace!.id} />
+        <TaskPriorityChart workspaceId={selectedWorkspace!.id} />
       </div>
     </div>
   );
@@ -144,5 +117,5 @@ export default function DashboardPage() {
     );
   }
 
-  return <WorkspaceView />;
+  return <DashboardView />;
 }
