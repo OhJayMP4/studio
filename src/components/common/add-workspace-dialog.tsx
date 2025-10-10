@@ -39,7 +39,7 @@ export const AddWorkspaceDialog: FC<AddWorkspaceDialogProps> = ({ children }) =>
     const usersMap = {
         [user.uid]: {
             role: 'admin',
-            name: user.displayName,
+            name: user.displayName || user.email,
             email: user.email,
         }
     };

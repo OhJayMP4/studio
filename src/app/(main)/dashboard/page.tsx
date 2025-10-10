@@ -24,12 +24,10 @@ export default function DashboardPage() {
 
     const workspacesQuery = useMemoFirebase(() => {
         if (!user || !firestore) return null;
-        // Query for workspaces where the user is a member.
-        // This query requires a composite index:
-        // collection: workspaces, fields: users array contains, __name__ ascending
+        // Query for workspaces where the user is the owner.
         return query(
             collection(firestore, "workspaces"),
-            where(`users.${user.uid}`, "!=", "")
+            where("ownerId", "==", user.uid)
         );
     }, [firestore, user]);
 
@@ -77,7 +75,7 @@ export default function DashboardPage() {
                                     </div>
                                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                         <Users className="h-4 w-4" />
-                                        <span>{workspace.users?.length || 1} members</span>
+                                        <span>{Object.keys(workspace.users || {}).length} members</span>
                                     </div>
                                 </CardContent>
                                 <CardFooter>
