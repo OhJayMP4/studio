@@ -6,7 +6,7 @@ import Header from "@/components/layout/header";
 import { useUser, useFirestore } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, createContext, useContext } from "react";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 import type { Workspace } from "@/lib/types";
 
 interface SelectedWorkspaceContextType {
@@ -46,13 +46,20 @@ export default function MainLayout({
     // When user logs in, create their user profile document if it doesn't exist
     if (user && firestore) {
       const userRef = doc(firestore, "users", user.uid);
-      setDoc(userRef, {
-        uid: user.uid,
-        email: user.email,
-        name: user.displayName,
-        avatarUrl: user.photoURL,
-        workspaceIds: []
-      }, { merge: true });
+      
+      const initializeUser = async () => {
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) {
+           setDoc(userRef, {
+            uid: user.uid,
+            email: user.email,
+            name: user.displayName,
+            avatarUrl: user.photoURL,
+            workspaceIds: [] // Initialize with an empty array
+          }, { merge: true });
+        }
+      }
+      initializeUser();
     }
   }, [user, firestore]);
 
