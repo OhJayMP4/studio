@@ -4,7 +4,7 @@ import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 import { useFirestore } from "@/firebase";
-import { collection, collectionGroup, query, where, getDocs } from "firebase/firestore";
+import { collection, collectionGroup, query, where, getDocs, doc } from "firebase/firestore";
 import type { Project, Task } from "@/lib/types";
 import ProjectStatusChart from "@/components/reporting/project-status-chart";
 import TaskPriorityChart from "@/components/reporting/task-priority-chart";
@@ -28,30 +28,27 @@ function DashboardView() {
     const fetchWorkspaceData = async () => {
         setIsLoading(true);
         try {
-            // Fetch all projects within the workspace
+            const workspaceDocRef = doc(firestore, 'workspaces', selectedWorkspace.id);
+
+            // Fetch all projects within the workspace using a collectionGroup query
             const projectsQuery = query(
               collectionGroup(firestore, 'projects'),
-              where('companyId', 'in', (await getDocs(collection(firestore, 'workspaces', selectedWorkspace.id, 'companies'))).docs.map(d => d.id))
+              where('__name__', '>=', workspaceDocRef.path + '/companies/'),
+              where('__name__', '<', workspaceDocRef.path + '/companies0')
             );
             const projectsSnap = await getDocs(projectsQuery);
             const allProjects = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
             setProjects(allProjects);
 
-            // Fetch all tasks within the workspace
-            if (allProjects.length > 0) {
-              const projectIds = allProjects.map(p => p.id);
-              // Firestore 'in' queries are limited to 30 items. 
-              // If there can be more projects, this needs chunking. For now, assume < 30.
-              const tasksQuery = query(
-                collectionGroup(firestore, 'tasks'),
-                where('projectId', 'in', projectIds)
-              );
-              const tasksSnap = await getDocs(tasksQuery);
-              const allTasks = tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
-              setTasks(allTasks);
-            } else {
-              setTasks([]);
-            }
+            // Fetch all tasks within the workspace using a collectionGroup query
+            const tasksQuery = query(
+              collectionGroup(firestore, 'tasks'),
+              where('__name__', '>=', workspaceDocRef.path + '/companies/'),
+              where('__name__', '<', workspaceDocRef.path + '/companies0')
+            );
+            const tasksSnap = await getDocs(tasksQuery);
+            const allTasks = tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
+            setTasks(allTasks);
 
         } catch (error) {
             console.error("Error fetching dashboard data: ", error);
