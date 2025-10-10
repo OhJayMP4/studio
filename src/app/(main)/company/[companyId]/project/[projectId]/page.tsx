@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
 import type { Company, Project, Sale, Silo, Task } from '@/lib/types';
-import { collection, doc, query, orderBy, getDocs, runTransaction, deleteDoc, writeBatch } from 'firebase/firestore';
+import { collection, doc, query, orderBy, getDocs, runTransaction, deleteDoc, writeBatch, addDoc } from 'firebase/firestore';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -54,6 +54,7 @@ import {
   DragEndEvent,
   DragStartEvent,
   DragOverlay,
+  DragOverEvent,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -214,7 +215,7 @@ function SiloActions({ silo, companyId, projectId }: { silo: Silo; companyId: st
 
 const priorityOrder = { high: 3, medium: 2, low: 1 };
 
-function SiloItem({ silo, companyId, projectId }: { silo: Silo, companyId: string, projectId: string }) {
+function SiloItem({ silo, companyId, projectId, isOverlay = false }: { silo: Silo, companyId: string, projectId: string, isOverlay?: boolean }) {
   const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
 
@@ -253,7 +254,7 @@ function SiloItem({ silo, companyId, projectId }: { silo: Silo, companyId: strin
   const isSiloComplete = progress === 100 && totalTasks > 0;
 
   return (
-    <Card className="relative">
+    <Card className={cn("relative", isOverlay && "shadow-2xl")}>
         <AccordionItem value={silo.id} className="border-none w-full">
             {isUserAdmin && <SiloActions silo={silo} companyId={companyId} projectId={projectId} />}
             <AccordionTrigger className={cn("p-4 text-lg font-medium hover:no-underline pr-12", { "text-muted-foreground line-through": isSiloComplete })}>
@@ -298,12 +299,11 @@ function SortableSiloItem({ silo, companyId, projectId }: { silo: Silo; companyI
     const style = {
         transform: CSS.Transform.toString(transform),
         transition,
-        zIndex: isDragging ? 10 : 'auto',
         opacity: isDragging ? 0.8 : 1,
     };
 
     return (
-        <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+        <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
             <SiloItem silo={silo} companyId={companyId} projectId={projectId} />
         </div>
     );
@@ -330,7 +330,7 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
   }, [firestore, selectedWorkspace, companyId, projectId]);
 
   const { data: silos, isLoading } = useCollection<Silo>(silosQuery);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeSiloId, setActiveSiloId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -340,11 +340,12 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
   );
 
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
+    const { active } = event;
+    setActiveSiloId(active.id as string);
   };
   
   const handleDragEnd = async (event: DragEndEvent) => {
-    setActiveId(null);
+    setActiveSiloId(null);
     const { active, over } = event;
 
     if (active.id !== over?.id && silos) {
@@ -374,6 +375,37 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
     }
   };
 
+  const handleDragOver = async (event: DragOverEvent) => {
+    const { active, over } = event;
+    const overId = over?.id;
+    
+    if (!overId || !selectedWorkspace) return;
+
+    const activeIsTask = active.data.current?.type === 'Task';
+    const overIsSilo = over.data.current?.type === 'Silo';
+
+    if (activeIsTask && overIsSilo) {
+        const task = active.data.current.task as Task;
+        const sourceSiloId = active.data.current.siloId as string;
+        const targetSiloId = overId as string;
+
+        if (sourceSiloId === targetSiloId) return;
+
+        const sourceTaskRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', projectId, 'silos', sourceSiloId, 'tasks', task.id);
+        const targetTasksColRef = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', projectId, 'silos', targetSiloId, 'tasks');
+
+        try {
+            await runTransaction(firestore, async (transaction) => {
+                transaction.delete(sourceTaskRef);
+                transaction.set(doc(targetTasksColRef, task.id), { ...task });
+            });
+            toast({ title: "Task moved", description: `Task "${task.title}" moved to new silo.` });
+        } catch(e: any) {
+            toast({ variant: 'destructive', title: 'Error moving task', description: e.message });
+        }
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -388,12 +420,15 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
     return <NoSilosView companyId={companyId} projectId={projectId} />;
   }
 
+  const activeSilo = silos.find(s => s.id === activeSiloId);
+
   return (
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragOver={handleDragOver}
     >
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-headline">Silos</h2>
@@ -407,8 +442,8 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
         </Accordion>
       </SortableContext>
       <DragOverlay>
-        {activeId && silos ? (
-            <SiloItem silo={silos.find(s => s.id === activeId)!} companyId={companyId} projectId={projectId} />
+        {activeSilo ? (
+            <SiloItem silo={activeSilo} companyId={companyId} projectId={projectId} isOverlay />
         ) : null}
       </DragOverlay>
     </DndContext>
@@ -577,3 +612,5 @@ export default function ProjectPage() {
     </div>
   );
 }
+
+    
