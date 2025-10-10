@@ -28,23 +28,24 @@ function DashboardView() {
     const fetchWorkspaceData = async () => {
       setIsLoading(true);
       try {
-        const workspaceDocPath = `workspaces/${selectedWorkspace.id}`;
+        // Construct the correct path prefix for the document ID range query
+        const workspacePath = `workspaces/${selectedWorkspace.id}`;
         
-        // Correctly query the 'projects' collection group
+        // Fetch all projects within the workspace using a collectionGroup query
         const projectsQuery = query(
           collectionGroup(firestore, 'projects'),
-          where('__name__', '>=', `${workspaceDocPath}/companies/`),
-          where('__name__', '<', `${workspaceDocPath}/companies0`)
+          where('__name__', '>=', `${workspacePath}/companies/`),
+          where('__name__', '<', `${workspacePath}/companies0`) // '0' is the next char after '/'
         );
         const projectsSnap = await getDocs(projectsQuery);
         const allProjects = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
         setProjects(allProjects);
 
-        // Correctly query the 'tasks' collection group
+        // Fetch all tasks within the workspace using a collectionGroup query
         const tasksQuery = query(
           collectionGroup(firestore, 'tasks'),
-          where('__name__', '>=', `${workspaceDocPath}/companies/`),
-          where('__name__', '<', `${workspaceDocPath}/companies0`)
+           where('__name__', '>=', `${workspacePath}/companies/`),
+           where('__name__', '<', `${workspacePath}/companies0`)
         );
         const tasksSnap = await getDocs(tasksQuery);
         const allTasks = tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
@@ -58,7 +59,7 @@ function DashboardView() {
     };
     
     fetchWorkspaceData();
-}, [selectedWorkspace, firestore]);
+  }, [selectedWorkspace, firestore]);
 
   
   const completedProjects = projects?.filter(p => p.progress === 100).length || 0;
