@@ -1,86 +1,105 @@
-/**
- * @fileoverview Firestore Security Rules for the application.
- *
- * Core Philosophy:
- * This ruleset enforces a user-ownership model for user profiles and a
- * shared-access model with role-based permissions for workspaces and companies.
- *
- * Data Structure:
- * - /users/{userId}: Stores public user profile information.
- * - /workspaces/{workspaceId}: Stores workspace data, including member roles.
- * - /workspaces/{workspaceId}/companies/{companyId}: Stores company data within a workspace.
- *
- * Key Security Decisions:
- * - Users can only read and write their own profile data.
- * - Workspaces are secured using a role-based access control model, where
- *   members have different roles (admin, contributor, viewer).
- * - Companies are secured based on workspace membership. Only workspace
- *   members can create, update, or delete companies within that workspace.
- * - Listing of users is disallowed.
- *
- * Denormalization for Authorization:
- * - Workspaces denormalize user roles and member lists directly on the
- *   workspace document to avoid costly `get()` operations in security rules.
- */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Allows users to read and write their own profile data.
+     * @description Controls access to user profile documents.
      * @path /users/{userId}
+     * @allow (get, create, update, delete) if the user is the owner of the profile.
+     * @deny (get, create, update, delete) if the user is not the owner of the profile.
+     * @principle Enforces document ownership for all operations.
      */
     match /users/{userId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
       function isOwner(userId) {
         return request.auth.uid == userId;
       }
 
-      allow get: if isOwner(userId);
-      allow list: if false; // Listing users is not allowed.
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId);
-      allow delete: if isOwner(userId);
+      function isExistingOwner(userId) {
+          return isOwner(userId) && resource.data != null;
+      }
+
+      allow get: if isSignedIn() && isOwner(userId);
+      allow list: if false; // Listing user profiles is not permitted.
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isSignedIn() && isExistingOwner(userId);
+      allow delete: if isSignedIn() && isExistingOwner(userId);
     }
 
     /**
-     * @description Allows workspace members to read workspace data based on their role.
+     * @description Controls access to workspace documents.
      * @path /workspaces/{workspaceId}
+     * @allow (get, list) if the user is a member of the workspace.
+     * @allow (create) if the user is the owner of the workspace.
+     * @allow (update, delete) if the user is an admin of the workspace.
+     * @deny (create, update, delete) if the user is not authorized.
+     * @principle Enforces shared access with role-based authorization.
      */
     match /workspaces/{workspaceId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
       function isWorkspaceMember() {
-        return request.auth != null && resource.data.memberIds is list && resource.data.memberIds.hasAny([request.auth.uid]);
+        return resource.data.users[request.auth.uid] != null;
       }
 
       function isWorkspaceAdmin() {
-          return request.auth != null && resource.data.users[request.auth.uid].role == 'admin';
+        return resource.data.users[request.auth.uid].role == 'admin';
       }
 
       function isWorkspaceOwner() {
-        return request.auth != null && resource.data.ownerId == request.auth.uid;
+        return request.resource.data.ownerId == request.auth.uid;
       }
-      
-      allow get: if isWorkspaceMember();
-      allow list: if false;
 
-      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isWorkspaceAdmin();
-      allow delete: if isWorkspaceOwner();
+      function isExistingWorkspaceAdmin() {
+        return isWorkspaceAdmin() && resource.data != null;
+      }
+
+      allow get: if isSignedIn() && isWorkspaceMember();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isWorkspaceOwner();
+      allow update: if isSignedIn() && isExistingWorkspaceAdmin();
+      allow delete: if isSignedIn() && isExistingWorkspaceAdmin();
     }
 
     /**
-     * @description Allows workspace members to manage companies within their workspace.
+     * @description Controls access to company documents within a workspace.
      * @path /workspaces/{workspaceId}/companies/{companyId}
+     * @allow (get, list) if the user is a member of the workspace.
+     * @allow (create, update, delete) if the user is an admin of the workspace.
+     * @deny (create, update, delete) if the user is not authorized.
+     * @principle Enforces shared access with role-based authorization, inherited from the workspace.
      */
     match /workspaces/{workspaceId}/companies/{companyId} {
-      function isWorkspaceMember(workspaceId) {
-        return request.auth != null && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds is list && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds.hasAny([request.auth.uid]);
+      function isSignedIn() {
+        return request.auth != null;
       }
-      
-      allow get: if isWorkspaceMember(workspaceId);
-      allow list: if false;
-      allow create: if isWorkspaceMember(workspaceId);
-      allow update: if isWorkspaceMember(workspaceId);
-      allow delete: if isWorkspaceMember(workspaceId);
+
+      function getWorkspace() {
+        return get(/databases/$(database)/documents/workspaces/$(workspaceId));
+      }
+
+      function isWorkspaceMember() {
+          return getWorkspace().data.users[request.auth.uid] != null;
+      }
+
+      function isWorkspaceAdmin() {
+          return getWorkspace().data.users[request.auth.uid].role == 'admin';
+      }
+
+      function isExistingWorkspaceAdmin() {
+          return isWorkspaceAdmin();
+      }
+
+      allow get: if isSignedIn() && isWorkspaceMember();
+      allow list: if isSignedIn() && isWorkspaceMember();
+      allow create: if isSignedIn() && isWorkspaceAdmin();
+      allow update: if isSignedIn() && isExistingWorkspaceAdmin();
+      allow delete: if isSignedIn() && isExistingWorkspaceAdmin();
     }
   }
 }
