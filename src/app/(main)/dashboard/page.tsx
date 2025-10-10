@@ -23,7 +23,7 @@ function DashboardView() {
     return query(
       collectionGroup(firestore, 'projects'),
       where(documentId(), '>=', `workspaces/${selectedWorkspace.id}/companies/`),
-      where(documentId(), '<', `workspaces/${selectedWorkspace.id}/companies/\uf8ff`)
+      where(documentId(), '<', `workspaces/${selectedWorkspace.id}/companies0`)
     );
   }, [firestore, selectedWorkspace]);
 
@@ -34,7 +34,7 @@ function DashboardView() {
       return query(
         collectionGroup(firestore, 'tasks'),
         where(documentId(), '>=', `workspaces/${selectedWorkspace.id}/companies/`),
-        where(documentId(), '<', `workspaces/${selectedWorkspace.id}/companies/\uf8ff`)
+        where(documentId(), '<', `workspaces/${selectedWorkspace.id}/companies0`)
       );
   }, [firestore, selectedWorkspace]);
   

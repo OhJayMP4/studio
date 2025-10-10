@@ -25,7 +25,7 @@ export default function ProjectStatusChart({ workspaceId }: { workspaceId: strin
                     collectionGroup(firestore, 'projects'),
                     // Filter projects that are descendants of the specified workspace
                     where(documentId(), '>=', `workspaces/${workspaceId}/companies/`),
-                    where(documentId(), '<', `workspaces/${workspaceId}/companies/\uf8ff`)
+                    where(documentId(), '<', `workspaces/${workspaceId}/companies0`)
                 );
             
                 const projectsSnap = await getDocs(projectsQuery);
