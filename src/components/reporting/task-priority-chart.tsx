@@ -17,9 +17,11 @@ export default function TaskPriorityChart({ workspaceId }: { workspaceId: string
             if (!workspaceId) return;
             setIsLoading(true);
 
-            // This is a simplified query. In a real-world scenario with deeper nesting,
-            // you might need to denormalize workspaceId on tasks or do more complex queries.
-            const tasksQuery = query(collectionGroup(firestore, 'tasks'));
+            const tasksQuery = query(
+                collectionGroup(firestore, 'tasks'),
+                where('__name__', '>=', `workspaces/${workspaceId}/`),
+                where('__name__', '<', `workspaces/${workspaceId}/\uf8ff`)
+            );
             const tasksSnap = await getDocs(tasksQuery);
             
             let low = 0;
@@ -27,13 +29,10 @@ export default function TaskPriorityChart({ workspaceId }: { workspaceId: string
             let high = 0;
 
             tasksSnap.docs.forEach(doc => {
-                 // This check is very inefficient. A better data model would have workspaceId on each task.
-                 if (doc.ref.path.startsWith(`workspaces/${workspaceId}`)) {
-                    const task = doc.data() as Task;
-                    if (task.priority === 'low') low++;
-                    if (task.priority === 'medium') medium++;
-                    if (task.priority === 'high') high++;
-                 }
+                const task = doc.data() as Task;
+                if (task.priority === 'low') low++;
+                if (task.priority === 'medium') medium++;
+                if (task.priority === 'high') high++;
             });
 
             setChartData([

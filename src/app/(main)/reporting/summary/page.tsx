@@ -14,7 +14,7 @@ type ReportData = {
     users: { [uid: string]: UserProfile };
 }
 
-const priorityStyles = {
+const priorityStyles: { [key: string]: string } = {
     high: 'text-red-500 font-bold',
     medium: 'text-yellow-500',
     low: 'text-gray-500',
@@ -158,7 +158,7 @@ export default function SummaryReportPage() {
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {silo.tasks.filter(t => t.priority === 'high' || new Date(t.dueDate) < new Date()).length > 0 ? silo.tasks.filter(t => t.priority === 'high' || new Date(t.dueDate) < new Date()).map(task => {
+                                                {silo.tasks.length > 0 ? silo.tasks.map(task => {
                                                     const isOverdue = new Date(task.dueDate) < new Date() && !task.completed;
                                                     const assignee = reportData.users[task.assigneeId]?.name || 'Unassigned';
                                                     return (
@@ -171,7 +171,7 @@ export default function SummaryReportPage() {
                                                     )
                                                 }) : (
                                                     <tr>
-                                                        <td colSpan={4} className="p-2 text-center text-gray-500">No urgent or overdue tasks in this silo.</td>
+                                                        <td colSpan={4} className="p-2 text-center text-gray-500">No tasks in this silo.</td>
                                                     </tr>
                                                 )}
                                             </tbody>

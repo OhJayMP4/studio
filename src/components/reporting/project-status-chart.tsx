@@ -18,25 +18,12 @@ export default function ProjectStatusChart({ workspaceId }: { workspaceId: strin
             if (!workspaceId) return;
             setIsLoading(true);
             
-            // This query is inefficient but necessary without a direct workspace link on projects.
-            // In a production app, you would denormalize the workspaceId onto each project.
-            const companiesRef = collectionGroup(firestore, 'companies');
-            const companiesSnap = await getDocs(companiesRef);
-            const companyIdsInWorkspace: string[] = [];
-
-            companiesSnap.docs.forEach(doc => {
-                if (doc.ref.parent.parent?.id === workspaceId) {
-                    companyIdsInWorkspace.push(doc.id);
-                }
-            });
-
-            if (companyIdsInWorkspace.length === 0) {
-                 setChartData([]);
-                 setIsLoading(false);
-                 return;
-            }
-
-            const projectsQuery = query(collectionGroup(firestore, 'projects'), where('companyId', 'in', companyIdsInWorkspace));
+            const projectsQuery = query(
+                collectionGroup(firestore, 'projects'),
+                where('__name__', '>=', `workspaces/${workspaceId}/`),
+                where('__name__', '<', `workspaces/${workspaceId}/\uf8ff`)
+            );
+            
             const projectsSnap = await getDocs(projectsQuery);
             
             let notStarted = 0;
