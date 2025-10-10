@@ -110,20 +110,16 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
     }
   };
   
-  const trigger = children ? (
-    <DialogTrigger asChild onClick={() => setIsOpen(true)}>{children}</DialogTrigger>
-  ) : (
-    <DialogTrigger asChild onClick={() => setIsOpen(true)}>
-      <Button variant="ghost" size="sm">
-        <PlusCircle className="mr-2" />
-        Add Task
-      </Button>
-    </DialogTrigger>
-  );
-
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      {trigger}
+      <DialogTrigger asChild>
+        {children || (
+          <Button variant="ghost" size="sm">
+            <PlusCircle className="mr-2" />
+            Add Task
+          </Button>
+        )}
+      </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <FormProvider {...form}>
           <form onSubmit={form.handleSubmit(handleCreateTask)}>
@@ -181,7 +177,7 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
                               <FormControl>
                                   <SelectTrigger>
                                       <SelectValue placeholder="Select a team member" />
-                                  </Trigger>
+                                  </SelectTrigger>
                               </FormControl>
                               <SelectContent>
                                   {workspaceUsers.map(user => (
