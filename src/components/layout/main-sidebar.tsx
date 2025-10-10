@@ -1,3 +1,4 @@
+
 'use client';
 
 import {
@@ -15,13 +16,13 @@ import {
   LayoutDashboard,
   BarChart,
   Building,
+  ClipboardCheck,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { UserNav } from "./user-nav";
 import { WorkspaceSwitcher } from "../common/workspace-switcher";
-import { MyTasks } from "./my-tasks-sidebar";
-import { Accordion } from "../ui/accordion";
+import { MyTasksSidebarItem } from "./my-tasks-sidebar";
 import { Separator } from "../ui/separator";
 
 export default function MainSidebar() {
@@ -69,9 +70,9 @@ export default function MainSidebar() {
           </SidebarMenu>
         </SidebarGroup>
         <Separator className="my-4" />
-        <Accordion type="single" collapsible className="w-full" defaultValue="my-tasks">
-            <MyTasks />
-        </Accordion>
+        <SidebarMenu>
+            <MyTasksSidebarItem />
+        </SidebarMenu>
 
       </SidebarContent>
       <SidebarFooter>
