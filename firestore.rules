@@ -1,83 +1,105 @@
 /**
- * @file Firestore Security Rules
- * @description This ruleset enforces a strict user-ownership model for user profiles
- * and a shared access model based on workspace membership. Data shape validation
- * is minimized for rapid prototyping.
+ * @fileoverview Firestore Security Rules for the application.
+ *
+ * Core Philosophy:
+ * This ruleset enforces a user-ownership model for user profiles and a role-based access control model for workspaces.
  *
  * Data Structure:
- * - /users/{userId}: Stores public user profile information, accessible only to the user.
- * - /workspaces/{workspaceId}: Stores workspace data, accessible to workspace members.
- * - /workspaces/{workspaceId}/companies/{companyId}: Stores company data within a workspace, accessible to workspace members.
+ * - User profiles are stored under `/users/{userId}`.
+ * - Workspaces are stored under `/workspaces/{workspaceId}`.
+ * - Companies are stored under `/workspaces/{workspaceId}/companies/{companyId}`.
  *
  * Key Security Decisions:
- * - User profiles are private and only accessible to the owning user.
- * - Workspace access is based on explicit membership defined in the 'users' map and 'memberIds' array on the workspace document.
- * - Listing of users is disallowed.
+ * - Users can only read/write their own profile data.
+ * - Workspace access is controlled by roles defined in the `users` map within the workspace document.
+ * - Only workspace members can create companies in a workspace.
+ * - Data validation is relaxed in this prototyping phase, focusing on authorization and relational integrity.
+ *
+ * Denormalization for Authorization:
+ * - Workspace documents denormalize user roles into the `users` map for efficient access control.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Protects user profiles, allowing only the owner to read and write.
+     * @description Controls access to user profile documents.
      * @path /users/{userId}
-     * @allow (get, update, delete) if request.auth.uid == userId
-     * @allow (create) if request.auth.uid == userId
-     * @deny (get, update, delete) if request.auth.uid != userId
-     * @deny (create) if request.auth.uid != userId
-     * @principle Enforces document ownership for all operations.
+     * @allow (get, update, delete): Authenticated user can only access their own profile.
+     * @allow (create): Authenticated user can create their own profile with matching uid.
+     * @deny (get, list): Non-authenticated user can not access profiles.
+     * @deny (create, update, delete): Authenticated user can not access other user profiles.
+     * @principle Enforces document ownership for user profiles.
      */
     match /users/{userId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
       function isOwner(userId) {
         return request.auth.uid == userId;
       }
 
-      allow get: if isOwner(userId);
-      allow list: if false;
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId);
-      allow delete: if isOwner(userId);
-    }
-
-    /**
-     * @description Secures workspaces, allowing access to workspace members only.
-     * @path /workspaces/{workspaceId}
-     * @allow (get, list) if request.auth.uid in resource.data.memberIds
-     * @allow (create) if request.auth.uid != null
-     * @allow (update, delete) if resource.data.users[request.auth.uid].role == 'admin'
-     * @deny (get, list) if !(request.auth.uid in resource.data.memberIds)
-     * @deny (update, delete) if resource.data.users[request.auth.uid].role != 'admin'
-     * @principle Implements shared access based on workspace membership and enforces admin-only privileges for certain operations.
-     */
-    match /workspaces/{workspaceId} {
-      function isWorkspaceMember() {
-        return request.auth.uid in resource.data.memberIds;
+      function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
       }
 
-      allow get: if isWorkspaceMember();
-      allow list: if true; // Allowing list all workspaces as per discussion
-      allow create: if request.auth.uid != null;
-      allow update: if resource.data.users[request.auth.uid].role == 'admin';
-      allow delete: if resource.data.users[request.auth.uid].role == 'admin';
+      allow get: if isSignedIn() && isOwner(userId);
+      allow list: if false;
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isExistingOwner(userId);
+      allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Protects company data within workspaces, allowing access to workspace members only.
+     * @description Controls access to workspace documents.
+     * @path /workspaces/{workspaceId}
+     * @allow (get, list): Any authenticated user can read any workspace.
+     * @allow (create): Any authenticated user can create a workspace. `ownerId` must match the user's uid.
+     * @allow (update, delete): Only workspace admins can update or delete a workspace.
+     * @deny (create, update, delete): Non-authenticated users cannot create, update, or delete workspaces.
+     * @principle Enforces role-based access control for workspaces.
+     */
+    match /workspaces/{workspaceId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isAdmin() {
+        return resource.data.users[request.auth.uid].role == 'admin';
+      }
+
+      function isWorkspaceMember() {
+          return request.auth.uid in resource.data.users;
+      }
+
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.users[request.auth.uid].role == 'admin';
+      allow delete: if isSignedIn() && resource.data.users[request.auth.uid].role == 'admin';
+    }
+
+    /**
+     * @description Controls access to company documents within a workspace.
      * @path /workspaces/{workspaceId}/companies/{companyId}
-     * @allow (get, list) if get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds.hasAny([request.auth.uid])
-     * @allow (create, update, delete) if get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds.hasAny([request.auth.uid])
-     * @deny (get, list, create, update, delete) if !(get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds.hasAny([request.auth.uid]))
-     * @principle Implements shared access based on workspace membership.
+     * @allow (get, list): Any authenticated user can read any company.
+     * @allow (create): Only workspace members can create a company.
+     * @allow (update, delete): No one can update or delete a company.
+     * @deny (create, update, delete): Non-authenticated users cannot create, update, or delete companies.
+     * @principle Enforces workspace membership for company creation.
      */
     match /workspaces/{workspaceId}/companies/{companyId} {
-         function isWorkspaceMember() {
-            return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds.hasAny([request.auth.uid]);
-        }
-      allow get: if isWorkspaceMember();
-      allow list: if true; //Allowing List
-      allow create: if isWorkspaceMember();
-      allow update: if isWorkspaceMember();
-      allow delete: if isWorkspaceMember();
+      function isSignedIn() {
+        return request.auth != null;
+      }
+      
+       function isWorkspaceMember(workspaceId) {
+          return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid] != null;
+      }
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow update: if false;
+      allow delete: if false;
     }
   }
 }
