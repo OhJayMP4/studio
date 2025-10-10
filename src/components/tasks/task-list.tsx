@@ -18,6 +18,8 @@ import { Button } from "@/components/ui/button";
 import { MoreHorizontal, ArrowUp, ArrowDown, Minus, CheckCircle, Circle, Archive, Edit, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Checkbox } from "../ui/checkbox";
+import { useFirestore, updateDocumentNonBlocking } from "@/firebase";
+import { doc } from "firebase/firestore";
 
 const priorityIcons = {
   low: <ArrowDown className="h-4 w-4 text-green-500" />,
@@ -25,7 +27,15 @@ const priorityIcons = {
   high: <ArrowUp className="h-4 w-4 text-red-500" />,
 };
 
-export function TaskList({ tasks }: { tasks: Task[] }) {
+export function TaskList({ tasks, siloId }: { tasks: Task[], siloId: string }) {
+  const firestore = useFirestore();
+
+  const handleToggleCompleted = (task: Task) => {
+    if (!firestore || !siloId) return;
+    const taskRef = doc(firestore, `silos/${siloId}/tasks/${task.id}`);
+    updateDocumentNonBlocking(taskRef, { completed: !task.completed });
+  };
+  
   if (tasks.length === 0) {
       return (
           <Card className="text-center py-12">
@@ -57,7 +67,11 @@ export function TaskList({ tasks }: { tasks: Task[] }) {
             {tasks.map((task) => (
               <TableRow key={task.id} data-state={task.completed ? "completed" : "pending"}>
                 <TableCell>
-                  <Checkbox checked={task.completed} aria-label={`Mark task ${task.name} as ${task.completed ? 'incomplete' : 'complete'}`} />
+                  <Checkbox 
+                    checked={task.completed} 
+                    onCheckedChange={() => handleToggleCompleted(task)}
+                    aria-label={`Mark task ${task.name} as ${task.completed ? 'incomplete' : 'complete'}`} 
+                  />
                 </TableCell>
                 <TableCell className="font-medium">{task.name}</TableCell>
                 <TableCell>

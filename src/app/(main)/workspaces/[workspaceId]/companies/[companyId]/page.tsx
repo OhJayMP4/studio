@@ -11,12 +11,13 @@ import { collection, doc } from "firebase/firestore";
 import type { Company, Project } from "@/lib/types";
 
 export default function CompanyPage({ params }: { params: { workspaceId: string, companyId: string } }) {
+    const { workspaceId, companyId } = params;
     const firestore = useFirestore();
 
-    const companyRef = useMemoFirebase(() => doc(firestore, "workspaces", params.workspaceId, "companies", params.companyId), [firestore, params.workspaceId, params.companyId]);
+    const companyRef = useMemoFirebase(() => doc(firestore, "workspaces", workspaceId, "companies", companyId), [firestore, workspaceId, companyId]);
     const { data: company, isLoading: isCompanyLoading } = useDoc<Company>(companyRef);
     
-    const projectsRef = useMemoFirebase(() => collection(firestore, "companies", params.companyId, "projects"), [firestore, params.companyId]);
+    const projectsRef = useMemoFirebase(() => collection(firestore, "companies", companyId, "projects"), [firestore, companyId]);
     const { data: projects, isLoading: areProjectsLoading } = useCollection<Project>(projectsRef);
 
     if (isCompanyLoading || areProjectsLoading) {
@@ -36,7 +37,7 @@ export default function CompanyPage({ params }: { params: { workspaceId: string,
                     <h1 className="text-3xl font-headline">{company.name}</h1>
                     <p className="text-muted-foreground">Overview of projects for this company.</p>
                 </div>
-                <AddProjectButton workspaceId={params.workspaceId} companyId={params.companyId} />
+                <AddProjectButton workspaceId={workspaceId} companyId={companyId} />
             </div>
 
 
@@ -65,7 +66,7 @@ export default function CompanyPage({ params }: { params: { workspaceId: string,
                                 </CardContent>
                                 <CardFooter>
                                     <Button asChild variant="outline" className="w-full">
-                                        <Link href={`/workspaces/${params.workspaceId}/companies/${params.companyId}/projects/${project.id}`}>
+                                        <Link href={`/workspaces/${workspaceId}/companies/${companyId}/projects/${project.id}`}>
                                             View Project <ArrowRight className="ml-2 h-4 w-4" />
                                         </Link>
                                     </Button>
@@ -84,7 +85,7 @@ export default function CompanyPage({ params }: { params: { workspaceId: string,
                      </CardHeader>
                      <CardContent>
                         <p className="text-muted-foreground mb-4">Get started by creating a new project for this company.</p>
-                         <AddProjectButton workspaceId={params.workspaceId} companyId={params.companyId} />
+                         <AddProjectButton workspaceId={workspaceId} companyId={companyId} />
                     </CardContent>
                 </Card>
             )}

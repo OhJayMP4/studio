@@ -13,12 +13,13 @@ import type { Workspace, Company } from "@/lib/types";
 import { InviteUserButton } from "@/components/common/invite-user-button";
 
 export default function WorkspacePage({ params }: { params: { workspaceId: string } }) {
+    const { workspaceId } = params;
     const firestore = useFirestore();
 
-    const workspaceRef = useMemoFirebase(() => doc(firestore, "workspaces", params.workspaceId), [firestore, params.workspaceId]);
+    const workspaceRef = useMemoFirebase(() => doc(firestore, "workspaces", workspaceId), [firestore, workspaceId]);
     const { data: workspace, isLoading: isWorkspaceLoading } = useDoc<Workspace>(workspaceRef);
 
-    const companiesRef = useMemoFirebase(() => collection(firestore, "workspaces", params.workspaceId, "companies"), [firestore, params.workspaceId]);
+    const companiesRef = useMemoFirebase(() => collection(firestore, "workspaces", workspaceId, "companies"), [firestore, workspaceId]);
     const { data: companies, isLoading: areCompaniesLoading } = useCollection<Company>(companiesRef);
 
     if (isWorkspaceLoading || areCompaniesLoading) {
@@ -39,8 +40,8 @@ export default function WorkspacePage({ params }: { params: { workspaceId: strin
                     <p className="text-muted-foreground">Overview of companies within this workspace.</p>
                 </div>
                 <div className="flex gap-2">
-                    <InviteUserButton workspaceId={params.workspaceId} />
-                    <AddCompanyButton workspaceId={params.workspaceId} />
+                    <InviteUserButton workspaceId={workspaceId} />
+                    <AddCompanyButton workspaceId={workspaceId} />
                 </div>
             </div>
 
@@ -87,7 +88,7 @@ export default function WorkspacePage({ params }: { params: { workspaceId: strin
                      </CardHeader>
                      <CardContent>
                         <p className="text-muted-foreground mb-4">Get started by creating a new company in this workspace.</p>
-                        <AddCompanyButton workspaceId={params.workspaceId} />
+                        <AddCompanyButton workspaceId={workspaceId} />
                     </CardContent>
                 </Card>
             )}

@@ -10,12 +10,13 @@ import { collection, doc } from "firebase/firestore";
 import type { Silo, Task } from "@/lib/types";
 
 export default function SiloPage({ params }: { params: { workspaceId: string, companyId: string, projectId: string, siloId: string } }) {
+    const { projectId, siloId } = params;
     const firestore = useFirestore();
 
-    const siloRef = useMemoFirebase(() => doc(firestore, "projects", params.projectId, "silos", params.siloId), [firestore, params.projectId, params.siloId]);
+    const siloRef = useMemoFirebase(() => doc(firestore, "projects", projectId, "silos", siloId), [firestore, projectId, siloId]);
     const { data: silo, isLoading: isSiloLoading } = useDoc<Silo>(siloRef);
     
-    const tasksRef = useMemoFirebase(() => collection(firestore, "silos", params.siloId, "tasks"), [firestore, params.siloId]);
+    const tasksRef = useMemoFirebase(() => collection(firestore, "silos", siloId, "tasks"), [firestore, siloId]);
     const { data: tasks, isLoading: areTasksLoading } = useCollection<Task>(tasksRef);
 
     if (isSiloLoading || areTasksLoading) {
@@ -67,7 +68,7 @@ export default function SiloPage({ params }: { params: { workspaceId: string, co
                 </Card>
             </div>
 
-            <TaskList tasks={tasks || []} />
+            <TaskList tasks={tasks || []} siloId={siloId} />
         </div>
     );
 }

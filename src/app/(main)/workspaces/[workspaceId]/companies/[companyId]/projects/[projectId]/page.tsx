@@ -12,12 +12,13 @@ import { collection, doc } from "firebase/firestore";
 import type { Project, Silo } from "@/lib/types";
 
 export default function ProjectPage({ params }: { params: { workspaceId: string, companyId: string, projectId: string } }) {
+    const { workspaceId, companyId, projectId } = params;
     const firestore = useFirestore();
 
-    const projectRef = useMemoFirebase(() => doc(firestore, "companies", params.companyId, "projects", params.projectId), [firestore, params.companyId, params.projectId]);
+    const projectRef = useMemoFirebase(() => doc(firestore, "companies", companyId, "projects", projectId), [firestore, companyId, projectId]);
     const { data: project, isLoading: isProjectLoading } = useDoc<Project>(projectRef);
     
-    const silosRef = useMemoFirebase(() => collection(firestore, "projects", params.projectId, "silos"), [firestore, params.projectId]);
+    const silosRef = useMemoFirebase(() => collection(firestore, "projects", projectId, "silos"), [firestore, projectId]);
     const { data: silos, isLoading: areSilosLoading } = useCollection<Silo>(silosRef);
     
     if (isProjectLoading || areSilosLoading) {
@@ -37,7 +38,7 @@ export default function ProjectPage({ params }: { params: { workspaceId: string,
                     <h1 className="text-3xl font-headline">{project.name}</h1>
                     <p className="text-muted-foreground">Overview of silos for this project.</p>
                 </div>
-                 <AddSiloButton workspaceId={params.workspaceId} companyId={params.companyId} projectId={params.projectId} />
+                 <AddSiloButton workspaceId={workspaceId} companyId={companyId} projectId={projectId} />
             </div>
 
 
@@ -64,7 +65,7 @@ export default function ProjectPage({ params }: { params: { workspaceId: string,
                                 </CardContent>
                                 <CardFooter>
                                     <Button asChild variant="outline" className="w-full">
-                                        <Link href={`/workspaces/${params.workspaceId}/companies/${params.companyId}/projects/${params.projectId}/silos/${silo.id}`}>
+                                        <Link href={`/workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${silo.id}`}>
                                             View Silo <ArrowRight className="ml-2 h-4 w-4" />
                                         </Link>
                                     </Button>
@@ -83,7 +84,7 @@ export default function ProjectPage({ params }: { params: { workspaceId: string,
                      </CardHeader>
                      <CardContent>
                         <p className="text-muted-foreground mb-4">Get started by creating a new silo for this project.</p>
-                         <AddSiloButton workspaceId={params.workspaceId} companyId={params.companyId} projectId={params.projectId} />
+                         <AddSiloButton workspaceId={workspaceId} companyId={companyId} projectId={projectId} />
                     </CardContent>
                 </Card>
             )}
