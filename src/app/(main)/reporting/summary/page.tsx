@@ -1,18 +1,17 @@
 'use client';
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { useFirestore } from "@/firebase";
-import { Company, Project, Silo, Task } from "@/lib/types";
+import { Company, Project, Silo, Task, UserProfile } from "@/lib/types";
 import { collection, getDocs, query } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { format } from 'date-fns';
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 
 type ReportData = {
     companies: (Company & { projects: (Project & { silos: (Silo & { tasks: Task[] })[] })[] })[];
+    users: { [uid: string]: UserProfile };
 }
 
 const priorityStyles = {
@@ -76,7 +75,20 @@ export default function SummaryReportPage() {
                 return { ...company, projects: projectsData };
             }));
 
-            setReportData({ companies: companiesData });
+            const users: { [uid: string]: UserProfile } = {};
+            if (selectedWorkspace.users) {
+                for (const uid in selectedWorkspace.users) {
+                    users[uid] = {
+                        uid: uid,
+                        name: selectedWorkspace.users[uid].name || 'Unknown',
+                        email: null, // email is not stored in workspace data
+                        avatarUrl: selectedWorkspace.users[uid].avatarUrl || null,
+                    };
+                }
+            }
+
+
+            setReportData({ companies: companiesData, users });
             setIsLoading(false);
         };
 
@@ -87,8 +99,8 @@ export default function SummaryReportPage() {
         return <ReportLoader />;
     }
 
-    if (!reportData) {
-        return <div className="p-8">No data available for this workspace.</div>
+    if (!reportData || !selectedWorkspace) {
+        return <div className="p-8 text-center">Please select a workspace to generate a report.</div>
     }
 
     return (
@@ -113,12 +125,12 @@ export default function SummaryReportPage() {
                 }
             `}</style>
 
-            <div className="flex justify-between items-center mb-8">
+            <div className="flex justify-between items-start mb-8">
                  <div>
                     <h1 className="text-3xl font-bold">Workspace Summary: {selectedWorkspace?.name}</h1>
                     <p className="text-gray-500">Generated on: {format(new Date(), 'PPP p')}</p>
                  </div>
-                 <Button onClick={() => window.print()} className="no-print bg-gray-800 text-white hover:bg-gray-700">Print to PDF</Button>
+                 <Button onClick={() => window.print()} className="no-print bg-gray-800 text-white hover:bg-gray-700">Print Report</Button>
             </div>
 
 
@@ -130,13 +142,13 @@ export default function SummaryReportPage() {
                             <h3 className="text-xl font-medium">{project.name}</h3>
                              <div className="flex items-center gap-4 my-2">
                                 <span className="text-sm text-gray-600">Overall Progress: {project.progress}%</span>
-                                <Progress value={project.progress} className="w-1/2 h-3 bg-gray-200" />
+                                <Progress value={project.progress} className="w-1/2 h-3 bg-gray-200 [&>div]:bg-gray-800" />
                             </div>
                             <div className="pl-4">
                                 {project.silos.map(silo => (
                                      <div key={silo.id} className="mt-4 break-inside-avoid-page">
                                          <h4 className="text-lg font-medium text-gray-800">{silo.name}</h4>
-                                         <table className="w-full text-left mt-2 border-collapse">
+                                         <table className="w-full text-left mt-2 border-collapse text-sm">
                                             <thead>
                                                 <tr className="border-b border-gray-400">
                                                     <th className="p-2 w-2/5">Task</th>
@@ -146,20 +158,20 @@ export default function SummaryReportPage() {
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {silo.tasks.length > 0 ? silo.tasks.filter(t => t.priority === 'high' || new Date(t.dueDate) < new Date()).map(task => {
+                                                {silo.tasks.filter(t => t.priority === 'high' || new Date(t.dueDate) < new Date()).length > 0 ? silo.tasks.filter(t => t.priority === 'high' || new Date(t.dueDate) < new Date()).map(task => {
                                                     const isOverdue = new Date(task.dueDate) < new Date() && !task.completed;
-                                                    const assignee = selectedWorkspace?.users[task.assigneeId]?.name || 'Unassigned';
+                                                    const assignee = reportData.users[task.assigneeId]?.name || 'Unassigned';
                                                     return (
                                                         <tr key={task.id} className={`border-b border-gray-200 ${task.completed ? 'text-gray-400 line-through' : ''}`}>
                                                             <td className="p-2">{task.title}</td>
                                                             <td className="p-2">{assignee}</td>
                                                             <td className={`p-2 ${isOverdue ? 'text-red-500 font-bold' : ''}`}>{format(new Date(task.dueDate), 'MMM d, yyyy')}</td>
-                                                            <td className={`p-2 ${priorityStyles[task.priority]}`}>{task.priority}</td>
+                                                            <td className={`p-2 font-medium ${priorityStyles[task.priority]}`}>{task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}</td>
                                                         </tr>
                                                     )
                                                 }) : (
                                                     <tr>
-                                                        <td colSpan={4} className="p-2 text-center text-gray-500">No urgent tasks in this silo.</td>
+                                                        <td colSpan={4} className="p-2 text-center text-gray-500">No urgent or overdue tasks in this silo.</td>
                                                     </tr>
                                                 )}
                                             </tbody>

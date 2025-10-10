@@ -1,12 +1,11 @@
 'use client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart";
 import { Task } from "@/lib/types";
-import { collectionGroup, getDocs, query } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { collectionGroup, getDocs, query, where } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
 import { Pie, PieChart } from "recharts";
-
+import { useFirestore } from "@/firebase";
 
 export default function TaskPriorityChart({ workspaceId }: { workspaceId: string }) {
     const firestore = useFirestore();
@@ -15,7 +14,11 @@ export default function TaskPriorityChart({ workspaceId }: { workspaceId: string
 
     useEffect(() => {
         const fetchData = async () => {
+            if (!workspaceId) return;
             setIsLoading(true);
+
+            // This is a simplified query. In a real-world scenario with deeper nesting,
+            // you might need to denormalize workspaceId on tasks or do more complex queries.
             const tasksQuery = query(collectionGroup(firestore, 'tasks'));
             const tasksSnap = await getDocs(tasksQuery);
             
@@ -24,11 +27,13 @@ export default function TaskPriorityChart({ workspaceId }: { workspaceId: string
             let high = 0;
 
             tasksSnap.docs.forEach(doc => {
-                 // This is a simplification. In a real app, you'd check if the task belongs to the workspace.
-                const task = doc.data() as Task;
-                 if (task.priority === 'low') low++;
-                 if (task.priority === 'medium') medium++;
-                 if (task.priority === 'high') high++;
+                 // This check is very inefficient. A better data model would have workspaceId on each task.
+                 if (doc.ref.path.startsWith(`workspaces/${workspaceId}`)) {
+                    const task = doc.data() as Task;
+                    if (task.priority === 'low') low++;
+                    if (task.priority === 'medium') medium++;
+                    if (task.priority === 'high') high++;
+                 }
             });
 
             setChartData([
@@ -57,7 +62,12 @@ export default function TaskPriorityChart({ workspaceId }: { workspaceId: string
             label: 'High',
             color: 'hsl(var(--chart-3))',
         },
-    }
+    } satisfies ChartConfig;
+
+    const totalTasks = useMemo(() => {
+        return chartData.reduce((acc, curr) => acc + curr.count, 0);
+    }, [chartData]);
+
 
     return (
         <Card>
@@ -65,13 +75,36 @@ export default function TaskPriorityChart({ workspaceId }: { workspaceId: string
                 <CardTitle>Task Priorities</CardTitle>
                 <CardDescription>Distribution of all tasks by priority.</CardDescription>
             </CardHeader>
-            <CardContent>
-                <ChartContainer config={chartConfig} className="h-48 w-full">
+            <CardContent className="flex-1 pb-0">
+                 <ChartContainer
+                    config={chartConfig}
+                    className="mx-auto aspect-square h-full max-h-[250px]"
+                >
                     <PieChart>
-                        <ChartTooltip content={<ChartTooltipContent />} />
-                        <Pie data={chartData} dataKey="count" nameKey="priority" />
+                        <ChartTooltip
+                            cursor={false}
+                            content={<ChartTooltipContent hideLabel />}
+                        />
+                        <Pie
+                            data={chartData}
+                            dataKey="count"
+                            nameKey="priority"
+                            innerRadius={60}
+                            strokeWidth={5}
+                        >
+                        </Pie>
+                         <ChartLegend
+                            content={<ChartLegendContent nameKey="priority" />}
+                            className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center"
+                        />
                     </PieChart>
                 </ChartContainer>
+            </CardContent>
+             <CardContent className="flex flex-col gap-2 text-sm pt-4">
+                 <div className="flex items-center justify-between">
+                    <span>Total Tasks</span>
+                    <span className="font-bold">{totalTasks}</span>
+                </div>
             </CardContent>
         </Card>
     )

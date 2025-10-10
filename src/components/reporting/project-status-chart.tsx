@@ -1,9 +1,9 @@
 'use client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { useFirestore } from "@/firebase";
 import { Project } from "@/lib/types";
-import { collectionGroup, getDocs, query } from "firebase/firestore";
+import { collectionGroup, getDocs, query, where } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
@@ -15,8 +15,28 @@ export default function ProjectStatusChart({ workspaceId }: { workspaceId: strin
 
     useEffect(() => {
         const fetchData = async () => {
+            if (!workspaceId) return;
             setIsLoading(true);
-            const projectsQuery = query(collectionGroup(firestore, 'projects'));
+            
+            // This query is inefficient but necessary without a direct workspace link on projects.
+            // In a production app, you would denormalize the workspaceId onto each project.
+            const companiesRef = collectionGroup(firestore, 'companies');
+            const companiesSnap = await getDocs(companiesRef);
+            const companyIdsInWorkspace: string[] = [];
+
+            companiesSnap.docs.forEach(doc => {
+                if (doc.ref.parent.parent?.id === workspaceId) {
+                    companyIdsInWorkspace.push(doc.id);
+                }
+            });
+
+            if (companyIdsInWorkspace.length === 0) {
+                 setChartData([]);
+                 setIsLoading(false);
+                 return;
+            }
+
+            const projectsQuery = query(collectionGroup(firestore, 'projects'), where('companyId', 'in', companyIdsInWorkspace));
             const projectsSnap = await getDocs(projectsQuery);
             
             let notStarted = 0;
@@ -24,8 +44,6 @@ export default function ProjectStatusChart({ workspaceId }: { workspaceId: strin
             let completed = 0;
 
             projectsSnap.docs.forEach(doc => {
-                // This is a simplification. In a real app, you'd check if the project belongs to the workspace.
-                // For now, we assume all projects are in the current workspace for demo purposes.
                 const project = doc.data() as Project;
                  if (project.progress === 0) {
                     notStarted++;
@@ -81,7 +99,7 @@ export default function ProjectStatusChart({ workspaceId }: { workspaceId: strin
                             axisLine={false}
                             tickFormatter={(value) => value.slice(0, 3)}
                         />
-                        <YAxis />
+                        <YAxis allowDecimals={false} />
                         <ChartTooltip content={<ChartTooltipContent />} />
                         <Bar dataKey="count" radius={4} />
                     </BarChart>
