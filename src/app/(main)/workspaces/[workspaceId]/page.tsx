@@ -6,18 +6,15 @@ import { ArrowRight, Building } from "lucide-react";
 import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { notFound } from "next/navigation";
+import { notFound, useParams } from "next/navigation";
 import { AddCompanyButton } from "@/components/common/add-company-button";
 import { collection, doc } from "firebase/firestore";
 import type { Workspace, Company } from "@/lib/types";
 import { InviteUserButton } from "@/components/common/invite-user-button";
 
-interface WorkspacePageProps {
-  params: { workspaceId: string };
-}
-
-export default function WorkspacePage({ params }: WorkspacePageProps) {
-    const { workspaceId } = params;
+export default function WorkspacePage() {
+    const params = useParams();
+    const workspaceId = params.workspaceId as string;
     const firestore = useFirestore();
 
     const workspaceRef = useMemoFirebase(() => doc(firestore, "workspaces", workspaceId), [firestore, workspaceId]);

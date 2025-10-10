@@ -5,20 +5,15 @@ import { ArrowRight, FolderKanban } from "lucide-react";
 import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { notFound } from "next/navigation";
+import { notFound, useParams } from "next/navigation";
 import { AddProjectButton } from "@/components/common/add-project-button";
 import { collection, doc } from "firebase/firestore";
 import type { Company, Project } from "@/lib/types";
 
-interface CompanyPageProps {
-  params: {
-    workspaceId: string;
-    companyId: string;
-  };
-}
-
-export default function CompanyPage({ params }: CompanyPageProps) {
-    const { workspaceId, companyId } = params;
+export default function CompanyPage() {
+    const params = useParams();
+    const workspaceId = params.workspaceId as string;
+    const companyId = params.companyId as string;
     const firestore = useFirestore();
 
     const companyRef = useMemoFirebase(() => doc(firestore, "workspaces", workspaceId, "companies", companyId), [firestore, workspaceId, companyId]);

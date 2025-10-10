@@ -1,7 +1,7 @@
 'use client';
 
 import { useDoc, useCollection, useFirestore, useMemoFirebase } from "@/firebase";
-import { notFound } from "next/navigation";
+import { notFound, useParams } from "next/navigation";
 import { TaskList } from "@/components/tasks/task-list";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,17 +9,10 @@ import { Target, CheckCircle2 } from "lucide-react";
 import { collection, doc } from "firebase/firestore";
 import type { Silo, Task } from "@/lib/types";
 
-interface SiloPageProps {
-  params: {
-    workspaceId: string;
-    companyId: string;
-    projectId: string;
-    siloId: string;
-  };
-}
-
-export default function SiloPage({ params }: SiloPageProps) {
-    const { projectId, siloId } = params;
+export default function SiloPage() {
+    const params = useParams();
+    const projectId = params.projectId as string;
+    const siloId = params.siloId as string;
     const firestore = useFirestore();
 
     const siloRef = useMemoFirebase(() => doc(firestore, "projects", projectId, "silos", siloId), [firestore, projectId, siloId]);

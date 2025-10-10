@@ -6,21 +6,16 @@ import { ArrowRight, Container } from "lucide-react";
 import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { notFound } from "next/navigation";
+import { notFound, useParams } from "next/navigation";
 import { AddSiloButton } from "@/components/common/add-silo-button";
 import { collection, doc } from "firebase/firestore";
 import type { Project, Silo } from "@/lib/types";
 
-interface ProjectPageProps {
-  params: {
-    workspaceId: string;
-    companyId: string;
-    projectId: string;
-  };
-}
-
-export default function ProjectPage({ params }: ProjectPageProps) {
-    const { workspaceId, companyId, projectId } = params;
+export default function ProjectPage() {
+    const params = useParams();
+    const workspaceId = params.workspaceId as string;
+    const companyId = params.companyId as string;
+    const projectId = params.projectId as string;
     const firestore = useFirestore();
 
     const projectRef = useMemoFirebase(() => doc(firestore, "companies", companyId, "projects", projectId), [firestore, companyId, projectId]);
