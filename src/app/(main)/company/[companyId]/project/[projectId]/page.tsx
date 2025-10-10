@@ -198,7 +198,7 @@ function SiloActions({ silo, companyId, projectId }: { silo: Silo; companyId: st
     };
     
     return (
-        <div className="absolute top-2 right-2 z-10">
+        <div className="flex-shrink-0">
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon">
@@ -269,24 +269,28 @@ function SortableSiloItem({ silo, companyId, projectId }: { silo: Silo; companyI
     return (
        <AccordionItem value={silo.id} ref={setNodeRef} style={style} className='border-none'>
           <Card className="overflow-hidden">
-                <AccordionTrigger className="p-4 flex flex-row items-center justify-between hover:no-underline relative border-b data-[state=open]:border-b-0">
-                    <div {...listeners} {...attributes} className="absolute top-0 left-0 h-full w-8 cursor-grab active:cursor-grabbing z-10 flex items-center justify-center">
+                <div className='flex items-center border-b data-[state=open]:border-b-0'>
+                    <div {...listeners} {...attributes} className="p-4 cursor-grab active:cursor-grabbing">
                        <GripVertical className="h-5 w-5 text-muted-foreground" />
                     </div>
-                    <CardTitle className={cn("flex-1 text-left flex items-center gap-2 text-lg pl-6", { "text-muted-foreground line-through": isSiloComplete })}>
-                        {isSiloComplete && <CheckCircle2 className="text-green-500" />}
-                        <span>{silo.name}</span>
-                    </CardTitle>
-                    {isUserAdmin && <SiloActions silo={silo} companyId={companyId} projectId={projectId} />}
-                </AccordionTrigger>
+                    <AccordionTrigger className="p-4 flex-1 flex-row items-center justify-between hover:no-underline">
+                        <CardTitle className={cn("flex-1 text-left flex items-center gap-2 text-lg", { "text-muted-foreground line-through": isSiloComplete })}>
+                            {isSiloComplete && <CheckCircle2 className="text-green-500" />}
+                            <span>{silo.name}</span>
+                        </CardTitle>
+                    </AccordionTrigger>
+                </div>
                 <AccordionContent>
-                    <CardContent className='pt-0 space-y-4'>
-                        <div className="space-y-2">
-                            <div className="flex justify-between items-center text-sm mb-1">
-                                <span className="text-muted-foreground">{completedTasks} of {totalTasks} tasks complete</span>
-                                <span className="font-medium">{progress}%</span>
+                    <CardContent className='pt-4 space-y-4'>
+                        <div className="flex justify-between items-start">
+                            <div className="space-y-2 w-full">
+                                <div className="flex justify-between items-center text-sm mb-1">
+                                    <span className="text-muted-foreground">{completedTasks} of {totalTasks} tasks complete</span>
+                                    <span className="font-medium">{progress}%</span>
+                                </div>
+                                <Progress value={progress} />
                             </div>
-                            <Progress value={progress} />
+                            {isUserAdmin && <SiloActions silo={silo} companyId={companyId} projectId={projectId} />}
                         </div>
                         <div className="border rounded-md">
                             {rawTasksLoading && <div className="p-4 text-center text-sm">Loading tasks...</div>}
