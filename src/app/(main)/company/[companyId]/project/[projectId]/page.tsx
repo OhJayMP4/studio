@@ -2,12 +2,6 @@
 
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { AddSiloDialog } from '@/components/common/add-silo-dialog';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -44,6 +38,12 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { EditSiloDialog } from '@/components/common/edit-silo-dialog';
 import { DeleteDialog } from '@/components/common/delete-dialog';
 import { useToast } from '@/hooks/use-toast';
+import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from '@/components/ui/accordion';
 import {
   DndContext,
   closestCenter,
@@ -241,12 +241,12 @@ function SortableSiloItem({ silo, companyId, projectId }: { silo: Silo; companyI
     const sortedTasks = useMemo(() => {
         if (!rawTasks) return [];
         return [...rawTasks].sort((a, b) => {
-        if (a.completed && !b.completed) return 1;
-        if (!a.completed && b.completed) return -1;
-        const dateA = new Date(a.dueDate).getTime();
-        const dateB = new Date(b.dueDate).getTime();
-        if (dateA !== dateB) return dateA - dateB;
-        return priorityOrder[b.priority] - priorityOrder[a.priority];
+            if (a.completed && !b.completed) return 1;
+            if (!a.completed && b.completed) return -1;
+            const dateA = new Date(a.dueDate).getTime();
+            const dateB = new Date(b.dueDate).getTime();
+            if (dateA !== dateB) return dateA - dateB;
+            return priorityOrder[b.priority] - priorityOrder[a.priority];
         });
     }, [rawTasks]);
 
@@ -270,44 +270,40 @@ function SortableSiloItem({ silo, companyId, projectId }: { silo: Silo; companyI
 
     return (
        <div ref={setNodeRef} style={style} className='space-y-4'>
-            <AccordionItem value={silo.id} className="border-none bg-card rounded-lg overflow-hidden">
-                <div className="relative">
+          <Card className="overflow-hidden">
+                <CardHeader className={cn("p-4 flex flex-row items-center justify-between hover:no-underline relative", { "text-muted-foreground line-through": isSiloComplete })}>
                     <div {...listeners} {...attributes} className="absolute top-0 left-0 h-full w-8 cursor-grab active:cursor-grabbing z-10 flex items-center justify-center">
                        <GripVertical className="h-5 w-5 text-muted-foreground" />
                     </div>
-                    <AccordionTrigger className={cn("p-4 text-lg font-medium hover:no-underline pr-12 pl-10", { "text-muted-foreground line-through": isSiloComplete })}>
-                        <div className="flex-1 text-left flex items-center gap-2">
-                            {isSiloComplete && <CheckCircle2 className="text-green-500" />}
-                            <span>{silo.name}</span>
-                        </div>
-                    </AccordionTrigger>
+                    <CardTitle className="flex-1 text-left flex items-center gap-2 text-lg pl-6">
+                        {isSiloComplete && <CheckCircle2 className="text-green-500" />}
+                        <span>{silo.name}</span>
+                    </CardTitle>
                     {isUserAdmin && <SiloActions silo={silo} companyId={companyId} projectId={projectId} />}
-                    <AccordionContent>
-                        <div className='px-4 pb-4 space-y-4'>
-                            <div className="space-y-2">
-                                <div className="flex justify-between items-center text-sm mb-1">
-                                    <span className="text-muted-foreground">{completedTasks} of {totalTasks} tasks complete</span>
-                                    <span className="font-medium">{progress}%</span>
-                                </div>
-                                <Progress value={progress} />
-                            </div>
-                            <div className="border rounded-md">
-                                {rawTasksLoading && <div className="p-4 text-center text-sm">Loading tasks...</div>}
-                                {sortedTasks && sortedTasks.length > 0 ? (
-                                    <div className="divide-y">
-                                    {sortedTasks.map(task => (
-                                        <TaskItem key={task.id} task={task} siloId={silo.id} path={`workspaces/${selectedWorkspace?.id}/companies/${companyId}/projects/${projectId}/silos/${silo.id}/tasks/${task.id}`} />
-                                    ))}
-                                    </div>
-                                ) : (
-                                    !rawTasksLoading && <p className="p-4 text-center text-sm text-muted-foreground">No tasks in this silo yet.</p>
-                                )}
-                            </div>
-                            {isUserAdmin && <AddTaskDialog companyId={companyId} projectId={projectId} siloId={silo.id} />}
+                </CardHeader>
+                <CardContent className='px-4 pb-4 space-y-4'>
+                    <div className="space-y-2">
+                        <div className="flex justify-between items-center text-sm mb-1">
+                            <span className="text-muted-foreground">{completedTasks} of {totalTasks} tasks complete</span>
+                            <span className="font-medium">{progress}%</span>
                         </div>
-                    </AccordionContent>
-                </div>
-            </AccordionItem>
+                        <Progress value={progress} />
+                    </div>
+                    <div className="border rounded-md">
+                        {rawTasksLoading && <div className="p-4 text-center text-sm">Loading tasks...</div>}
+                        {sortedTasks && sortedTasks.length > 0 ? (
+                            <div className="divide-y">
+                            {sortedTasks.map(task => (
+                                <TaskItem key={task.id} task={task} siloId={silo.id} path={`workspaces/${selectedWorkspace?.id}/companies/${companyId}/projects/${projectId}/silos/${silo.id}/tasks/${task.id}`} />
+                            ))}
+                            </div>
+                        ) : (
+                            !rawTasksLoading && <p className="p-4 text-center text-sm text-muted-foreground">No tasks in this silo yet.</p>
+                        )}
+                    </div>
+                    {isUserAdmin && <AddTaskDialog companyId={companyId} projectId={projectId} siloId={silo.id} />}
+                </CardContent>
+            </Card>
        </div>
     );
 }
@@ -442,24 +438,22 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
         <h2 className="text-2xl font-headline">Silos</h2>
         {isUserAdmin && <AddSiloDialog companyId={companyId} projectId={projectId} />}
       </div>
-        <Accordion type="multiple" defaultValue={silos.map(s => s.id)} className="w-full space-y-4">
+      <div className="w-full space-y-4">
             <SortableContext items={silos.map(s => s.id)} strategy={verticalListSortingStrategy}>
                 {silos.map(silo => (
                   <SortableSiloItem key={silo.id} silo={silo} companyId={companyId} projectId={projectId} />
                 ))}
             </SortableContext>
-        </Accordion>
+        </div>
       <DragOverlay>
         {activeSilo ? (
              <Card className="shadow-2xl">
-                 <AccordionItem value={activeSilo.id} className="border-none">
-                    <AccordionTrigger className={cn("p-4 text-lg font-medium hover:no-underline pr-12")}>
-                        <div className="flex-1 text-left flex items-center gap-2">
-                            <GripVertical className="h-5 w-5 text-muted-foreground" />
-                            <span>{activeSilo.name}</span>
-                        </div>
-                    </AccordionTrigger>
-                </AccordionItem>
+                <CardHeader>
+                  <CardTitle className="flex-1 text-left flex items-center gap-2 text-lg">
+                      <GripVertical className="h-5 w-5 text-muted-foreground" />
+                      <span>{activeSilo.name}</span>
+                  </CardTitle>
+                </CardHeader>
             </Card>
         ) : null}
       </DragOverlay>
