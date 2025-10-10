@@ -1,6 +1,6 @@
 'use client';
 import { collection, doc, addDoc, writeBatch, getDoc, Firestore, DocumentData } from "firebase/firestore";
-import type { Task } from "./types";
+import type { Task, Workspace } from "./types";
 
 interface AddTaskParams {
     workspaceId: string;
@@ -13,32 +13,48 @@ interface AddTaskParams {
 export async function addTask(firestore: Firestore, params: AddTaskParams) {
     const { workspaceId, companyId, projectId, siloId, taskData } = params;
 
-    const taskRef = doc(collection(firestore, `workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks`));
-    const userTaskRef = doc(collection(firestore, `user-tasks/${taskData.assigneeId}/tasks`));
+    const workspaceRef = doc(firestore, 'workspaces', workspaceId);
     const projectRef = doc(firestore, `workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`);
+    const taskRef = doc(collection(firestore, `workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks`));
     
     const batch = writeBatch(firestore);
 
-    // Get the project document to denormalize it
-    const projectSnap = await getDoc(projectRef);
+    // 1. Get workspace and project documents
+    const [workspaceSnap, projectSnap] = await Promise.all([
+        getDoc(workspaceRef),
+        getDoc(projectRef)
+    ]);
+
+    if (!workspaceSnap.exists()) {
+        throw new Error("Workspace not found!");
+    }
     if (!projectSnap.exists()) {
         throw new Error("Project not found to denormalize task!");
     }
-    const projectData = projectSnap.data();
 
-    // 1. Create the original task
+    const workspaceData = workspaceSnap.data() as Workspace;
+    const projectData = projectSnap.data();
+    
+    // 2. Create the original task
     batch.set(taskRef, taskData);
 
-    // 2. Create the denormalized user task
-    batch.set(userTaskRef, {
-        originalTaskId: taskRef.id,
-        workspaceId,
-        companyId,
-        projectId,
-        siloId,
-        task: taskData,
-        project: projectData,
-    });
+    // 3. SECURITY CHECK: Verify assignee is a member of the workspace before denormalizing
+    if (workspaceData.users && workspaceData.users[taskData.assigneeId]) {
+        const userTaskRef = doc(collection(firestore, `user-tasks/${taskData.assigneeId}/tasks`));
+        // Create the denormalized user task
+        batch.set(userTaskRef, {
+            originalTaskId: taskRef.id,
+            workspaceId,
+            companyId,
+            projectId,
+            siloId,
+            task: taskData,
+            project: projectData,
+        });
+    } else {
+        console.warn(`Skipping task denormalization: User ${taskData.assigneeId} is not a member of workspace ${workspaceId}.`);
+    }
+
 
     await batch.commit();
 }
@@ -48,10 +64,24 @@ export async function updateTaskCompletion(firestore: Firestore, originalTaskPat
     const originalTaskRef = doc(firestore, originalTaskPath);
     
     // Find the denormalized task to update. We need to query for it.
-    const userTasksRef = collection(firestore, `user-tasks/${userId}/tasks`);
     const { query, where, getDocs } = await import('firebase/firestore');
+    const userTasksRef = collection(firestore, `user-tasks/${userId}/tasks`);
     const q = query(userTasksRef, where("originalTaskId", "==", originalTaskId));
-    const querySnapshot = await getDocs(q);
+    
+    const [originalTaskSnap, userTasksSnap] = await Promise.all([
+        getDoc(originalTaskRef),
+        getDocs(q)
+    ]);
+
+    if (!originalTaskSnap.exists()) {
+        throw new Error("Original task not found.");
+    }
+    
+    // Security check: ensure the user ID matches the assignee on the original task.
+    if (originalTaskSnap.data().assigneeId !== userId) {
+        console.error(`Security violation: User ${userId} attempted to update a task not assigned to them.`);
+        return;
+    }
 
     const batch = writeBatch(firestore);
 
@@ -59,11 +89,9 @@ export async function updateTaskCompletion(firestore: Firestore, originalTaskPat
     batch.update(originalTaskRef, { completed });
 
     // Update denormalized task(s) - should only be one
-    querySnapshot.forEach(document => {
+    userTasksSnap.forEach(document => {
         batch.update(document.ref, { "task.completed": completed });
     });
 
     await batch.commit();
 }
-
-    
