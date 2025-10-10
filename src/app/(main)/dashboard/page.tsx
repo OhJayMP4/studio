@@ -4,8 +4,8 @@ import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 import { useFirestore } from "@/firebase";
-import { collectionGroup, query, where, getDocs } from "firebase/firestore";
-import type { Project, Task } from "@/lib/types";
+import { collection, query, where, getDocs, collectionGroup } from "firebase/firestore";
+import type { Project, Task, Company } from "@/lib/types";
 import ProjectStatusChart from "@/components/reporting/project-status-chart";
 import TaskPriorityChart from "@/components/reporting/task-priority-chart";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,24 +28,33 @@ function DashboardView() {
     const fetchWorkspaceData = async () => {
       setIsLoading(true);
       try {
-        const workspacePath = `workspaces/${selectedWorkspace.id}`;
+        const workspaceCompaniesRef = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies');
+        const companiesSnapshot = await getDocs(workspaceCompaniesRef);
         
-        const projectsQuery = query(
-          collectionGroup(firestore, 'projects'),
-          where('__name__', '>=', `${workspacePath}/`),
-          where('__name__', '<', `${workspacePath}0`)
-        );
-        const projectsSnap = await getDocs(projectsQuery);
-        const allProjects = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
-        setProjects(allProjects);
+        let allProjects: Project[] = [];
+        let allTasks: Task[] = [];
 
-        const tasksQuery = query(
-          collectionGroup(firestore, 'tasks'),
-          where('__name__', '>=', `${workspacePath}/`),
-          where('__name__', '<', `${workspacePath}0`)
-        );
-        const tasksSnap = await getDocs(tasksQuery);
-        const allTasks = tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
+        for (const companyDoc of companiesSnapshot.docs) {
+          const companyProjectsRef = collection(companyDoc.ref, 'projects');
+          const projectsSnapshot = await getDocs(companyProjectsRef);
+          
+          for (const projectDoc of projectsSnapshot.docs) {
+            allProjects.push({ id: projectDoc.id, ...projectDoc.data() } as Project);
+            
+            const projectSilosRef = collection(projectDoc.ref, 'silos');
+            const silosSnapshot = await getDocs(projectSilosRef);
+
+            for (const siloDoc of silosSnapshot.docs) {
+              const siloTasksRef = collection(siloDoc.ref, 'tasks');
+              const tasksSnapshot = await getDocs(siloTasksRef);
+              tasksSnapshot.forEach(taskDoc => {
+                allTasks.push({ id: taskDoc.id, ...taskDoc.data() } as Task);
+              });
+            }
+          }
+        }
+
+        setProjects(allProjects);
         setTasks(allTasks);
 
       } catch (error) {
