@@ -21,7 +21,7 @@ export default function Home() {
         </CardContent>
         <CardFooter>
           <Button asChild className="w-full">
-            <Link href="/dashboard">Sign In & Go to Dashboard</Link>
+            <Link href="/login">Sign In to Get Started</Link>
           </Button>
         </CardFooter>
       </Card>

@@ -4,8 +4,7 @@ import MainSidebar from "@/components/layout/main-sidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import Header from "@/components/layout/header";
 import { useUser } from "@/firebase";
-import { initiateAnonymousSignIn } from "@/firebase/non-blocking-login";
-import { useAuth } from "@/firebase";
+import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export default function MainLayout({
@@ -14,15 +13,17 @@ export default function MainLayout({
   children: React.ReactNode;
 }) {
   const { user, isUserLoading } = useUser();
-  const auth = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
-    if (!user && !isUserLoading) {
-      initiateAnonymousSignIn(auth);
+    // If auth state is not loading and there's no user, redirect to login.
+    if (!isUserLoading && !user) {
+      router.push('/login');
     }
-  }, [user, isUserLoading, auth]);
+  }, [user, isUserLoading, router]);
 
-  if (isUserLoading) {
+  // While checking for user, show a loading state.
+  if (isUserLoading || !user) {
     return (
       <div className="flex h-screen w-screen items-center justify-center">
         Loading...
@@ -30,6 +31,7 @@ export default function MainLayout({
     );
   }
   
+  // If user is logged in, render the main app layout.
   return (
     <SidebarProvider>
       <MainSidebar />
