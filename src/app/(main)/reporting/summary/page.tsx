@@ -2,7 +2,7 @@
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { useFirestore } from "@/firebase";
 import { Company, Project, Silo, Task, UserProfile } from "@/lib/types";
-import { collection, getDocs, query } from "firebase/firestore";
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { format } from 'date-fns';
 import { Progress } from "@/components/ui/progress";
@@ -40,56 +40,59 @@ export default function SummaryReportPage() {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        if (!selectedWorkspace) return;
+        if (!selectedWorkspace || !firestore) return;
 
         const fetchData = async () => {
             setIsLoading(true);
-            const companiesRef = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies');
-            const companiesSnap = await getDocs(companiesRef);
-            
-            const companiesData = await Promise.all(companiesSnap.docs.map(async (companyDoc) => {
-                const company = { id: companyDoc.id, ...companyDoc.data() } as Company;
+            try {
+                const companiesRef = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies');
+                const companiesSnap = await getDocs(companiesRef);
                 
-                const projectsRef = collection(companyDoc.ref, 'projects');
-                const projectsSnap = await getDocs(projectsRef);
+                const companiesData = await Promise.all(companiesSnap.docs.map(async (companyDoc) => {
+                    const company = { id: companyDoc.id, ...companyDoc.data() } as Company;
+                    
+                    const projectsRef = collection(companyDoc.ref, 'projects');
+                    const projectsSnap = await getDocs(projectsRef);
 
-                const projectsData = await Promise.all(projectsSnap.docs.map(async (projectDoc) => {
-                    const project = { id: projectDoc.id, ...projectDoc.data() } as Project;
+                    const projectsData = await Promise.all(projectsSnap.docs.map(async (projectDoc) => {
+                        const project = { id: projectDoc.id, ...projectDoc.data() } as Project;
 
-                    const silosRef = collection(projectDoc.ref, 'silos');
-                    const silosSnap = await getDocs(query(silosRef));
+                        const silosRef = collection(projectDoc.ref, 'silos');
+                        const silosSnap = await getDocs(query(silosRef, orderBy('order')));
 
-                    const silosData = await Promise.all(silosSnap.docs.map(async (siloDoc) => {
-                        const silo = { id: siloDoc.id, ...siloDoc.data() } as Silo;
+                        const silosData = await Promise.all(silosSnap.docs.map(async (siloDoc) => {
+                            const silo = { id: siloDoc.id, ...siloDoc.data() } as Silo;
 
-                        const tasksRef = collection(siloDoc.ref, 'tasks');
-                        const tasksSnap = await getDocs(query(tasksRef));
-                        const tasksData = tasksSnap.docs.map(taskDoc => ({ id: taskDoc.id, ...taskDoc.data() } as Task));
-                        
-                        return { ...silo, tasks: tasksData };
+                            const tasksRef = collection(siloDoc.ref, 'tasks');
+                            const tasksSnap = await getDocs(query(tasksRef));
+                            const tasksData = tasksSnap.docs.map(taskDoc => ({ id: taskDoc.id, ...taskDoc.data() } as Task));
+                            
+                            return { ...silo, tasks: tasksData };
+                        }));
+
+                        return { ...project, silos: silosData };
                     }));
 
-                    return { ...project, silos: silosData };
+                    return { ...company, projects: projectsData };
                 }));
 
-                return { ...company, projects: projectsData };
-            }));
-
-            const users: { [uid: string]: UserProfile } = {};
-            if (selectedWorkspace.users) {
-                for (const uid in selectedWorkspace.users) {
-                    users[uid] = {
-                        uid: uid,
-                        name: selectedWorkspace.users[uid].name || 'Unknown',
-                        email: null, // email is not stored in workspace data
-                        avatarUrl: selectedWorkspace.users[uid].avatarUrl || null,
-                    };
+                const users: { [uid: string]: UserProfile } = {};
+                if (selectedWorkspace.users) {
+                    for (const uid in selectedWorkspace.users) {
+                        users[uid] = {
+                            uid: uid,
+                            name: selectedWorkspace.users[uid].name || 'Unknown',
+                            email: null, // email is not stored in workspace data
+                            avatarUrl: selectedWorkspace.users[uid].avatarUrl || null,
+                        };
+                    }
                 }
+                setReportData({ companies: companiesData, users });
+            } catch (error) {
+                console.error("Error fetching report data:", error);
+            } finally {
+                setIsLoading(false);
             }
-
-
-            setReportData({ companies: companiesData, users });
-            setIsLoading(false);
         };
 
         fetchData();
@@ -100,7 +103,7 @@ export default function SummaryReportPage() {
     }
 
     if (!reportData || !selectedWorkspace) {
-        return <div className="p-8 text-center">Please select a workspace to generate a report.</div>
+        return <div className="p-8 text-center">Please select a workspace to generate a report. If you have, there might be no data to display.</div>
     }
 
     return (
@@ -184,6 +187,7 @@ export default function SummaryReportPage() {
                     {company.projects.length === 0 && <p className="text-gray-500 pl-4">No projects in this company.</p>}
                 </div>
             ))}
+             {reportData.companies.length === 0 && <p className="text-gray-500">No companies found in this workspace.</p>}
         </div>
     );
 }

@@ -3,9 +3,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { useFirestore } from "@/firebase";
 import { Project } from "@/lib/types";
-import { collectionGroup, getDocs, query, where } from "firebase/firestore";
+import { collectionGroup, getDocs, query, where, documentId } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { Skeleton } from "../ui/skeleton";
 
 
 export default function ProjectStatusChart({ workspaceId }: { workspaceId: string }) {
@@ -15,38 +16,48 @@ export default function ProjectStatusChart({ workspaceId }: { workspaceId: strin
 
     useEffect(() => {
         const fetchData = async () => {
-            if (!workspaceId) return;
+            if (!workspaceId || !firestore) return;
             setIsLoading(true);
             
-            const projectsQuery = query(
-                collectionGroup(firestore, 'projects'),
-                where('__name__', '>=', `workspaces/${workspaceId}/`),
-                where('__name__', '<', `workspaces/${workspaceId}/\uf8ff`)
-            );
+            try {
+                // Construct the path to the workspace to use in the query
+                const workspacePath = `workspaces/${workspaceId}`;
+                
+                // Query the 'projects' collection group
+                const projectsQuery = query(
+                    collectionGroup(firestore, 'projects'),
+                    // Filter projects that are descendants of the specified workspace
+                    where(documentId(), '>=', `workspaces/${workspaceId}/companies/`),
+                    where(documentId(), '<', `workspaces/${workspaceId}/companies/\uf8ff`)
+                );
             
-            const projectsSnap = await getDocs(projectsQuery);
-            
-            let notStarted = 0;
-            let inProgress = 0;
-            let completed = 0;
+                const projectsSnap = await getDocs(projectsQuery);
+                
+                let notStarted = 0;
+                let inProgress = 0;
+                let completed = 0;
 
-            projectsSnap.docs.forEach(doc => {
-                const project = doc.data() as Project;
-                 if (project.progress === 0) {
-                    notStarted++;
-                } else if (project.progress > 0 && project.progress < 100) {
-                    inProgress++;
-                } else {
-                    completed++;
-                }
-            });
+                projectsSnap.docs.forEach(doc => {
+                    const project = doc.data() as Project;
+                    if (project.progress === 0) {
+                        notStarted++;
+                    } else if (project.progress > 0 && project.progress < 100) {
+                        inProgress++;
+                    } else if (project.progress === 100) {
+                        completed++;
+                    }
+                });
 
-            setChartData([
-                { status: 'Not Started', count: notStarted, fill: 'var(--color-notStarted)' },
-                { status: 'In Progress', count: inProgress, fill: 'var(--color-inProgress)' },
-                { status: 'Completed', count: completed, fill: 'var(--color-completed)' },
-            ]);
-            setIsLoading(false);
+                setChartData([
+                    { status: 'Not Started', count: notStarted, fill: 'var(--color-notStarted)' },
+                    { status: 'In Progress', count: inProgress, fill: 'var(--color-inProgress)' },
+                    { status: 'Completed', count: completed, fill: 'var(--color-completed)' },
+                ]);
+            } catch (error) {
+                console.error("Error fetching project status data:", error);
+            } finally {
+                setIsLoading(false);
+            }
         };
         fetchData();
     }, [firestore, workspaceId]);
@@ -69,6 +80,20 @@ export default function ProjectStatusChart({ workspaceId }: { workspaceId: strin
         },
     }
 
+    if (isLoading) {
+        return (
+            <Card>
+                <CardHeader>
+                    <Skeleton className="h-6 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                </CardHeader>
+                <CardContent>
+                    <Skeleton className="h-48 w-full" />
+                </CardContent>
+            </Card>
+        )
+    }
+
     return (
         <Card>
             <CardHeader>
@@ -84,7 +109,7 @@ export default function ProjectStatusChart({ workspaceId }: { workspaceId: strin
                             tickLine={false}
                             tickMargin={10}
                             axisLine={false}
-                            tickFormatter={(value) => value.slice(0, 3)}
+                            tickFormatter={(value) => value}
                         />
                         <YAxis allowDecimals={false} />
                         <ChartTooltip content={<ChartTooltipContent />} />

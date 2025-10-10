@@ -2,10 +2,11 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart";
 import { Task } from "@/lib/types";
-import { collectionGroup, getDocs, query, where } from "firebase/firestore";
+import { collectionGroup, getDocs, query, where, documentId } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
-import { Pie, PieChart } from "recharts";
+import { Pie, PieChart, Cell } from "recharts";
 import { useFirestore } from "@/firebase";
+import { Skeleton } from "../ui/skeleton";
 
 export default function TaskPriorityChart({ workspaceId }: { workspaceId: string }) {
     const firestore = useFirestore();
@@ -14,33 +15,38 @@ export default function TaskPriorityChart({ workspaceId }: { workspaceId: string
 
     useEffect(() => {
         const fetchData = async () => {
-            if (!workspaceId) return;
+            if (!workspaceId || !firestore) return;
             setIsLoading(true);
 
-            const tasksQuery = query(
-                collectionGroup(firestore, 'tasks'),
-                where('__name__', '>=', `workspaces/${workspaceId}/`),
-                where('__name__', '<', `workspaces/${workspaceId}/\uf8ff`)
-            );
-            const tasksSnap = await getDocs(tasksQuery);
-            
-            let low = 0;
-            let medium = 0;
-            let high = 0;
+            try {
+                const tasksQuery = query(
+                    collectionGroup(firestore, 'tasks'),
+                    where(documentId(), '>=', `workspaces/${workspaceId}/companies/`),
+                    where(documentId(), '<', `workspaces/${workspaceId}/companies/\uf8ff`)
+                );
+                const tasksSnap = await getDocs(tasksQuery);
+                
+                let low = 0;
+                let medium = 0;
+                let high = 0;
 
-            tasksSnap.docs.forEach(doc => {
-                const task = doc.data() as Task;
-                if (task.priority === 'low') low++;
-                if (task.priority === 'medium') medium++;
-                if (task.priority === 'high') high++;
-            });
+                tasksSnap.docs.forEach(doc => {
+                    const task = doc.data() as Task;
+                    if (task.priority === 'low') low++;
+                    if (task.priority === 'medium') medium++;
+                    if (task.priority === 'high') high++;
+                });
 
-            setChartData([
-                { priority: 'low', count: low, fill: 'var(--color-low)' },
-                { priority: 'medium', count: medium, fill: 'var(--color-medium)' },
-                { priority: 'high', count: high, fill: 'var(--color-high)' },
-            ]);
-            setIsLoading(false);
+                setChartData([
+                    { priority: 'Low', count: low, fill: 'var(--color-low)' },
+                    { priority: 'Medium', count: medium, fill: 'var(--color-medium)' },
+                    { priority: 'High', count: high, fill: 'var(--color-high)' },
+                ]);
+            } catch (error) {
+                console.error("Error fetching task priority data:", error);
+            } finally {
+                setIsLoading(false);
+            }
         };
         fetchData();
     }, [firestore, workspaceId]);
@@ -67,6 +73,19 @@ export default function TaskPriorityChart({ workspaceId }: { workspaceId: string
         return chartData.reduce((acc, curr) => acc + curr.count, 0);
     }, [chartData]);
 
+     if (isLoading) {
+        return (
+            <Card>
+                <CardHeader>
+                    <Skeleton className="h-6 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                </CardHeader>
+                <CardContent>
+                    <Skeleton className="h-48 w-full" />
+                </CardContent>
+            </Card>
+        )
+    }
 
     return (
         <Card>
@@ -91,6 +110,9 @@ export default function TaskPriorityChart({ workspaceId }: { workspaceId: string
                             innerRadius={60}
                             strokeWidth={5}
                         >
+                             {chartData.map((entry) => (
+                                <Cell key={`cell-${entry.priority}`} fill={entry.fill} />
+                            ))}
                         </Pie>
                          <ChartLegend
                             content={<ChartLegendContent nameKey="priority" />}

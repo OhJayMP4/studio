@@ -4,7 +4,7 @@ import { useDoc, useFirestore, useMemoFirebase } from "@/firebase";
 import type { Workspace } from "@/lib/types";
 import { doc } from "firebase/firestore";
 import { useParams } from "next/navigation";
-import { format } from 'date-fns';
+import { format, useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import ProjectStatusChart from "@/components/reporting/project-status-chart";
@@ -35,6 +35,8 @@ export default function LiveReportPage() {
     const params = useParams();
     const workspaceId = params.workspaceId as string;
     const firestore = useFirestore();
+    const [currentTime, setCurrentTime] = useState(new Date());
+
 
     const workspaceRef = useMemoFirebase(() => {
         if (!workspaceId) return null;
@@ -42,6 +44,13 @@ export default function LiveReportPage() {
     }, [firestore, workspaceId]);
 
     const { data: workspace, isLoading } = useDoc<Workspace>(workspaceRef);
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setCurrentTime(new Date());
+        }, 1000);
+        return () => clearInterval(timer);
+    }, []);
     
     if (isLoading || !workspace) {
         return <LiveReportLoader />;
@@ -52,7 +61,7 @@ export default function LiveReportPage() {
             <div className="max-w-7xl mx-auto space-y-8">
                 <header>
                     <h1 className="text-4xl font-bold font-headline">Live CEO Report: {workspace.name}</h1>
-                    <p className="text-muted-foreground">Last updated: {format(new Date(), 'PPP p')}</p>
+                    <p className="text-muted-foreground">Last updated: {format(currentTime, 'PPP p')}</p>
                 </header>
 
                 <main className="space-y-8">
