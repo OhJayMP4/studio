@@ -116,7 +116,7 @@ export default function TaskPriorityChart({ workspaceId }: { workspaceId: string
                         </Pie>
                          <ChartLegend
                             content={<ChartLegendContent nameKey="priority" />}
-                            className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/4 [&>*]:justify-center"
+                            className="-translate-y-2 flex-wrap gap-2 [&>*]:basis-1/fouro [&>*]:justify-center"
                         />
                     </PieChart>
                 </ChartContainer>
