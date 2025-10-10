@@ -8,7 +8,6 @@ import { collection, doc, deleteDoc } from "firebase/firestore";
 import type { Company } from "@/lib/types";
 import { AddCompanyDialog } from "@/components/common/add-company-dialog";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { MoreVertical } from "lucide-react";
 import { EditCompanyDialog } from "@/components/common/edit-company-dialog";
@@ -22,6 +21,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { CompanyProgressCard } from "@/components/common/company-progress-card";
 
 
 function CompaniesBreadcrumb() {
@@ -60,7 +60,7 @@ function CompanyActions({ company }: { company: Company }) {
     };
 
     return (
-        <div className="absolute top-2 right-2">
+        <div className="absolute top-2 right-2 z-10">
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon">
@@ -85,7 +85,7 @@ function CompanyActions({ company }: { company: Company }) {
 }
 
 function WorkspaceView() {
-  const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
+  const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
 
   const companiesQuery = useMemoFirebase(() => {
@@ -107,13 +107,9 @@ function WorkspaceView() {
           <CardDescription>Get started by adding your first company to this workspace.</CardDescription>
         </CardHeader>
         <CardContent>
-          {isUserAdmin ? (
-            <AddCompanyDialog>
+          <AddCompanyDialog>
               <Button>Add Company</Button>
-            </AddCompanyDialog>
-          ) : (
-            <p className="text-sm text-muted-foreground">You do not have permission to add companies.</p>
-          )}
+          </AddCompanyDialog>
         </CardContent>
       </Card>
     );
@@ -124,21 +120,13 @@ function WorkspaceView() {
         <CompaniesBreadcrumb />
         <div className="flex justify-between items-center">
             <h1 className="text-3xl font-headline">Companies</h1>
-            {isUserAdmin && <AddCompanyDialog />}
+            <AddCompanyDialog />
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {companies.map((company) => (
-                <Card key={company.id} className="relative hover:shadow-lg transition-shadow">
-                    {isUserAdmin && <CompanyActions company={company} />}
-                    <Link href={`/company/${company.id}`} passHref>
-                        <div className="cursor-pointer">
-                            <CardHeader>
-                                <CardTitle className="pr-8">{company.name}</CardTitle>
-                                <CardDescription>{company.description}</CardDescription>
-                            </CardHeader>
-                        </div>
-                    </Link>
-                </Card>
+                <CompanyProgressCard key={company.id} company={company}>
+                    <CompanyActions company={company} />
+                </CompanyProgressCard>
             ))}
         </div>
     </div>
