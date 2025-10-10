@@ -15,36 +15,42 @@ import { Label } from "../ui/label";
 import React, { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { useFirestore, setDocumentNonBlocking } from "@/firebase";
-import { doc } from "firebase/firestore";
+import { useFirestore, setDocumentNonBlocking, useUser } from "@/firebase";
+import { doc, updateDoc } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 
 export function InviteUserDialog({ children, workspaceId }: { children: React.ReactNode, workspaceId: string }) {
   const { toast } = useToast();
   const router = useRouter();
   const firestore = useFirestore();
+  const { user } = useUser();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"admin" | "contributor" | "viewer">("viewer");
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!email || !role) return;
+    if (!email || !role || !user) return;
 
     // This is a simplification. In a real app, you would use a Cloud Function
     // to look up the user by email, get their UID, and then add them.
     // For now, we'll use a placeholder UID based on the email.
     const placeholderUserId = email.replace(/[^a-zA-Z0-9]/g, '');
-
-    const userRef = doc(firestore, `workspaces/${workspaceId}/users/${placeholderUserId}`);
+    const workspaceRef = doc(firestore, `workspaces/${workspaceId}`);
     
-    setDocumentNonBlocking(userRef, {
-        userId: placeholderUserId, // This is a placeholder
-        email: email,
-        name: email, // Placeholder name
-        avatarUrl: '', // Placeholder avatar
-        role: role,
-    }, { merge: true });
+    // Create the user data object
+    const newUserData = {
+      userId: placeholderUserId,
+      email: email,
+      name: email, // Using email as a placeholder name
+      avatarUrl: '', // Placeholder avatar
+      role: role,
+    };
+
+    // Atomically add a new user to the "users" map field.
+    updateDoc(workspaceRef, {
+        [`users.${placeholderUserId}`]: newUserData
+    });
 
     toast({
         title: "User Invited",

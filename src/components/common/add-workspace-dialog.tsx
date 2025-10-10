@@ -40,9 +40,9 @@ export function AddWorkspaceDialog({ children }: AddWorkspaceDialogProps) {
     const workspaceUserData = {
       userId: user.uid,
       role: 'admin',
-      name: user.displayName || user.email || "Owner",
-      email: user.email,
-      avatarUrl: user.photoURL
+      name: user.displayName || user.email || "Anonymous Owner",
+      email: user.email || "anonymous@example.com",
+      avatarUrl: user.photoURL || ""
     };
 
     // Create the main workspace document with the correct users map structure
