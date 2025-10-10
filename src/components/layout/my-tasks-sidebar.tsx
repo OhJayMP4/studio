@@ -1,27 +1,38 @@
 'use client';
 
 import { AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collectionGroup, query, where } from "firebase/firestore";
-import type { Project, Task } from "@/lib/types";
+import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase";
+import { collection, query, where, orderBy } from "firebase/firestore";
+import type { Project, Task, UserTask } from "@/lib/types";
 import { useMemo, useState } from "react";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { format, isPast, isToday } from "date-fns";
-import { useDocs } from "@/firebase/firestore/use-docs";
 
-function TaskListItem({ task }: { task: Task & { project: Project | undefined, path: string } }) {
+function useUserTasks(userId?: string) {
+    const firestore = useFirestore();
+    
+    const tasksQuery = useMemoFirebase(() => {
+        if (!userId) return null;
+        return query(
+            collection(firestore, `user-tasks/${userId}/tasks`)
+        );
+    }, [firestore, userId]);
+
+    const { data, isLoading, error } = useCollection<UserTask>(tasksQuery);
+    
+    return { data, isLoading, error };
+}
+
+
+function TaskListItem({ userTask }: { userTask: UserTask }) {
+    const { task, project, companyId } = userTask;
     const dueDate = new Date(task.dueDate);
     const isOverdue = !task.completed && isPast(dueDate) && !isToday(dueDate);
 
-    // Extracting workspace/company/project IDs from the task path
-    // Path format: workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}
-    const pathSegments = task.path.split('/');
-    const companyId = pathSegments[3];
-    
-    if (!task.project) {
+    if (!project) {
         return (
             <div className="flex items-center justify-between p-2 rounded-md">
                 <div className="space-y-1">
@@ -40,7 +51,7 @@ function TaskListItem({ task }: { task: Task & { project: Project | undefined, p
             <div className="flex justify-between items-start">
                 <div className="space-y-1">
                     <p className={cn("text-sm font-medium", { "line-through text-muted-foreground": task.completed })}>{task.title}</p>
-                    <p className="text-xs text-muted-foreground">{task.project.name}</p>
+                    <p className="text-xs text-muted-foreground">{project.name}</p>
                 </div>
                 <span className={cn("text-xs", isOverdue ? "text-destructive font-semibold" : "text-muted-foreground")}>
                     {format(dueDate, 'MMM d')}
@@ -52,66 +63,24 @@ function TaskListItem({ task }: { task: Task & { project: Project | undefined, p
 
 export function MyTasks() {
     const { user } = useUser();
-    const firestore = useFirestore();
     const [view, setView] = useState<'active' | 'completed'>('active');
-
-    const tasksQuery = useMemoFirebase(() => {
-        if (!user?.uid) return null;
-        return query(
-            collectionGroup(firestore, 'tasks'),
-            where('assigneeId', '==', user.uid)
-        );
-    }, [firestore, user]);
-
-    const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
+    const { data: userTasks, isLoading } = useUserTasks(user?.uid);
     
-    // Create a list of unique project paths from the fetched tasks
-    const projectPaths = useMemo(() => {
-        if (!tasks) return [];
-        // The path from useCollection is the full path to the task document
-        // e.g. workspaces/{wsId}/companies/{cId}/projects/{pId}/silos/{siloId}/tasks/{taskId}
-        // We need the path to the project document.
-        const paths = tasks.map(task => {
-            const parts = task.path.split('/');
-            // We want the path up to the project ID
-            return parts.slice(0, 6).join('/');
-        });
-        // Return only unique paths
-        return [...new Set(paths)];
-    }, [tasks]);
-
-    // Fetch all unique project documents using the new useDocs hook
-    const { data: projects, isLoading: isLoadingProjects } = useDocs<Project>(projectPaths);
-
-    // Create a map for quick project lookup by ID
-    const projectsById = useMemo(() => {
-        if (!projects) return new Map<string, Project>();
-        return new Map(projects.map(p => [p.id, p]));
-    }, [projects]);
-
-
     const filteredAndSortedTasks = useMemo(() => {
-        if (!tasks) return [];
+        if (!userTasks) return [];
         
-        // Add the corresponding project object to each task
-        const tasksWithProjectData = tasks.map(task => ({
-            ...task,
-            project: projectsById.get(task.projectId)
-        }));
-
-        const filtered = tasksWithProjectData.filter(task => {
-            return view === 'active' ? !task.completed : task.completed;
+        const filtered = userTasks.filter(userTask => {
+            return view === 'active' ? !userTask.task.completed : userTask.task.completed;
         });
 
         // Sort the filtered tasks
         return filtered.sort((a, b) => {
-            const dateA = new Date(a.dueDate).getTime();
-            const dateB = new Date(b.dueDate).getTime();
+            const dateA = new Date(a.task.dueDate).getTime();
+            const dateB = new Date(b.task.dueDate).getTime();
             return view === 'active' ? dateA - dateB : dateB - dateA; // Asc for active, Desc for completed
         });
-    }, [tasks, view, projectsById]);
+    }, [userTasks, view]);
 
-    const isLoading = isLoadingTasks || isLoadingProjects;
 
     return (
         <AccordionItem value="my-tasks" className="border-none">
@@ -148,8 +117,8 @@ export function MyTasks() {
                             </div>
                         )}
                         {!isLoading && filteredAndSortedTasks.length > 0 && (
-                            filteredAndSortedTasks.map(task => (
-                                <TaskListItem key={task.id} task={task} />
+                            filteredAndSortedTasks.map(userTask => (
+                                <TaskListItem key={userTask.id} userTask={userTask} />
                             ))
                         )}
                         {!isLoading && filteredAndSortedTasks.length === 0 && (
@@ -165,3 +134,5 @@ export function MyTasks() {
         </AccordionItem>
     )
 }
+
+    

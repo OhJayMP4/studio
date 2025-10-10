@@ -3,7 +3,7 @@
 import { useFirestore, useMemoFirebase } from "@/firebase";
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Task, UserProfile } from "@/lib/types";
-import { doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { doc, deleteDoc } from "firebase/firestore";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Checkbox } from "../ui/checkbox";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -19,6 +19,7 @@ import { DeleteDialog } from "./delete-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { updateTaskCompletion } from "@/lib/tasks";
 
 interface TaskItemProps {
     task: Task;
@@ -97,9 +98,8 @@ export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
     const { data: assignee } = useDoc<UserProfile>(assigneeRef);
 
     const handleCheckChanged = async (checked: boolean) => {
-        const taskRef = doc(firestore, path);
         try {
-            await updateDoc(taskRef, { completed: checked });
+            await updateTaskCompletion(firestore, path, task.assigneeId, task.id, checked);
         } catch (error) {
             console.error("Failed to update task:", error);
         }
@@ -173,3 +173,5 @@ export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
         </div>
     )
 }
+
+    

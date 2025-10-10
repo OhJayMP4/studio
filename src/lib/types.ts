@@ -54,6 +54,17 @@ export type Task = {
     projectId: string; // Added to link task to project
 };
 
+export type UserTask = {
+    id: string; // This will be the denormalized doc ID
+    originalTaskId: string;
+    workspaceId: string;
+    companyId: string;
+    projectId: string;
+    siloId: string;
+    task: Omit<Task, 'id'>;
+    project: Omit<Project, 'id'>;
+}
+
 export type Sale = {
     id: string;
     date: string; // ISO 8601 date string
@@ -61,3 +72,5 @@ export type Sale = {
     value: number;
     projectId: string;
 }
+
+    

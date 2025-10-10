@@ -218,6 +218,35 @@
         "projectId"
       ]
     },
+    "UserTask": {
+      "title": "User Task",
+      "type": "object",
+      "description": "A denormalized task document for quick lookups by user.",
+      "properties": {
+        "originalTaskId": {
+            "type": "string",
+            "description": "The original ID of the task document."
+        },
+        "workspaceId": {
+            "type": "string"
+        },
+        "companyId": {
+            "type": "string"
+        },
+        "siloId": {
+            "type": "string"
+        },
+        "task": {
+            "$ref": "#/entities/Task"
+        },
+        "project": {
+            "$ref": "#/entities/Project"
+        }
+      },
+      "required": [
+        "originalTaskId", "workspaceId", "companyId", "siloId", "task", "project"
+      ]
+    },
     "Sale": {
       "title": "Sale",
       "type": "object",
@@ -291,6 +320,12 @@
       },
       "description": "Stores the individual tasks within a silo."
     },
+    "/user-tasks/{userId}/tasks/{taskId}": {
+      "schema": {
+          "$ref": "#/entities/UserTask"
+      },
+      "description": "Denormalized tasks for a specific user for efficient lookup."
+    },
     "/workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}": {
       "schema": {
         "$ref": "#/entities/Sale"
@@ -299,3 +334,5 @@
     }
   }
 }
+
+    

@@ -18,7 +18,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFirestore } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { addDoc, collection } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { CalendarIcon, PlusCircle } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
@@ -34,6 +33,7 @@ import {
 } from '@/components/ui/select';
 import type { Workspace } from '@/lib/types';
 import { FormControl, FormField, FormItem, FormMessage } from '../ui/form';
+import { addTask } from '@/lib/tasks';
 
 const formSchema = z.object({
   title: z.string().min(1, 'Task title is required.'),
@@ -84,14 +84,19 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
     }
 
     try {
-      const tasksCollection = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', projectId, 'silos', siloId, 'tasks');
-      await addDoc(tasksCollection, {
-        title: data.title,
-        dueDate: data.dueDate.toISOString(),
-        priority: data.priority,
-        assigneeId: data.assigneeId,
-        completed: false,
-        projectId: projectId,
+      await addTask(firestore, {
+        workspaceId: selectedWorkspace.id,
+        companyId,
+        projectId,
+        siloId,
+        taskData: {
+          title: data.title,
+          dueDate: data.dueDate.toISOString(),
+          priority: data.priority,
+          assigneeId: data.assigneeId,
+          completed: false,
+          projectId: projectId,
+        }
       });
       
       toast({
@@ -110,16 +115,20 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
     }
   };
   
+  const trigger = children ? (
+    <DialogTrigger asChild>{children}</DialogTrigger>
+  ) : (
+    <DialogTrigger asChild>
+      <Button variant="ghost" size="sm">
+        <PlusCircle className="mr-2" />
+        Add Task
+      </Button>
+    </DialogTrigger>
+  );
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        {children || (
-          <Button variant="ghost" size="sm">
-            <PlusCircle className="mr-2" />
-            Add Task
-          </Button>
-        )}
-      </DialogTrigger>
+      {trigger}
       <DialogContent className="sm:max-w-[425px]">
         <FormProvider {...form}>
           <form onSubmit={form.handleSubmit(handleCreateTask)}>
@@ -236,3 +245,5 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
     </Dialog>
   );
 }
+
+    

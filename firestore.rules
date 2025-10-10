@@ -1,105 +1,223 @@
 /**
- * @fileOverview Firestore Security Rules for the application.
+ * @file
+ * @description Firestore Security Rules for the application.
  *
  * Core Philosophy:
- * This ruleset is in PROTOTYPE MODE and allows completely open read and write access to all data.
- * BEFORE deploying to production, you MUST lock down these rules based on your application's
- * security requirements. This initial state is intended for rapid prototyping and development only.
+ * This ruleset prioritizes secure data access based on user roles within workspaces
+ * and ownership for user-specific data. It enforces strict authorization for all write operations
+ * while allowing public read access to certain collections where ownership is validated on creation.
+ * Data shape validation is minimized to allow for rapid prototyping.
  *
  * Data Structure:
- * The Firestore database is structured as follows:
- * - /users/{userId}: Stores user profile information.
- * - /workspaces/{workspaceId}: Stores workspace data, including member roles.
- * - /workspaces/{workspaceId}/companies/{companyId}: Stores company data within a workspace.
- * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}: Stores project data within a company.
- * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}: Stores silos (task containers) for a project.
- * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}: Stores individual tasks within a silo.
- * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}: Stores individual sales logged for a project.
+ * - User profiles are stored under `/users/{userId}`.
+ * - Workspaces are stored under `/workspaces/{workspaceId}`, containing information about members and their roles.
+ * - Companies, projects, silos, tasks, and sales are nested hierarchically under workspaces.
+ * - User specific tasks are denormalized in `/users/{userId}/tasks/{taskId}`
  *
  * Key Security Decisions:
- * - All read and write access is currently open to all users (authenticated or not).
- * - No data validation is performed in this prototype mode.
- * - This is for prototyping only, and will require a more granular approach later.
+ * - Users can only read and write their own profile data.
+ * - Workspace access is controlled by the `users` map within each workspace document.
+ * - Listing user profiles is disallowed.
+ * - Public read access is granted to the `/workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}` collection, but write access is restricted to validated owners.
+ *
+ * Denormalization for Authorization:
+ * - Workspace documents contain a `users` map that stores user roles, enabling efficient authorization checks without additional reads.
+ * - User specific tasks are denormalized in `/users/{userId}/tasks/{taskId}`
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Allows any user to read or write user profile information.
+     * @description Controls access to user profile documents.
      * @path /users/{userId}
-     * @allow (read, write) - Any user can read or write any user profile.
-     * @principle PROTOTYPE MODE - LOCK DOWN BEFORE PROD.
+     * @allow (read, write) if the requesting user's UID matches the user ID in the path.
+     * @deny (read, write) if the requesting user's UID does not match the user ID in the path.
+     * @principle Enforces document ownership for all operations on user profiles.
      */
     match /users/{userId} {
-      allow get, list: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
-      allow create, update, delete: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
+      // Verified Identity:  All authorization decisions must rely on `request.auth` as the source of truth.
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      // Flexible Access Control Patterns: Ownership: Use for paths like `/users/{userId}/...`. The primary helper function here should be `isOwner(userId)`.
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
+
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId);
     }
 
     /**
-     * @description Allows any user to read or write workspace data.
+     * @description Controls access to user tasks documents.
+     * @path /users/{userId}/tasks/{taskId}
+     * @allow (read, write) if the requesting user's UID matches the user ID in the path.
+     * @deny (read, write) if the requesting user's UID does not match the user ID in the path.
+     */
+    match /users/{userId}/tasks/{taskId} {
+      // Verified Identity:  All authorization decisions must rely on `request.auth` as the source of truth.
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      // Flexible Access Control Patterns: Ownership: Use for paths like `/users/{userId}/...`. The primary helper function here should be `isOwner(userId)`.
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
+
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId);
+    }
+
+    /**
+     * @description Controls access to workspace documents.
      * @path /workspaces/{workspaceId}
-     * @allow (read, write) - Any user can read or write any workspace.
-     * @principle PROTOTYPE MODE - LOCK DOWN BEFORE PROD.
+     * @allow (read, write) if the requesting user is a member of the workspace.
+     * @deny (read, write) if the requesting user is not a member of the workspace.
+     * @principle Enforces role-based access control for workspaces.
      */
     match /workspaces/{workspaceId} {
-      allow get, list: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
-      allow create, update, delete: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
-
-      /**
-       * @description Allows any user to read or write company data within a workspace.
-       * @path /workspaces/{workspaceId}/companies/{companyId}
-       * @allow (read, write) - Any user can read or write any company.
-       * @principle PROTOTYPE MODE - LOCK DOWN BEFORE PROD.
-       */
-      match /companies/{companyId} {
-        allow get, list: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
-        allow create, update, delete: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
-
-        /**
-         * @description Allows any user to read or write project data within a company.
-         * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}
-         * @allow (read, write) - Any user can read or write any project.
-         * @principle PROTOTYPE MODE - LOCK DOWN BEFORE PROD.
-         */
-        match /projects/{projectId} {
-          allow get, list: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
-          allow create, update, delete: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
-
-          /**
-           * @description Allows any user to read or write silo data within a project.
-           * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}
-           * @allow (read, write) - Any user can read or write any silo.
-           * @principle PROTOTYPE MODE - LOCK DOWN BEFORE PROD.
-           */
-          match /silos/{siloId} {
-            allow get, list: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
-            allow create, update, delete: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
-
-            /**
-             * @description Allows any user to read or write task data within a silo.
-             * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}
-             * @allow (read, write) - Any user can read or write any task.
-             * @principle PROTOTYPE MODE - LOCK DOWN BEFORE PROD.
-             */
-            match /tasks/{taskId} {
-              allow get, list: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
-              allow create, update, delete: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
-            }
-          }
-
-          /**
-           * @description Allows any user to read or write sale data within a project.
-           * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}
-           * @allow (read, write) - Any user can read or write any sale.
-           * @principle PROTOTYPE MODE - LOCK DOWN BEFORE PROD.
-           */
-          match /sales/{saleId} {
-            allow get, list: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
-            allow create, update, delete: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
-          }
-        }
+      function isSignedIn() {
+        return request.auth != null;
       }
+
+      function isWorkspaceMember(workspaceId) {
+        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid] != null;
+      }
+
+      function isWorkspaceAdmin(workspaceId) {
+        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == 'admin';
+      }
+
+      allow get: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow list: if false;
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isSignedIn() && isWorkspaceAdmin(workspaceId);
+      allow delete: if isSignedIn() && isWorkspaceAdmin(workspaceId);
+    }
+
+    /**
+     * @description Controls access to company documents within a workspace.
+     * @path /workspaces/{workspaceId}/companies/{companyId}
+     * @allow (read, write) if the requesting user is a member of the workspace.
+     * @deny (read, write) if the requesting user is not a member of the workspace.
+     * @principle Enforces role-based access control for companies within workspaces.
+     */
+    match /workspaces/{workspaceId}/companies/{companyId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isWorkspaceMember(workspaceId) {
+        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid] != null;
+      }
+
+      allow get: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow list: if false;
+      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow delete: if isSignedIn() && isWorkspaceMember(workspaceId);
+    }
+
+    /**
+     * @description Controls access to project documents within a company.
+     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}
+     * @allow (read, write) if the requesting user is a member of the workspace.
+     * @deny (read, write) if the requesting user is not a member of the workspace.
+     * @principle Enforces role-based access control for projects within companies.
+     */
+    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isWorkspaceMember(workspaceId) {
+        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid] != null;
+      }
+
+      allow get: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow list: if false;
+      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow delete: if isSignedIn() && isWorkspaceMember(workspaceId);
+    }
+
+    /**
+     * @description Controls access to silo documents within a project.
+     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}
+     * @allow (read, write) if the requesting user is a member of the workspace.
+     * @deny (read, write) if the requesting user is not a member of the workspace.
+     * @principle Enforces role-based access control for silos within projects.
+     */
+    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isWorkspaceMember(workspaceId) {
+        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid] != null;
+      }
+
+      allow get: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow list: if false;
+      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow delete: if isSignedIn() && isWorkspaceMember(workspaceId);
+    }
+
+    /**
+     * @description Controls access to task documents within a silo.
+     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}
+     * @allow (read) to anyone.
+     * @allow (create, update, delete) if the requesting user is a member of the workspace.
+     * @deny (create, update, delete) if the requesting user is not a member of the workspace.
+     * @principle Allows public read access but restricts write access to workspace members.
+     */
+    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isWorkspaceMember(workspaceId) {
+        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid] != null;
+      }
+
+      allow get: if true;
+      allow list: if false;
+      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow delete: if isSignedIn() && isWorkspaceMember(workspaceId);
+    }
+
+    /**
+     * @description Controls access to sale documents within a project.
+     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}
+     * @allow (read, write) if the requesting user is a member of the workspace.
+     * @deny (read, write) if the requesting user is not a member of the workspace.
+     * @principle Enforces role-based access control for sales within projects.
+     */
+    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isWorkspaceMember(workspaceId) {
+        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid] != null;
+      }
+
+      allow get: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow list: if false;
+      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
+      allow delete: if isSignedIn() && isWorkspaceMember(workspaceId);
     }
   }
 }
