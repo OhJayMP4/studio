@@ -65,21 +65,25 @@ export function MyTasks() {
 
     const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
     
-    // Create a list of unique project IDs from the fetched tasks
+    // Create a list of unique project paths from the fetched tasks
     const projectPaths = useMemo(() => {
         if (!tasks) return [];
+        // The path from useCollection is the full path to the task document
+        // e.g. workspaces/{wsId}/companies/{cId}/projects/{pId}/silos/{siloId}/tasks/{taskId}
+        // We need the path to the project document.
         const paths = tasks.map(task => {
             const parts = task.path.split('/');
-            // workspaces/{wsId}/companies/{cId}/projects/{pId}/...
+            // We want the path up to the project ID
             return parts.slice(0, 6).join('/');
         });
+        // Return only unique paths
         return [...new Set(paths)];
     }, [tasks]);
 
-    // Fetch all unique project documents
+    // Fetch all unique project documents using the new useDocs hook
     const { data: projects, isLoading: isLoadingProjects } = useDocs<Project>(projectPaths);
 
-    // Create a map for quick project lookup
+    // Create a map for quick project lookup by ID
     const projectsById = useMemo(() => {
         if (!projects) return new Map<string, Project>();
         return new Map(projects.map(p => [p.id, p]));
@@ -89,6 +93,7 @@ export function MyTasks() {
     const filteredAndSortedTasks = useMemo(() => {
         if (!tasks) return [];
         
+        // Add the corresponding project object to each task
         const tasksWithProjectData = tasks.map(task => ({
             ...task,
             project: projectsById.get(task.projectId)
@@ -98,10 +103,11 @@ export function MyTasks() {
             return view === 'active' ? !task.completed : task.completed;
         });
 
+        // Sort the filtered tasks
         return filtered.sort((a, b) => {
             const dateA = new Date(a.dueDate).getTime();
             const dateB = new Date(b.dueDate).getTime();
-            return view === 'active' ? dateA - dateB : dateB - dateA;
+            return view === 'active' ? dateA - dateB : dateB - dateA; // Asc for active, Desc for completed
         });
     }, [tasks, view, projectsById]);
 
