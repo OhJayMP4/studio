@@ -31,13 +31,14 @@ import { Skeleton } from '../ui/skeleton';
 
 export function WorkspaceSwitcher() {
   const [popoverOpen, setPopoverOpen] = useState(false);
-  const [addWorkspaceOpen, setAddWorkspaceOpen] = useState(false);
   const { user } = useUser();
   const firestore = useFirestore();
   const { selectedWorkspace, setSelectedWorkspace } = useSelectedWorkspace();
 
   const workspacesQuery = useMemoFirebase(() => {
     if (!user) return null;
+    // FIXED: Scoped to user
+    // This query now correctly fetches only the workspaces where the user is a member.
     return query(
       collection(firestore, 'workspaces'),
       where('memberIds', 'array-contains', user.uid)
