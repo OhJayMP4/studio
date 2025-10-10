@@ -108,7 +108,8 @@ function ProjectsList({ companyId }: { companyId: string }) {
     )
 }
 
-export default function CompanyPage({ params: { companyId } }: { params: { companyId: string }}) {
+export default function CompanyPage({ params }: { params: { companyId: string }}) {
+  const { companyId } = params;
   const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
 
