@@ -11,8 +11,7 @@ import { AddSiloButton } from "@/components/common/add-silo-button";
 import { collection, doc } from "firebase/firestore";
 import type { Project, Silo } from "@/lib/types";
 
-export default function ProjectPage({ params }: { params: { workspaceId: string, companyId: string, projectId: string } }) {
-    const { workspaceId, companyId, projectId } = params;
+export default function ProjectPage({ params: { workspaceId, companyId, projectId } }: { params: { workspaceId: string, companyId: string, projectId: string } }) {
     const firestore = useFirestore();
 
     const projectRef = useMemoFirebase(() => doc(firestore, "companies", companyId, "projects", projectId), [firestore, companyId, projectId]);

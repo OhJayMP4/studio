@@ -10,8 +10,7 @@ import { AddProjectButton } from "@/components/common/add-project-button";
 import { collection, doc } from "firebase/firestore";
 import type { Company, Project } from "@/lib/types";
 
-export default function CompanyPage({ params }: { params: { workspaceId: string, companyId: string } }) {
-    const { workspaceId, companyId } = params;
+export default function CompanyPage({ params: { workspaceId, companyId } }: { params: { workspaceId: string, companyId: string } }) {
     const firestore = useFirestore();
 
     const companyRef = useMemoFirebase(() => doc(firestore, "workspaces", workspaceId, "companies", companyId), [firestore, workspaceId, companyId]);
