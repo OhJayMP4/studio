@@ -175,17 +175,26 @@
           "type": "string",
           "description": "The title of the task."
         },
-        "description": {
-          "type": "string",
-          "description": "A detailed description of the task."
+        "completed": {
+          "type": "boolean",
+          "description": "Whether the task has been completed."
         },
-        "status": {
+        "dueDate": {
             "type": "string",
-            "enum": ["todo", "in_progress", "done", "archived"],
-            "description": "The current status of the task."
+            "format": "date-time",
+            "description": "The due date for the task."
+        },
+        "priority": {
+            "type": "string",
+            "enum": ["low", "medium", "high"],
+            "description": "The priority of the task."
+        },
+        "assigneeId": {
+            "type": "string",
+            "description": "The UID of the user assigned to this task."
         }
       },
-      "required": ["title", "status"]
+      "required": ["title", "completed", "priority", "assigneeId", "dueDate"]
     }
   },
   "auth": {

@@ -46,6 +46,8 @@ export type Silo = {
 export type Task = {
     id: string;
     title: string;
-    description?: string;
-    status: 'todo' | 'in_progress' | 'done' | 'archived';
+    completed: boolean;
+    dueDate: string; // ISO 8601 date string
+    priority: 'low' | 'medium' | 'high';
+    assigneeId: string;
 };

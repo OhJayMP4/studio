@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
-import type { Company, Project, Silo } from '@/lib/types';
+import type { Company, Project, Silo, Task } from '@/lib/types';
 import { collection, doc, query, orderBy } from 'firebase/firestore';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -24,6 +24,11 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
+import { AddTaskDialog } from '@/components/common/add-task-dialog';
+import { TaskItem } from '@/components/common/task-item';
+import { Progress } from '@/components/ui/progress';
+import { CheckCircle2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 function ProjectBreadcrumb({
   company,
@@ -82,6 +87,57 @@ function NoSilosView({ companyId, projectId }: { companyId: string, projectId: s
   );
 }
 
+function SiloItem({ silo, companyId, projectId }: { silo: Silo, companyId: string, projectId: string }) {
+  const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
+  const firestore = useFirestore();
+
+  const tasksQuery = useMemoFirebase(() => {
+    if (!selectedWorkspace) return null;
+    return collection(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', projectId, 'silos', silo.id, 'tasks');
+  }, [firestore, selectedWorkspace, companyId, projectId, silo.id]);
+
+  const { data: tasks, isLoading: tasksLoading } = useCollection<Task>(tasksQuery);
+
+  const completedTasks = tasks?.filter(t => t.completed).length || 0;
+  const totalTasks = tasks?.length || 0;
+  const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+  const isSiloComplete = progress === 100 && totalTasks > 0;
+
+  return (
+    <AccordionItem key={silo.id} value={silo.id} className="border-none">
+      <Card>
+          <AccordionTrigger className={cn("p-4 text-lg font-medium hover:no-underline", { "text-muted-foreground line-through": isSiloComplete })}>
+            <div className="flex-1 text-left flex items-center gap-2">
+              {isSiloComplete && <CheckCircle2 className="text-green-500" />}
+              <span>{silo.name}</span>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent>
+            <div className='px-4 pb-4 space-y-4'>
+                <div className="space-y-2">
+                  <Progress value={progress} />
+                  <p className="text-xs text-muted-foreground text-right">{completedTasks} of {totalTasks} tasks complete</p>
+                </div>
+                <div className="border rounded-md">
+                    {tasksLoading && <div className="p-4 text-center text-sm">Loading tasks...</div>}
+                    {tasks && tasks.length > 0 ? (
+                      <div className="divide-y">
+                        {tasks.map(task => (
+                           <TaskItem key={task.id} task={task} path={`workspaces/${selectedWorkspace?.id}/companies/${companyId}/projects/${projectId}/silos/${silo.id}/tasks/${task.id}`} />
+                        ))}
+                      </div>
+                    ) : (
+                      !tasksLoading && <p className="p-4 text-center text-sm text-muted-foreground">No tasks in this silo yet.</p>
+                    )}
+                </div>
+                 {isUserAdmin && <AddTaskDialog companyId={companyId} projectId={projectId} siloId={silo.id} />}
+            </div>
+          </AccordionContent>
+      </Card>
+    </AccordionItem>
+  )
+}
+
 function SilosList({ companyId, projectId }: { companyId: string, projectId: string }) {
   const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
@@ -106,9 +162,9 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
       </div>
     );
   }
@@ -123,20 +179,9 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
         <h2 className="text-2xl font-headline">Silos</h2>
         {isUserAdmin && <AddSiloDialog companyId={companyId} projectId={projectId} />}
       </div>
-      <Accordion type="multiple" defaultValue={silos.map(s => s.id)} className="w-full space-y-2">
+      <Accordion type="multiple" defaultValue={silos.map(s => s.id)} className="w-full space-y-4">
         {silos.map(silo => (
-          <AccordionItem key={silo.id} value={silo.id} className="border-none">
-             <Card>
-                <AccordionTrigger className="p-6 text-lg font-medium hover:no-underline">
-                  {silo.name}
-                </AccordionTrigger>
-                <AccordionContent>
-                  <CardContent>
-                    <p>Tasks for {silo.name} will go here.</p>
-                  </CardContent>
-                </AccordionContent>
-            </Card>
-          </AccordionItem>
+          <SiloItem key={silo.id} silo={silo} companyId={companyId} projectId={projectId} />
         ))}
       </Accordion>
     </div>
