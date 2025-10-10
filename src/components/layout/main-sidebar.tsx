@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   Plus,
   Building,
+  BarChart,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -94,6 +95,14 @@ export default function MainSidebar() {
                   <Link href="/dashboard">
                     <LayoutDashboard />
                     <span>Dashboard</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton tooltip="Reporting" asChild isActive={isActive('/reporting')}>
+                  <Link href="/reporting">
+                    <BarChart />
+                    <span>Reporting</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
