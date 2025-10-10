@@ -1,8 +1,8 @@
 'use client';
 
-import { useDoc, useFirestore, useMemoFirebase } from "@/firebase";
-import type { Workspace } from "@/lib/types";
-import { doc } from "firebase/firestore";
+import { useDoc, useFirestore, useMemoFirebase, useCollection } from "@/firebase";
+import type { Workspace, Project, Task } from "@/lib/types";
+import { collectionGroup, doc, query, where, getDocs } from "firebase/firestore";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
@@ -38,13 +38,35 @@ export default function LiveReportPage() {
     const firestore = useFirestore();
     const [currentTime, setCurrentTime] = useState(new Date());
 
-
     const workspaceRef = useMemoFirebase(() => {
         if (!workspaceId) return null;
         return doc(firestore, 'workspaces', workspaceId);
     }, [firestore, workspaceId]);
 
-    const { data: workspace, isLoading } = useDoc<Workspace>(workspaceRef);
+    const { data: workspace, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceRef);
+
+    const projectsQuery = useMemoFirebase(() => {
+      if (!workspaceId) return null;
+       const workspacePath = `workspaces/${workspaceId}`;
+       return query(
+          collectionGroup(firestore, 'projects'),
+          where('__name__', '>=', `${workspacePath}/`),
+          where('__name__', '<', `${workspacePath}0`)
+        );
+    }, [firestore, workspaceId]);
+    const { data: projects, isLoading: isLoadingProjects } = useCollection<Project>(projectsQuery);
+
+    const tasksQuery = useMemoFirebase(() => {
+        if (!workspaceId) return null;
+        const workspacePath = `workspaces/${workspaceId}`;
+        return query(
+          collectionGroup(firestore, 'tasks'),
+          where('__name__', '>=', `${workspacePath}/`),
+          where('__name__', '<', `${workspacePath}0`)
+        );
+    }, [firestore, workspaceId]);
+    const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
+
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -52,8 +74,10 @@ export default function LiveReportPage() {
         }, 1000);
         return () => clearInterval(timer);
     }, []);
+
+    const isLoading = isLoadingWorkspace || isLoadingProjects || isLoadingTasks;
     
-    if (isLoading || !workspace) {
+    if (isLoading || !workspace || !projects || !tasks) {
         return <LiveReportLoader />;
     }
 
@@ -67,8 +91,8 @@ export default function LiveReportPage() {
 
                 <main className="space-y-8">
                     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                       <ProjectStatusChart workspaceId={workspaceId} />
-                       <TaskPriorityChart workspaceId={workspaceId} />
+                       <ProjectStatusChart projects={projects} isLoading={isLoadingProjects} />
+                       <TaskPriorityChart tasks={tasks} isLoading={isLoadingTasks} />
                          <Card>
                             <CardHeader>
                                 <CardTitle>Coming Soon</CardTitle>

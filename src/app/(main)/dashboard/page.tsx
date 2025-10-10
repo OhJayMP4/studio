@@ -28,24 +28,21 @@ function DashboardView() {
     const fetchWorkspaceData = async () => {
       setIsLoading(true);
       try {
-        // Construct the correct path prefix for the document ID range query
         const workspacePath = `workspaces/${selectedWorkspace.id}`;
         
-        // Fetch all projects within the workspace using a collectionGroup query
         const projectsQuery = query(
           collectionGroup(firestore, 'projects'),
-          where('__name__', '>=', `${workspacePath}/companies/`),
-          where('__name__', '<', `${workspacePath}/companies0`) // '0' is the next char after '/'
+          where('__name__', '>=', `${workspacePath}/`),
+          where('__name__', '<', `${workspacePath}0`)
         );
         const projectsSnap = await getDocs(projectsQuery);
         const allProjects = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
         setProjects(allProjects);
 
-        // Fetch all tasks within the workspace using a collectionGroup query
         const tasksQuery = query(
           collectionGroup(firestore, 'tasks'),
-           where('__name__', '>=', `${workspacePath}/companies/`),
-           where('__name__', '<', `${workspacePath}/companies0`)
+          where('__name__', '>=', `${workspacePath}/`),
+          where('__name__', '<', `${workspacePath}0`)
         );
         const tasksSnap = await getDocs(tasksQuery);
         const allTasks = tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
