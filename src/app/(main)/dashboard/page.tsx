@@ -8,8 +8,6 @@ import { AddCompanyDialog } from '@/components/common/add-company-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import Image from 'next/image';
-
-// This context will be used by the parent layout to provide the selected workspace.
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 
 function NoCompaniesState() {
@@ -63,18 +61,30 @@ function CompaniesGrid({ companies }: { companies: Company[] }) {
   );
 }
 
-
-export default function DashboardPage() {
-    const { selectedWorkspace } = useSelectedWorkspace();
+function WorkspaceView({ workspaceId }: { workspaceId: string }) {
     const firestore = useFirestore();
 
     const companiesQuery = useMemoFirebase(() => {
-        if (!selectedWorkspace) return null;
-        return query(collection(firestore, 'workspaces', selectedWorkspace.id, 'companies'));
-    }, [firestore, selectedWorkspace]);
+        return query(collection(firestore, 'workspaces', workspaceId, 'companies'));
+    }, [firestore, workspaceId]);
 
     const { data: companies, isLoading } = useCollection<Company>(companiesQuery);
 
+    if (isLoading) {
+        return <div>Loading companies...</div>
+    }
+
+    if (!companies || companies.length === 0) {
+      return <NoCompaniesState />;
+    }
+
+    return <CompaniesGrid companies={companies} />;
+}
+
+
+export default function DashboardPage() {
+    const { selectedWorkspace } = useSelectedWorkspace();
+    
     if (!selectedWorkspace) {
         return (
             <div className="flex h-[450px] shrink-0 items-center justify-center rounded-md border border-dashed">
@@ -89,13 +99,5 @@ export default function DashboardPage() {
         );
     }
     
-    if (isLoading) {
-        return <div>Loading companies...</div>
-    }
-
-    if (!companies || companies.length === 0) {
-      return <NoCompaniesState />;
-    }
-
-    return <CompaniesGrid companies={companies} />;
+    return <WorkspaceView workspaceId={selectedWorkspace.id} />;
 }
