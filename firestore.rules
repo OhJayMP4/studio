@@ -1,105 +1,75 @@
 /**
- * @fileoverview Firestore Security Rules for the application.
+ * @fileoverview Firestore Security Rules for Prototyping.
  *
  * Core Philosophy:
- * This ruleset enforces a user-ownership model for user profiles and a role-based access control model for workspaces.
+ * This ruleset is in prototyping mode. All reads and writes are allowed for all authenticated users,
+ * facilitating rapid development and iteration.  This is not suitable for production.
  *
  * Data Structure:
- * - User profiles are stored under `/users/{userId}`.
- * - Workspaces are stored under `/workspaces/{workspaceId}`.
- * - Companies are stored under `/workspaces/{workspaceId}/companies/{companyId}`.
+ * - /users/{userId}: Stores user profile information.  Access is open to authenticated users.
+ * - /workspaces/{workspaceId}: Stores workspace data. Access is open to authenticated users.
+ * - /workspaces/{workspaceId}/companies/{companyId}: Stores company data. Access is open to authenticated users.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}: Stores project data. Access is open to authenticated users.
  *
  * Key Security Decisions:
- * - Users can only read/write their own profile data.
- * - Workspace access is controlled by roles defined in the `users` map within the workspace document.
- * - Only workspace members can create companies in a workspace.
- * - Data validation is relaxed in this prototyping phase, focusing on authorization and relational integrity.
+ * - Open Access: All read and write operations are allowed for any authenticated user to enable rapid prototyping.
  *
- * Denormalization for Authorization:
- * - Workspace documents denormalize user roles into the `users` map for efficient access control.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Helper function to check if the user is signed in.
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
     /**
-     * @description Controls access to user profile documents.
-     * @path /users/{userId}
-     * @allow (get, update, delete): Authenticated user can only access their own profile.
-     * @allow (create): Authenticated user can create their own profile with matching uid.
-     * @deny (get, list): Non-authenticated user can not access profiles.
-     * @deny (create, update, delete): Authenticated user can not access other user profiles.
-     * @principle Enforces document ownership for user profiles.
+     * @description: Allows any authenticated user to read and write user profile data.
+     * @path: /users/{userId}
+     * @allow: (get, list, create, update, delete) - Any signed-in user can perform any operation.
+     * @deny: None (Prototyping mode)
+     * @principle: Open access for authenticated users during prototyping.
      */
     match /users/{userId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      function isOwner(userId) {
-        return request.auth.uid == userId;
-      }
-
-      function isExistingOwner(userId) {
-        return isOwner(userId) && resource != null;
-      }
-
-      allow get: if isSignedIn() && isOwner(userId);
-      allow list: if false;
-      allow create: if isSignedIn() && isOwner(userId);
-      allow update: if isExistingOwner(userId);
-      allow delete: if isExistingOwner(userId);
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isSignedIn();
     }
 
     /**
-     * @description Controls access to workspace documents.
-     * @path /workspaces/{workspaceId}
-     * @allow (get, list): Any authenticated user can read any workspace.
-     * @allow (create): Any authenticated user can create a workspace. `ownerId` must match the user's uid.
-     * @allow (update, delete): Only workspace admins can update or delete a workspace.
-     * @deny (create, update, delete): Non-authenticated users cannot create, update, or delete workspaces.
-     * @principle Enforces role-based access control for workspaces.
+     * @description: Allows any authenticated user to read and write workspace data.
+     * @path: /workspaces/{workspaceId}
+     * @allow: (get, list, create, update, delete) - Any signed-in user can perform any operation.
+     * @deny: None (Prototyping mode)
+     * @principle: Open access for authenticated users during prototyping.
      */
     match /workspaces/{workspaceId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      function isAdmin() {
-        return resource.data.users[request.auth.uid].role == 'admin';
-      }
-
-      function isWorkspaceMember() {
-          return request.auth.uid in resource.data.users;
-      }
-
       allow get, list: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isSignedIn() && resource.data.users[request.auth.uid].role == 'admin';
-      allow delete: if isSignedIn() && resource.data.users[request.auth.uid].role == 'admin';
+      allow create, update, delete: if isSignedIn();
     }
 
     /**
-     * @description Controls access to company documents within a workspace.
-     * @path /workspaces/{workspaceId}/companies/{companyId}
-     * @allow (get, list): Any authenticated user can read any company.
-     * @allow (create): Only workspace members can create a company.
-     * @allow (update, delete): No one can update or delete a company.
-     * @deny (create, update, delete): Non-authenticated users cannot create, update, or delete companies.
-     * @principle Enforces workspace membership for company creation.
+     * @description: Allows any authenticated user to read and write company data within a workspace.
+     * @path: /workspaces/{workspaceId}/companies/{companyId}
+     * @allow: (get, list, create, update, delete) - Any signed-in user can perform any operation.
+     * @deny: None (Prototyping mode)
+     * @principle: Open access for authenticated users during prototyping.
      */
     match /workspaces/{workspaceId}/companies/{companyId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-      
-       function isWorkspaceMember(workspaceId) {
-          return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid] != null;
-      }
       allow get, list: if isSignedIn();
-      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
-      allow update: if false;
-      allow delete: if false;
+      allow create, update, delete: if isSignedIn();
+    }
+
+    /**
+     * @description: Allows any authenticated user to read and write project data within a company.
+     * @path: /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}
+     * @allow: (get, list, create, update, delete) - Any signed-in user can perform any operation.
+     * @deny: None (Prototyping mode)
+     * @principle: Open access for authenticated users during prototyping.
+     */
+    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isSignedIn();
     }
   }
 }
