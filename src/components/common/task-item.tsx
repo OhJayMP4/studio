@@ -17,11 +17,14 @@ import { GripVertical, MoreHorizontal } from "lucide-react";
 import { EditTaskDialog } from "./edit-task-dialog";
 import { DeleteDialog } from "./delete-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface TaskItemProps {
     task: Task;
     siloId: string;
     path: string; // full path to the task document
+    isOverlay?: boolean;
 }
 
 const priorityStyles = {
@@ -74,7 +77,16 @@ function TaskActions({ task, path }: { task: Task, path: string }) {
     );
 }
 
-export function TaskItem({ task, siloId, path }: TaskItemProps) {
+export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ 
+        id: task.id,
+        data: {
+            type: 'Task',
+            task: task,
+            siloId: siloId
+        }
+    });
+
     const firestore = useFirestore();
     const { isUserAdmin } = useSelectedWorkspace();
 
@@ -100,12 +112,21 @@ export function TaskItem({ task, siloId, path }: TaskItemProps) {
     const dueDate = new Date(task.dueDate);
     const isOverdue = !task.completed && isPast(dueDate) && !isToday(dueDate);
 
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+    };
+
     return (
-        <div className={cn("flex items-center justify-between p-3 rounded-md hover:bg-muted/50 group", {
+        <div ref={setNodeRef} style={style} className={cn("flex items-center justify-between p-3 rounded-md hover:bg-muted/50 group bg-card", {
             "opacity-60": task.completed,
+            "shadow-lg": isOverlay
         })}>
             <div className="flex items-center gap-4">
-                <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab active:cursor-grabbing" />
+                <div {...listeners} {...attributes} className="cursor-grab touch-none">
+                  <GripVertical className="h-5 w-5 text-muted-foreground" />
+                </div>
                 <Checkbox
                     id={`task-${task.id}`}
                     checked={task.completed}
