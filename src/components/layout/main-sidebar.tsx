@@ -20,11 +20,12 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { UserNav } from "./user-nav";
 import { WorkspaceSwitcher } from "../common/workspace-switcher";
-import { useSelectedWorkspace } from "@/app/(main)/layout";
+import { MyTasks } from "./my-tasks-sidebar";
+import { Accordion } from "../ui/accordion";
+import { Separator } from "../ui/separator";
 
 export default function MainSidebar() {
   const pathname = usePathname();
-  const { selectedWorkspace } = useSelectedWorkspace();
 
   const isActive = (path: string, exact: boolean = false) => {
     if (exact) {
@@ -50,7 +51,7 @@ export default function MainSidebar() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton tooltip="Companies" asChild isActive={isActive('/companies')}>
+                <SidebarMenuButton tooltip="Companies" asChild isActive={isActive('/companies') || pathname.startsWith('/company/')}>
                   <Link href="/companies">
                     <Building />
                     <span>Companies</span>
@@ -67,6 +68,11 @@ export default function MainSidebar() {
               </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
+        <Separator className="my-4" />
+        <Accordion type="single" collapsible className="w-full" defaultValue="my-tasks">
+            <MyTasks />
+        </Accordion>
+
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
