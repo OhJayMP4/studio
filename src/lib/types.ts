@@ -47,6 +47,7 @@ export type Silo = {
 export type Task = {
     id: string;
     title: string;
+    description?: string;
     completed: boolean;
     dueDate: string; // ISO 8601 date string
     priority: 'low' | 'medium' | 'high';
@@ -61,8 +62,15 @@ export type UserTask = {
     companyId: string;
     projectId: string;
     siloId: string;
-    task: Omit<Task, 'id'>;
-    project: Omit<Project, 'id'>;
+    title: string;
+    description?: string;
+    completed: boolean;
+    dueDate: string;
+    priority: 'low' | 'medium' | 'high';
+    assigneeId: string;
+    companyName: string;
+    projectName: string;
+    siloName: string;
 }
 
 export type Sale = {

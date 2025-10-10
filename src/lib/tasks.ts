@@ -1,39 +1,43 @@
 'use client';
 import { collection, doc, addDoc, writeBatch, getDoc, Firestore, DocumentData } from "firebase/firestore";
-import type { Task, Workspace } from "./types";
+import type { Company, Project, Silo, Task, Workspace } from "./types";
 
 interface AddTaskParams {
     workspaceId: string;
     companyId: string;
     projectId: string;
     siloId: string;
-    taskData: Omit<Task, 'id'>;
+    taskData: Omit<Task, 'id' | 'description'> & { description?: string };
 }
 
 export async function addTask(firestore: Firestore, params: AddTaskParams) {
     const { workspaceId, companyId, projectId, siloId, taskData } = params;
 
     const workspaceRef = doc(firestore, 'workspaces', workspaceId);
+    const companyRef = doc(firestore, `workspaces/${workspaceId}/companies/${companyId}`);
     const projectRef = doc(firestore, `workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`);
+    const siloRef = doc(firestore, `workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`);
     const taskRef = doc(collection(firestore, `workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks`));
     
     const batch = writeBatch(firestore);
 
-    // 1. Get workspace and project documents
-    const [workspaceSnap, projectSnap] = await Promise.all([
+    // 1. Get all documents needed for denormalization
+    const [workspaceSnap, companySnap, projectSnap, siloSnap] = await Promise.all([
         getDoc(workspaceRef),
-        getDoc(projectRef)
+        getDoc(companyRef),
+        getDoc(projectRef),
+        getDoc(siloRef),
     ]);
 
-    if (!workspaceSnap.exists()) {
-        throw new Error("Workspace not found!");
-    }
-    if (!projectSnap.exists()) {
-        throw new Error("Project not found to denormalize task!");
-    }
+    if (!workspaceSnap.exists()) throw new Error("Workspace not found!");
+    if (!companySnap.exists()) throw new Error("Company not found!");
+    if (!projectSnap.exists()) throw new Error("Project not found!");
+    if (!siloSnap.exists()) throw new Error("Silo not found!");
 
     const workspaceData = workspaceSnap.data() as Workspace;
-    const projectData = projectSnap.data();
+    const companyData = companySnap.data() as Company;
+    const projectData = projectSnap.data() as Project;
+    const siloData = siloSnap.data() as Silo;
     
     // 2. Create the original task
     batch.set(taskRef, taskData);
@@ -41,20 +45,26 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
     // 3. SECURITY CHECK: Verify assignee is a member of the workspace before denormalizing
     if (workspaceData.users && workspaceData.users[taskData.assigneeId]) {
         const userTaskRef = doc(collection(firestore, `user-tasks/${taskData.assigneeId}/tasks`));
-        // Create the denormalized user task
+        
         batch.set(userTaskRef, {
             originalTaskId: taskRef.id,
             workspaceId,
             companyId,
             projectId,
             siloId,
-            task: taskData,
-            project: projectData,
+            title: taskData.title,
+            description: taskData.description || '',
+            completed: taskData.completed,
+            dueDate: taskData.dueDate,
+            priority: taskData.priority,
+            assigneeId: taskData.assigneeId,
+            companyName: companyData.name,
+            projectName: projectData.name,
+            siloName: siloData.name,
         });
     } else {
         console.warn(`Skipping task denormalization: User ${taskData.assigneeId} is not a member of workspace ${workspaceId}.`);
     }
-
 
     await batch.commit();
 }
@@ -90,7 +100,7 @@ export async function updateTaskCompletion(firestore: Firestore, originalTaskPat
 
     // Update denormalized task(s) - should only be one
     userTasksSnap.forEach(document => {
-        batch.update(document.ref, { "task.completed": completed });
+        batch.update(document.ref, { "completed": completed });
     });
 
     await batch.commit();

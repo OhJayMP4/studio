@@ -14,25 +14,33 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { updateTaskCompletion } from "@/lib/tasks";
 import Link from "next/link";
+import { TableCell, TableRow } from "../ui/table";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 
-interface UserTaskItemProps {
+interface TaskListItemProps {
     userTask: UserTask;
 }
 
-export function UserTaskItem({ userTask }: UserTaskItemProps) {
+export function TaskListItem({ userTask }: TaskListItemProps) {
     const firestore = useFirestore();
-    const { task, project, companyId, workspaceId, siloId } = userTask;
+    const { originalTaskId, workspaceId, companyId, projectId, siloId } = userTask;
 
     const assigneeRef = useMemoFirebase(() => {
-        return task.assigneeId ? doc(firestore, 'users', task.assigneeId) : null;
-    }, [firestore, task.assigneeId]);
+        return userTask.assigneeId ? doc(firestore, 'users', userTask.assigneeId) : null;
+    }, [firestore, userTask.assigneeId]);
 
     const { data: assignee } = useDoc<UserProfile>(assigneeRef);
 
     const handleCheckChanged = async (checked: boolean) => {
-        const originalTaskPath = `workspaces/${workspaceId}/companies/${companyId}/projects/${task.projectId}/silos/${siloId}/tasks/${userTask.originalTaskId}`;
+        const originalTaskPath = `workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks/${originalTaskId}`;
         try {
-            await updateTaskCompletion(firestore, originalTaskPath, task.assigneeId, userTask.originalTaskId, checked);
+            await updateTaskCompletion(firestore, originalTaskPath, userTask.assigneeId, originalTaskId, checked);
         } catch (error) {
             console.error("Failed to update task:", error);
         }
@@ -42,33 +50,54 @@ export function UserTaskItem({ userTask }: UserTaskItemProps) {
     const avatarUrl = assignee?.avatarUrl || '';
     const fallback = name.charAt(0).toUpperCase();
 
-    const dueDate = new Date(task.dueDate);
-    const isOverdue = !task.completed && isPast(dueDate) && !isToday(dueDate);
+    const dueDate = new Date(userTask.dueDate);
+    const isOverdue = !userTask.completed && isPast(dueDate) && !isToday(dueDate);
 
-    const linkHref = `/company/${companyId}/project/${task.projectId}`;
+    const linkHref = `/company/${companyId}/project/${projectId}`;
 
     return (
-        <div className={cn("flex items-center justify-between p-3 group", { "opacity-60": task.completed })}>
-            <div className="flex items-center gap-4">
-                <Checkbox
-                    id={`task-${userTask.id}`}
-                    checked={task.completed}
+       <TableRow className={cn({ "opacity-60": userTask.completed })}>
+            <TableCell>
+                 <Checkbox
+                    id={`task-list-${userTask.id}`}
+                    checked={userTask.completed}
                     onCheckedChange={handleCheckChanged}
-                    aria-label={`Mark task "${task.title}" as ${task.completed ? 'incomplete' : 'complete'}`}
+                    aria-label={`Mark task "${userTask.title}" as ${userTask.completed ? 'incomplete' : 'complete'}`}
                 />
-                <div className="flex flex-col">
-                     <Link href={linkHref} className="hover:underline">
-                        <span className={cn("text-sm font-medium leading-none", { "line-through text-muted-foreground": task.completed })}>
-                            {task.title}
+            </TableCell>
+            <TableCell>
+                 <div className="flex flex-col">
+                     <Link href={linkHref} className="hover:underline font-medium">
+                        <span className={cn("text-sm font-medium leading-none", { "line-through text-muted-foreground": userTask.completed })}>
+                            {userTask.title}
                         </span>
                     </Link>
-                    <span className="text-xs text-muted-foreground">{project.name}</span>
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{userTask.description}</p>
                 </div>
-            </div>
-            <div className="flex items-center gap-3">
-                 <Badge variant={isOverdue ? "destructive" : (task.completed ? "secondary" : "outline")} className="hidden sm:inline-flex">
+            </TableCell>
+            <TableCell>
+                 <Breadcrumb className="text-xs text-muted-foreground">
+                    <BreadcrumbList>
+                        <BreadcrumbItem>
+                            <BreadcrumbPage>{userTask.companyName}</BreadcrumbPage>
+                        </BreadcrumbItem>
+                        <BreadcrumbSeparator />
+                        <BreadcrumbItem>
+                             <BreadcrumbPage>{userTask.projectName}</BreadcrumbPage>
+                        </BreadcrumbItem>
+                         <BreadcrumbSeparator />
+                        <BreadcrumbItem>
+                           <BreadcrumbPage>{userTask.siloName}</BreadcrumbPage>
+                        </BreadcrumbItem>
+                    </BreadcrumbList>
+                </Breadcrumb>
+            </TableCell>
+             <TableCell>
+                 <Badge variant={isOverdue ? "destructive" : (userTask.completed ? "secondary" : "outline")}>
                     {format(dueDate, 'MMM d')}
                 </Badge>
+            </TableCell>
+            <TableCell>
                 <TooltipProvider>
                     <Tooltip>
                         <TooltipTrigger>
@@ -82,7 +111,7 @@ export function UserTaskItem({ userTask }: UserTaskItemProps) {
                         </TooltipContent>
                     </Tooltip>
                 </TooltipProvider>
-            </div>
-        </div>
+            </TableCell>
+       </TableRow>
     )
 }

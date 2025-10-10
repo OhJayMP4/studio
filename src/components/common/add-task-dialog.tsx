@@ -34,9 +34,11 @@ import {
 import type { Workspace } from '@/lib/types';
 import { FormControl, FormField, FormItem, FormMessage } from '../ui/form';
 import { addTask } from '@/lib/tasks';
+import { Textarea } from '../ui/textarea';
 
 const formSchema = z.object({
   title: z.string().min(1, 'Task title is required.'),
+  description: z.string().optional(),
   dueDate: z.date({ required_error: 'A due date is required.' }),
   priority: z.enum(['low', 'medium', 'high'], {
     required_error: 'Priority is required.',
@@ -91,6 +93,7 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
         siloId,
         taskData: {
           title: data.title,
+          description: data.description || '',
           dueDate: data.dueDate.toISOString(),
           priority: data.priority,
           assigneeId: data.assigneeId,
@@ -147,6 +150,20 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
                     <Label>Task Title</Label>
                     <FormControl>
                       <Input placeholder="e.g. Design the landing page" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <Label>Description</Label>
+                    <FormControl>
+                      <Textarea placeholder="Add more details about the task..." {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

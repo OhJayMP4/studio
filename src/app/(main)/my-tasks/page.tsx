@@ -1,12 +1,10 @@
 
 'use client';
 
-import { useUser } from "@/firebase";
 import { useUserTasks } from "@/hooks/use-user-tasks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { UserTaskItem } from "@/components/common/user-task-item";
 import { useState } from "react";
 import {
   Breadcrumb,
@@ -14,6 +12,9 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb";
+import { List, Grid } from "lucide-react";
+import { TaskGridItem } from "@/components/common/task-grid-item";
+import { TaskList } from "@/components/common/task-list";
 
 function MyTasksBreadcrumb() {
   return (
@@ -31,6 +32,7 @@ function MyTasksBreadcrumb() {
 export default function MyTasksPage() {
     const { tasks, isLoading, error } = useUserTasks();
     const [view, setView] = useState<'active' | 'completed'>('active');
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
     const tasksToShow = view === 'active' ? tasks.active : tasks.completed;
 
@@ -43,33 +45,57 @@ export default function MyTasksPage() {
             
             <Card>
                 <CardHeader>
-                    <CardTitle>Your Assigned Tasks</CardTitle>
-                    <CardDescription>All tasks assigned to you across all projects.</CardDescription>
-                    <div className="flex gap-1 bg-muted p-1 rounded-md w-full sm:w-fit mt-2">
-                        <Button
-                            size="sm"
-                            variant={view === 'active' ? 'secondary' : 'ghost'}
-                            onClick={() => setView('active')}
-                            className="flex-1 h-8"
-                        >
-                            Active ({tasks.active.length})
-                        </Button>
-                        <Button
-                            size="sm"
-                            variant={view === 'completed' ? 'secondary' : 'ghost'}
-                            onClick={() => setView('completed')}
-                            className="flex-1 h-8"
-                        >
-                            Completed ({tasks.completed.length})
-                        </Button>
+                    <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                        <div>
+                            <CardTitle>Your Assigned Tasks</CardTitle>
+                            <CardDescription>All tasks assigned to you across all projects.</CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2">
+                             <div className="flex gap-1 bg-muted p-1 rounded-md w-full sm:w-fit">
+                                <Button
+                                    size="sm"
+                                    variant={view === 'active' ? 'secondary' : 'ghost'}
+                                    onClick={() => setView('active')}
+                                    className="flex-1 h-8"
+                                >
+                                    Active ({tasks.active.length})
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant={view === 'completed' ? 'secondary' : 'ghost'}
+                                    onClick={() => setView('completed')}
+                                    className="flex-1 h-8"
+                                >
+                                    Completed ({tasks.completed.length})
+                                </Button>
+                            </div>
+                             <div className="flex gap-1 bg-muted p-1 rounded-md">
+                                <Button
+                                    size="sm"
+                                    variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                                    onClick={() => setViewMode('grid')}
+                                    className="h-8 w-8 p-0"
+                                >
+                                    <Grid className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                                    onClick={() => setViewMode('list')}
+                                    className="h-8 w-8 p-0"
+                                >
+                                    <List className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent>
                     {isLoading && (
                         <div className="space-y-4">
-                           <Skeleton className="h-12 w-full" />
-                           <Skeleton className="h-12 w-full" />
-                           <Skeleton className="h-12 w-full" />
+                           <Skeleton className="h-24 w-full" />
+                           <Skeleton className="h-24 w-full" />
+                           <Skeleton className="h-24 w-full" />
                         </div>
                     )}
                     {!isLoading && error && (
@@ -85,10 +111,16 @@ export default function MyTasksPage() {
                         </div>
                     )}
                     {!isLoading && !error && tasksToShow.length > 0 && (
-                        <div className="divide-y rounded-md border">
-                            {tasksToShow.map(userTask => (
-                                <UserTaskItem key={userTask.id} userTask={userTask} />
-                            ))}
+                        <div>
+                             {viewMode === 'grid' ? (
+                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                                    {tasksToShow.map(userTask => (
+                                        <TaskGridItem key={userTask.id} userTask={userTask} />
+                                    ))}
+                                </div>
+                            ) : (
+                                <TaskList tasks={tasksToShow} />
+                            )}
                         </div>
                     )}
                 </CardContent>

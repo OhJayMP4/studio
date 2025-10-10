@@ -189,6 +189,10 @@
           "type": "string",
           "description": "The title of the task."
         },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of the task."
+        },
         "completed": {
           "type": "boolean",
           "description": "Whether the task has been completed."
@@ -231,27 +235,69 @@
       "description": "A denormalized task document for quick lookups by user.",
       "properties": {
         "originalTaskId": {
-            "type": "string",
-            "description": "The original ID of the task document."
+          "type": "string",
+          "description": "The original ID of the task document."
         },
         "workspaceId": {
-            "type": "string"
+          "type": "string"
         },
         "companyId": {
-            "type": "string"
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
         },
         "siloId": {
-            "type": "string"
+          "type": "string"
         },
-        "task": {
-            "$ref": "#/entities/Task"
+        "title": {
+          "type": "string"
         },
-        "project": {
-            "$ref": "#/entities/Project"
+        "description": {
+          "type": "string"
+        },
+        "completed": {
+          "type": "boolean"
+        },
+        "dueDate": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "assigneeId": {
+          "type": "string"
+        },
+        "companyName": {
+          "type": "string"
+        },
+        "projectName": {
+          "type": "string"
+        },
+        "siloName": {
+          "type": "string"
         }
       },
       "required": [
-        "originalTaskId", "workspaceId", "companyId", "siloId", "task", "project"
+        "originalTaskId",
+        "workspaceId",
+        "companyId",
+        "siloId",
+        "projectId",
+        "title",
+        "completed",
+        "priority",
+        "assigneeId",
+        "dueDate",
+        "companyName",
+        "projectName",
+        "siloName"
       ]
     },
     "Sale": {
@@ -329,7 +375,7 @@
     },
     "/user-tasks/{userId}/tasks/{taskId}": {
       "schema": {
-          "$ref": "#/entities/UserTask"
+        "$ref": "#/entities/UserTask"
       },
       "description": "Denormalized tasks for a specific user for efficient lookup."
     },

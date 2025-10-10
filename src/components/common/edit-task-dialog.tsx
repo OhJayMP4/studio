@@ -34,9 +34,11 @@ import {
 } from '@/components/ui/select';
 import type { Workspace, Task } from '@/lib/types';
 import { FormControl, FormField, FormItem, FormMessage } from '../ui/form';
+import { Textarea } from '../ui/textarea';
 
 const formSchema = z.object({
   title: z.string().min(1, 'Task title is required.'),
+  description: z.string().optional(),
   dueDate: z.date({ required_error: 'A due date is required.' }),
   priority: z.enum(['low', 'medium', 'high'], {
     required_error: 'Priority is required.',
@@ -76,6 +78,7 @@ export function EditTaskDialog({ task, path, children }: EditTaskDialogProps) {
     if (isOpen) {
         form.reset({
             title: task.title,
+            description: task.description,
             dueDate: new Date(task.dueDate),
             priority: task.priority,
             assigneeId: task.assigneeId,
@@ -90,6 +93,7 @@ export function EditTaskDialog({ task, path, children }: EditTaskDialogProps) {
       const taskRef = doc(firestore, path);
       await updateDoc(taskRef, {
         title: data.title,
+        description: data.description || '',
         dueDate: data.dueDate.toISOString(),
         priority: data.priority,
         assigneeId: data.assigneeId,
@@ -131,6 +135,20 @@ export function EditTaskDialog({ task, path, children }: EditTaskDialogProps) {
                     <Label>Task Title</Label>
                     <FormControl>
                       <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <Label>Description</Label>
+                    <FormControl>
+                      <Textarea {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
