@@ -22,11 +22,11 @@ export default function TaskPriorityChart({ workspaceId }: { workspaceId: string
             setIsLoading(true);
 
             try {
-                const pathPrefix = `workspaces/${workspaceId}/companies`;
+                const pathPrefix = `workspaces/${workspaceId}`;
                 const tasksQuery = query(
                     collectionGroup(firestore, 'tasks'),
-                    where(documentId(), '>=', `${pathPrefix}/`),
-                    where(documentId(), '<', `${pathPrefix}0`)
+                    where(documentId(), '>=', `${pathPrefix}/companies/`),
+                    where(documentId(), '<', `${pathPrefix}/companies0`)
                 );
                 const tasksSnap = await getDocs(tasksQuery);
                 

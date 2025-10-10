@@ -23,11 +23,11 @@ export default function ProjectStatusChart({ workspaceId }: { workspaceId: strin
             setIsLoading(true);
             
             try {
-                const pathPrefix = `workspaces/${workspaceId}/companies`;
+                const pathPrefix = `workspaces/${workspaceId}`;
                 const projectsQuery = query(
                     collectionGroup(firestore, 'projects'),
-                    where(documentId(), '>=', `${pathPrefix}/`),
-                    where(documentId(), '<', `${pathPrefix}0`)
+                    where(documentId(), '>=', `${pathPrefix}/companies/`),
+                    where(documentId(), '<', `${pathPrefix}/companies0`)
                 );
             
                 const projectsSnap = await getDocs(projectsQuery);
