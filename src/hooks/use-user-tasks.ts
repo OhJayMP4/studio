@@ -1,20 +1,21 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase";
+import { useMemo } from 'react';
+import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query } from "firebase/firestore";
 import type { UserTask } from "@/lib/types";
 
-export function useUserTasks(userId?: string) {
+export function useUserTasks() {
+    const { user } = useUser();
     const firestore = useFirestore();
     
     const tasksQuery = useMemoFirebase(() => {
-        if (!userId) return null;
+        if (!user?.uid) return null;
         return query(
-            collection(firestore, `user-tasks/${userId}/tasks`)
+            collection(firestore, `user-tasks/${user.uid}/tasks`)
         );
-    }, [firestore, userId]);
+    }, [firestore, user?.uid]);
 
     const { data, isLoading, error } = useCollection<UserTask>(tasksQuery);
     
