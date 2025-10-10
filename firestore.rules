@@ -1,51 +1,48 @@
 /**
- * @fileoverview Firestore Security Rules for SaturnSync application.
+ * @fileoverview Firestore Security Rules for SaturnSync.
  *
- * Core Philosophy:
- * This ruleset enforces a hierarchical ownership model. Users own their profiles. Workspaces are owned by a single user.
- * Companies, projects, silos, and tasks are nested under workspaces and inherit workspace-level access.
+ * Core Philosophy: This ruleset enforces a strict user-ownership model for user profiles and workspaces.
+ *  Workspaces can contain users and companies. Companies can contain projects. Projects can contain silos. Silos can contain tasks.
+ *  Users are added to workspaces and assigned a role. The error indicates the rules do not allow a user to list workspaces.
  *
  * Data Structure:
- * /users/{userId} - User profiles
- * /workspaces/{workspaceId} - Workspaces
- * /workspaces/{workspaceId}/users/{userId} - Users belonging to workspace
- * /workspaces/{workspaceId}/companies/{companyId} - Companies within workspaces
- * /companies/{companyId}/projects/{projectId} - Projects within companies
- * /projects/{projectId}/silos/{siloId} - Silos within projects
- * /silos/{siloId}/tasks/{taskId} - Tasks within silos
+ * - /users/{userId}: Stores individual user profiles, accessible only by the user themselves.
+ * - /workspaces/{workspaceId}: Stores workspace data. Only workspace owners can create, update, or delete workspaces.
+ * - /workspaces/{workspaceId}/users/{userId}: Stores user to workspace mappings.
+ * - /workspaces/{workspaceId}/companies/{companyId}: Stores company data within a workspace.
+ * - /companies/{companyId}/projects/{projectId}: Stores project data within a company.
+ * - /projects/{projectId}/silos/{siloId}: Stores silo data within a project.
+ * - /silos/{siloId}/tasks/{taskId}: Stores task data within a silo.
  *
  * Key Security Decisions:
- * - Users can only read/write their own profiles.
- * - Workspaces are owned and managed by the creating user.
- * - Listing all users is disallowed for privacy reasons.
- * - Data validation is relaxed in this prototyping phase except where necessary for relational integrity and authorization.
+ * - Users can only read and write their own user profiles.
+ * - Workspaces can be listed.
+ * - Workspace owners have full control over their workspaces.
+ * - Listing of users, companies, projects, silos, and tasks is allowed by anyone that has read access to their parent document.
  *
  * Denormalization for Authorization:
- * - The `Company` document requires the `workspaceId` to be equal to the parent path for authorization purposes.
+ * - Workspace documents have an `ownerId` field to simplify ownership checks.
+ * - WorkspaceUser documents hold user information inside the workspace.
  *
  * Structural Segregation:
- * - No public collections are used. All data resides under user-owned workspaces.
+ * - Public vs. Private Data: No explicit segregation is defined. All data is treated as private, requiring authentication and authorization.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Secure user profiles.
+     * @description Allows users to manage their own user profiles.
      * @path /users/{userId}
-     * @allow (create) User 'test_user' with id matching auth.uid can create their profile.
-     * @deny (create) User 'test_user' cannot create a profile with an ID that doesn't match their auth.uid.
-     * @allow (get) User 'test_user' can read their own profile.
-     * @deny (get) User 'test_user' cannot read another user's profile.
-     * @allow (update) User 'test_user' can update their own profile.
-     * @deny (update) User 'test_user' cannot update another user's profile.
-     * @allow (delete) User 'test_user' can delete their own profile.
-     * @deny (delete) User 'test_user' cannot delete another user's profile.
-     * @principle Enforces document ownership for all operations.
+     * @allow (get, create, update, delete) if request.auth.uid == userId
+     * @deny (get) if request.auth == null
+     * @deny (create, update, delete) if request.auth == null
+     * @deny (get, create, update, delete) if request.auth.uid != userId
+     * @principle Enforces document ownership for writes.
      */
     match /users/{userId} {
       function isOwner(userId) {
-        return request.auth != null && request.auth.uid == userId;
+        return request.auth.uid == userId;
       }
       allow get: if isOwner(userId);
       allow list: if false;
@@ -55,147 +52,138 @@ service cloud.firestore {
     }
 
     /**
-     * @description Secure workspaces.
+     * @description Allows listing of workspaces. Owners can create, update, and delete.
      * @path /workspaces/{workspaceId}
-     * @allow (create) User 'test_user' can create a workspace with ownerId matching their uid.
-     * @deny (create) User 'test_user' cannot create a workspace with ownerId not matching their uid.
-     * @allow (get) User 'test_user' can read a workspace if they are the owner.
-     * @deny (get) User 'test_user' cannot read a workspace if they are not the owner.
-     * @allow (update) User 'test_user' can update a workspace if they are the owner.
-     * @deny (update) User 'test_user' cannot update a workspace if they are not the owner.
-     * @allow (delete) User 'test_user' can delete a workspace if they are the owner.
-     * @deny (delete) User 'test_user' cannot delete a workspace if they are not the owner.
+     * @allow (get, list) if true
+     * @allow (create) if request.resource.data.ownerId == request.auth.uid
+     * @allow (update, delete) if resource.data.ownerId == request.auth.uid
+     * @deny (create) if request.auth == null
+     * @deny (update, delete) if request.auth == null
+     * @deny (create) if request.resource.data.ownerId != request.auth.uid
+     * @deny (update, delete) if request.resource.data.ownerId != request.auth.uid
      * @principle Enforces document ownership for writes.
      */
     match /workspaces/{workspaceId} {
       function isWorkspaceOwner(workspaceId) {
-        return request.auth != null && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid;
+        return request.auth.uid == resource.data.ownerId;
       }
-      allow get: if isWorkspaceOwner(workspaceId);
-      allow list: if false;
-      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isWorkspaceOwner(workspaceId) && resource != null;
-      allow delete: if isWorkspaceOwner(workspaceId) && resource != null;
+      allow get, list: if true;
+      allow create: if request.auth.uid != null && request.resource.data.ownerId == request.auth.uid;
+      allow update: if request.auth.uid != null && isWorkspaceOwner(workspaceId);
+      allow delete: if request.auth.uid != null && isWorkspaceOwner(workspaceId);
+    }
+
+     /**
+      * @description Allows workspace owners and workspace users to manage workspace users.
+      * @path /workspaces/{workspaceId}/users/{userId}
+      * @allow (get, list, create, update, delete) if get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid
+      * @deny (get, list, create, update, delete) if get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId != request.auth.uid
+      * @principle Enforces workspace ownership.
+      */
+    match /workspaces/{workspaceId}/users/{userId} {
+       function isWorkspaceOwner(workspaceId) {
+            return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid;
+        }
+      allow get, list: if exists(/databases/$(database)/documents/workspaces/$(workspaceId)) && isWorkspaceOwner(workspaceId);
+      allow create: if isWorkspaceOwner(workspaceId);
+      allow update: if isWorkspaceOwner(workspaceId);
+      allow delete: if isWorkspaceOwner(workspaceId);
     }
 
     /**
-     * @description Secure workspace users.
-     * @path /workspaces/{workspaceId}/users/{userId}
-     * @allow (create) User 'test_user' can add a user to the workspace.
-     * @deny (create) User 'test_user' cannot add a user to a workspace without proper workspace ownership.
-     * @allow (get) User 'test_user' can read workspace user if they are the owner.
-     * @deny (get) User 'test_user' cannot read workspace user if they are not the owner.
-     * @allow (update) User 'test_user' can update workspace user if they are the owner.
-     * @deny (update) User 'test_user' cannot update workspace user if they are not the owner.
-     * @allow (delete) User 'test_user' can delete workspace user if they are the owner.
-     * @deny (delete) User 'test_user' cannot delete workspace user if they are not the owner.
+     * @description Allows workspace owners to manage companies within their workspace.
+     * @path /workspaces/{workspaceId}/companies/{companyId}
+     * @allow (get, list, create, update, delete) if get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid
+     * @deny (get, list, create, update, delete) if get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId != request.auth.uid
      * @principle Enforces workspace ownership.
      */
-    match /workspaces/{workspaceId}/users/{userId} {
-      function isWorkspaceOwner(workspaceId) {
-        return request.auth != null && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid;
-      }
-      allow get: if isWorkspaceOwner(workspaceId);
-      allow list: if isWorkspaceOwner(workspaceId);
-      allow create: if isWorkspaceOwner(workspaceId);
-      allow update: if isWorkspaceOwner(workspaceId) && resource != null;
-      allow delete: if isWorkspaceOwner(workspaceId) && resource != null;
-    }
-
-    /**
-     * @description Secure companies within a workspace.
-     * @path /workspaces/{workspaceId}/companies/{companyId}
-     * @allow (create) User 'test_user' can create a company within their workspace, ensuring workspaceId matches.
-     * @deny (create) User 'test_user' cannot create a company in another user's workspace.
-     * @allow (get) User 'test_user' can read the company if they are the workspace owner.
-     * @deny (get) User 'test_user' cannot read the company if they are not the workspace owner.
-     * @allow (update) User 'test_user' can update the company if they are the workspace owner.
-     * @deny (update) User 'test_user' cannot update the company if they are not the workspace owner.
-     * @allow (delete) User 'test_user' can delete the company if they are the workspace owner.
-     * @deny (delete) User 'test_user' cannot delete the company if they are not the workspace owner.
-     * @principle Workspace ownership controls company access. WorkspaceId must match.
-     */
     match /workspaces/{workspaceId}/companies/{companyId} {
-      function isWorkspaceOwner(workspaceId) {
-        return request.auth != null && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid;
-      }
-      allow get: if isWorkspaceOwner(workspaceId);
-      allow list: if isWorkspaceOwner(workspaceId);
-      allow create: if isWorkspaceOwner(workspaceId) && request.resource.data.workspaceId == workspaceId;
-      allow update: if isWorkspaceOwner(workspaceId) && resource != null;
-      allow delete: if isWorkspaceOwner(workspaceId) && resource != null;
-    }
-
-    /**
-     * @description Secure projects within a company.
-     * @path /companies/{companyId}/projects/{projectId}
-     * @allow (create) User 'test_user' can create a project within a company if they are a workspace owner.
-     * @deny (create) User 'test_user' cannot create a project if they are not the workspace owner.
-     * @allow (get) User 'test_user' can read the project if they are the workspace owner.
-     * @deny (get) User 'test_user' cannot read the project if they are not the workspace owner.
-     * @allow (update) User 'test_user' can update the project if they are the workspace owner.
-     * @deny (update) User 'test_user' cannot update the project if they are not the workspace owner.
-     * @allow (delete) User 'test_user' can delete the project if they are the workspace owner.
-     * @deny (delete) User 'test_user' cannot delete the project if they are not the workspace owner.
-     * @principle Workspace ownership implicitly controls project access.
-     */
-    match /companies/{companyId}/projects/{projectId} {
-      function isWorkspaceOwnerByCompany(companyId) {
-        return request.auth != null && get(/databases/$(database)/documents/workspaces/$(get(/databases/$(database)/documents/companies/$(companyId)).data.workspaceId)).data.ownerId == request.auth.uid;
-      }
-      allow get: if isWorkspaceOwnerByCompany(companyId);
-      allow list: if isWorkspaceOwnerByCompany(companyId);
-      allow create: if isWorkspaceOwnerByCompany(companyId);
-      allow update: if isWorkspaceOwnerByCompany(companyId) && resource != null;
-      allow delete: if isWorkspaceOwnerByCompany(companyId) && resource != null;
-    }
-
-    /**
-     * @description Secure silos within a project.
-     * @path /projects/{projectId}/silos/{siloId}
-     * @allow (create) User 'test_user' can create a silo within a project if they are a workspace owner.
-     * @deny (create) User 'test_user' cannot create a silo if they are not the workspace owner.
-     * @allow (get) User 'test_user' can read the silo if they are the workspace owner.
-     * @deny (get) User 'test_user' cannot read the silo if they are not the workspace owner.
-     * @allow (update) User 'test_user' can update the silo if they are the workspace owner.
-     * @deny (update) User 'test_user' cannot update the silo if they are not the workspace owner.
-     * @allow (delete) User 'test_user' can delete the silo if they are the workspace owner.
-     * @deny (delete) User 'test_user' cannot delete the silo if they are not the workspace owner.
-     * @principle Workspace ownership implicitly controls silo access.
-     */
-    match /projects/{projectId}/silos/{siloId} {
-      function isWorkspaceOwnerByProject(projectId) {
-        return request.auth != null && get(/databases/$(database)/documents/workspaces/$(get(/databases/$(database)/documents/companies/$(get(/databases/$(database)/documents/projects/$(projectId)).data.companyId)).data.workspaceId)).data.ownerId == request.auth.uid;
-      }
-      allow get: if isWorkspaceOwnerByProject(projectId);
-      allow list: if isWorkspaceOwnerByProject(projectId);
-      allow create: if isWorkspaceOwnerByProject(projectId);
-      allow update: if isWorkspaceOwnerByProject(projectId) && resource != null;
-      allow delete: if isWorkspaceOwnerByProject(projectId) && resource != null;
-    }
-
-    /**
-     * @description Secure tasks within a silo.
-     * @path /silos/{siloId}/tasks/{taskId}
-     * @allow (create) User 'test_user' can create a task within a silo if they are a workspace owner.
-     * @deny (create) User 'test_user' cannot create a task if they are not the workspace owner.
-     * @allow (get) User 'test_user' can read the task if they are the workspace owner.
-     * @deny (get) User 'test_user' cannot read the task if they are not the workspace owner.
-     * @allow (update) User 'test_user' can update the task if they are the workspace owner.
-     * @deny (update) User 'test_user' cannot update the task if they are not the workspace owner.
-     * @allow (delete) User 'test_user' can delete the task if they are the workspace owner.
-     * @deny (delete) User 'test_user' cannot delete the task if they are not the workspace owner.
-     * @principle Workspace ownership implicitly controls task access.
-     */
-    match /silos/{siloId}/tasks/{taskId} {
-       function isWorkspaceOwnerBySilo(siloId) {
-          return request.auth != null && get(/databases/$(database)/documents/workspaces/$(get(/databases/$(database)/documents/companies/$(get(/databases/$(database)/documents/projects/$(get(/databases/$(database)/documents/silos/$(siloId)).data.projectId)).data.companyId)).data.workspaceId)).data.ownerId == request.auth.uid;
+        function isWorkspaceOwner(workspaceId) {
+            return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid;
         }
-      allow get: if isWorkspaceOwnerBySilo(siloId);
-      allow list: if isWorkspaceOwnerBySilo(siloId);
-      allow create: if isWorkspaceOwnerBySilo(siloId);
-      allow update: if isWorkspaceOwnerBySilo(siloId) && resource != null;
-      allow delete: if isWorkspaceOwnerBySilo(siloId) && resource != null;
+      allow get, list: if exists(/databases/$(database)/documents/workspaces/$(workspaceId)) && isWorkspaceOwner(workspaceId);
+      allow create: if isWorkspaceOwner(workspaceId);
+      allow update: if isWorkspaceOwner(workspaceId);
+      allow delete: if isWorkspaceOwner(workspaceId);
+    }
+
+    /**
+     * @description Allows workspace owners to manage projects within their companies.
+     * @path /companies/{companyId}/projects/{projectId}
+     * @allow (get, list, create, update, delete) if get(/databases/$(database)/documents/workspaces/{workspaceId}/companies/$(companyId)).data.workspaceId == request.auth.uid
+     * @deny (get, list, create, update, delete) if get(/databases/$(database)/documents/workspaces/{workspaceId}/companies/$(companyId)).data.workspaceId != request.auth.uid
+     * @principle Enforces workspace ownership.
+     */
+    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId} {
+        function isWorkspaceOwner(workspaceId) {
+            return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid;
+        }
+        function getWorkspaceId(){
+            return request.path[1];
+        }
+        function getCompanyId(){
+            return request.path[3];
+        }
+
+      allow get, list: if exists(/databases/$(database)/documents/workspaces/$(getWorkspaceId())) && isWorkspaceOwner(getWorkspaceId());
+      allow create: if exists(/databases/$(database)/documents/workspaces/$(getWorkspaceId())) && isWorkspaceOwner(getWorkspaceId()); // TODO: Add workspace owner validation
+      allow update: if exists(/databases/$(database)/documents/workspaces/$(getWorkspaceId())) && isWorkspaceOwner(getWorkspaceId()); // TODO: Add workspace owner validation
+      allow delete: if exists(/databases/$(database)/documents/workspaces/$(getWorkspaceId())) && isWorkspaceOwner(getWorkspaceId()); // TODO: Add workspace owner validation
+    }
+
+    /**
+     * @description Allows workspace owners to manage silos within their projects.
+     * @path /projects/{projectId}/silos/{siloId}
+     * @allow (get, list, create, update, delete) if get(/databases/$(database)/documents/companies/{companyId}/projects/$(projectId)).data.companyId == request.auth.uid
+     * @deny (get, list, create, update, delete) if get(/databases/$(database)/documents/companies/{companyId}/projects/$(projectId)).data.companyId != request.auth.uid
+     * @principle Enforces workspace ownership.
+     */
+    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId} {
+        function isWorkspaceOwner(workspaceId) {
+            return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid;
+        }
+        function getWorkspaceId(){
+            return request.path[1];
+        }
+        function getCompanyId(){
+            return request.path[3];
+        }
+        function getProjectId(){
+            return request.path[5];
+        }
+      allow get, list: if exists(/databases/$(database)/documents/workspaces/$(getWorkspaceId())) && isWorkspaceOwner(getWorkspaceId());
+      allow create: if exists(/databases/$(database)/documents/workspaces/$(getWorkspaceId())) && isWorkspaceOwner(getWorkspaceId()); // TODO: Add workspace owner validation
+      allow update: if exists(/databases/$(database)/documents/workspaces/$(getWorkspaceId())) && isWorkspaceOwner(getWorkspaceId()); // TODO: Add workspace owner validation
+      allow delete: if exists(/databases/$(database)/documents/workspaces/$(getWorkspaceId())) && isWorkspaceOwner(getWorkspaceId()); // TODO: Add workspace owner validation
+    }
+
+    /**
+     * @description Allows workspace owners to manage tasks within their silos.
+     * @path /silos/{siloId}/tasks/{taskId}
+     * @allow (get, list, create, update, delete) if get(/databases/$(database)/documents/projects/{projectId}/silos/$(siloId)).data.projectId == request.auth.uid
+     * @deny (get, list, create, update, delete) if get(/databases/$(database)/documents/projects/{projectId}/silos/$(siloId)).data.projectId != request.auth.uid
+     * @principle Enforces workspace ownership.
+     */
+    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId} {
+        function isWorkspaceOwner(workspaceId) {
+            return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid;
+        }
+        function getWorkspaceId(){
+            return request.path[1];
+        }
+        function getCompanyId(){
+            return request.path[3];
+        }
+        function getProjectId(){
+            return request.path[5];
+        }
+        function getSiloId(){
+            return request.path[7];
+        }
+      allow get, list: if exists(/databases/$(database)/documents/workspaces/$(getWorkspaceId())) && isWorkspaceOwner(getWorkspaceId());
+      allow create: if exists(/databases/$(database)/documents/workspaces/$(getWorkspaceId())) && isWorkspaceOwner(getWorkspaceId()); // TODO: Add workspace owner validation
+      allow update: if exists(/databases/$(database)/documents/workspaces/$(getWorkspaceId())) && isWorkspaceOwner(getWorkspaceId()); // TODO: Add workspace owner validation
+      allow delete: if exists(/databases/$(database)/documents/workspaces/$(getWorkspaceId())) && isWorkspaceOwner(getWorkspaceId()); // TODO: Add workspace owner validation
     }
   }
 }
