@@ -4,7 +4,7 @@ import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 import { useFirestore } from "@/firebase";
-import { collectionGroup, query, where, getDocs, doc } from "firebase/firestore";
+import { collectionGroup, query, where, getDocs } from "firebase/firestore";
 import type { Project, Task } from "@/lib/types";
 import ProjectStatusChart from "@/components/reporting/project-status-chart";
 import TaskPriorityChart from "@/components/reporting/task-priority-chart";
@@ -21,42 +21,40 @@ function DashboardView() {
 
   useEffect(() => {
     if (!selectedWorkspace?.id || !firestore) {
-        setIsLoading(false);
-        return;
+      setIsLoading(false);
+      return;
     }
 
     const fetchWorkspaceData = async () => {
-        setIsLoading(true);
-        try {
-            const workspacePath = `workspaces/${selectedWorkspace.id}`;
-            const startPath = `${workspacePath}/companies/`;
-            const endPath = `${workspacePath}/companies0`; // '0' is the character after '/' in ASCII
+      setIsLoading(true);
+      try {
+        const workspaceDocPath = `workspaces/${selectedWorkspace.id}`;
+        
+        // Correctly query the 'projects' collection group
+        const projectsQuery = query(
+          collectionGroup(firestore, 'projects'),
+          where('__name__', '>=', `${workspaceDocPath}/companies/`),
+          where('__name__', '<', `${workspaceDocPath}/companies0`)
+        );
+        const projectsSnap = await getDocs(projectsQuery);
+        const allProjects = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+        setProjects(allProjects);
 
-            // Fetch all projects within the workspace using a collectionGroup query
-            const projectsQuery = query(
-              collectionGroup(firestore, 'projects'),
-              where('__name__', '>=', startPath),
-              where('__name__', '<', endPath)
-            );
-            const projectsSnap = await getDocs(projectsQuery);
-            const allProjects = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
-            setProjects(allProjects);
+        // Correctly query the 'tasks' collection group
+        const tasksQuery = query(
+          collectionGroup(firestore, 'tasks'),
+          where('__name__', '>=', `${workspaceDocPath}/companies/`),
+          where('__name__', '<', `${workspaceDocPath}/companies0`)
+        );
+        const tasksSnap = await getDocs(tasksQuery);
+        const allTasks = tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
+        setTasks(allTasks);
 
-            // Fetch all tasks within the workspace using a collectionGroup query
-            const tasksQuery = query(
-              collectionGroup(firestore, 'tasks'),
-               where('__name__', '>=', startPath),
-               where('__name__', '<', endPath)
-            );
-            const tasksSnap = await getDocs(tasksQuery);
-            const allTasks = tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
-            setTasks(allTasks);
-
-        } catch (error) {
-            console.error("Error fetching dashboard data: ", error);
-        } finally {
-            setIsLoading(false);
-        }
+      } catch (error) {
+        console.error("Error fetching dashboard data: ", error);
+      } finally {
+        setIsLoading(false);
+      }
     };
     
     fetchWorkspaceData();
