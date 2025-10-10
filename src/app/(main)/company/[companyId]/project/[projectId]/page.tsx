@@ -9,11 +9,11 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
-import type { Company, Project, Silo, Task } from '@/lib/types';
-import { collection, doc, query, orderBy } from 'firebase/firestore';
+import type { Company, Project, Sale, Silo, Task } from '@/lib/types';
+import { collection, doc, query, orderBy, getDocs, runTransaction } from 'firebase/firestore';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -27,8 +27,61 @@ import {
 import { AddTaskDialog } from '@/components/common/add-task-dialog';
 import { TaskItem } from '@/components/common/task-item';
 import { Progress } from '@/components/ui/progress';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, MoreVertical, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AddSaleDialog } from '@/components/common/add-sale-dialog';
+import { format } from 'date-fns';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useEffect } from 'react';
+
+
+async function updateProjectProgress(firestore: any, workspaceId: string, companyId: string, projectId: string) {
+    const projectRef = doc(firestore, 'workspaces', workspaceId, 'companies', companyId, 'projects', projectId);
+
+    await runTransaction(firestore, async (transaction) => {
+        const projectDoc = await transaction.get(projectRef);
+        if (!projectDoc.exists()) {
+            throw "Project not found!";
+        }
+        const projectData = projectDoc.data() as Project;
+
+        // Calculate task progress
+        const silosCollection = collection(projectRef, 'silos');
+        const silosSnapshot = await getDocs(silosCollection);
+        let totalTasks = 0;
+        let completedTasks = 0;
+
+        for (const siloDoc of silosSnapshot.docs) {
+            const tasksCollection = collection(siloDoc.ref, 'tasks');
+            const tasksSnapshot = await getDocs(tasksCollection);
+            totalTasks += tasksSnapshot.size;
+            tasksSnapshot.forEach(taskDoc => {
+                if (taskDoc.data().completed) {
+                    completedTasks++;
+                }
+            });
+        }
+        const taskProgress = totalTasks > 0 ? (completedTasks / totalTasks) : 0;
+        
+        // Calculate sales progress
+        const salesTarget = projectData.monetaryValue || 0;
+        const currentSales = projectData.totalSalesValue || 0;
+        const salesProgress = salesTarget > 0 ? Math.min(currentSales / salesTarget, 1) : 0;
+
+        const overallProgress = projectData.hasMonetaryValue 
+            ? (salesProgress * 0.5 + taskProgress * 0.5) * 100
+            : taskProgress * 100;
+
+        transaction.update(projectRef, { progress: Math.round(overallProgress) });
+    });
+}
 
 function ProjectBreadcrumb({
   company,
@@ -97,6 +150,14 @@ function SiloItem({ silo, companyId, projectId }: { silo: Silo, companyId: strin
   }, [firestore, selectedWorkspace, companyId, projectId, silo.id]);
 
   const { data: tasks, isLoading: tasksLoading } = useCollection<Task>(tasksQuery);
+  
+  // Recalculate project progress when tasks change
+  useEffect(() => {
+    if (selectedWorkspace) {
+        updateProjectProgress(firestore, selectedWorkspace.id, companyId, projectId);
+    }
+  }, [tasks, firestore, selectedWorkspace, companyId, projectId]);
+
 
   const completedTasks = tasks?.filter(t => t.completed).length || 0;
   const totalTasks = tasks?.length || 0;
@@ -191,6 +252,91 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
   );
 }
 
+function SalesProgress({ project, companyId }: { project: Project, companyId: string }) {
+    const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
+    const firestore = useFirestore();
+    const salesTarget = project.monetaryValue || 0;
+    const salesAchieved = project.totalSalesValue || 0;
+    const salesProgress = salesTarget > 0 ? Math.round((salesAchieved / salesTarget) * 100) : 0;
+
+    const salesQuery = useMemoFirebase(() => {
+        if (!selectedWorkspace) return null;
+        return collection(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', project.id, 'sales');
+    }, [firestore, selectedWorkspace, companyId, project.id]);
+
+    const { data: sales, isLoading } = useCollection<Sale>(salesQuery);
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Sales Progress</CardTitle>
+                <CardDescription>
+                    Track sales towards the project target of ZAR {salesTarget.toLocaleString()}.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div className="space-y-2">
+                    <div className="flex justify-between items-center text-sm mb-1">
+                        <span className="text-muted-foreground">
+                            ZAR {salesAchieved.toLocaleString()} / ZAR {salesTarget.toLocaleString()}
+                        </span>
+                        <span className="font-medium">{salesProgress}%</span>
+                    </div>
+                    <Progress value={salesProgress} />
+                </div>
+                
+                <div className="border rounded-md">
+                     <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Date</TableHead>
+                                <TableHead>Source</TableHead>
+                                <TableHead className="text-right">Amount (ZAR)</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {isLoading && <TableRow><TableCell colSpan={3} className="text-center">Loading sales...</TableCell></TableRow>}
+                            {sales && sales.length > 0 ? (
+                                sales.map(sale => (
+                                    <TableRow key={sale.id}>
+                                        <TableCell>{format(new Date(sale.date), 'PPP')}</TableCell>
+                                        <TableCell className="font-medium">{sale.source}</TableCell>
+                                        <TableCell className="text-right">{sale.value.toLocaleString()}</TableCell>
+                                    </TableRow>
+                                ))
+                            ) : (
+                                !isLoading && <TableRow><TableCell colSpan={3} className="text-center h-24">No sales logged yet.</TableCell></TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
+
+                {isUserAdmin && <AddSaleDialog project={project} companyId={companyId} />}
+            </CardContent>
+        </Card>
+    )
+}
+
+function ProjectProgress({ project }: { project: Project }) {
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Overall Project Progress</CardTitle>
+                <CardDescription>Combined progress from sales and task completion.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                 <div className="space-y-2">
+                   <div className="flex justify-between items-center text-sm mb-1">
+                      <span className="text-muted-foreground">Total Progress</span>
+                      <span className="font-medium">{project.progress}%</span>
+                  </div>
+                  <Progress value={project.progress} />
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
 export default function ProjectPage() {
   const params = useParams();
   const companyId = params.companyId as string;
@@ -222,6 +368,12 @@ export default function ProjectPage() {
 
   const isLoading = isProjectLoading || isCompanyLoading;
 
+  useEffect(() => {
+    if (selectedWorkspace && !isLoading) {
+        updateProjectProgress(firestore, selectedWorkspace.id, companyId, projectId);
+    }
+  }, [firestore, selectedWorkspace, companyId, projectId, isLoading]);
+
   if (isLoading || !project || !company) {
     return (
       <div className="space-y-6">
@@ -244,7 +396,10 @@ export default function ProjectPage() {
           Viewing project within the <span className="font-semibold text-foreground">{company.name}</span> company.
         </p>
       </div>
-      <div className="mt-8">
+
+      <div className="mt-8 space-y-8">
+        <ProjectProgress project={project} />
+        {project.hasMonetaryValue && <SalesProgress project={project} companyId={companyId} />}
         <SilosList companyId={companyId} projectId={projectId} />
       </div>
     </div>

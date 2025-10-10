@@ -138,8 +138,12 @@
           "description": "The project's progress from 0 to 100."
         },
         "companyId": {
-            "type": "string",
-            "description": "The ID of the company this project belongs to."
+          "type": "string",
+          "description": "The ID of the company this project belongs to."
+        },
+        "totalSalesValue": {
+          "type": "number",
+          "description": "The total value of all logged sales for the project."
         }
       },
       "required": [
@@ -160,11 +164,14 @@
           "description": "The name of the silo (e.g., To Do, In Progress)."
         },
         "order": {
-            "type": "number",
-            "description": "The order of the silo in the project view."
+          "type": "number",
+          "description": "The order of the silo in the project view."
         }
       },
-      "required": ["name", "order"]
+      "required": [
+        "name",
+        "order"
+      ]
     },
     "Task": {
       "title": "Task",
@@ -180,21 +187,61 @@
           "description": "Whether the task has been completed."
         },
         "dueDate": {
-            "type": "string",
-            "format": "date-time",
-            "description": "The due date for the task."
+          "type": "string",
+          "format": "date-time",
+          "description": "The due date for the task."
         },
         "priority": {
-            "type": "string",
-            "enum": ["low", "medium", "high"],
-            "description": "The priority of the task."
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "description": "The priority of the task."
         },
         "assigneeId": {
-            "type": "string",
-            "description": "The UID of the user assigned to this task."
+          "type": "string",
+          "description": "The UID of the user assigned to this task."
         }
       },
-      "required": ["title", "completed", "priority", "assigneeId", "dueDate"]
+      "required": [
+        "title",
+        "completed",
+        "priority",
+        "assigneeId",
+        "dueDate"
+      ]
+    },
+    "Sale": {
+      "title": "Sale",
+      "type": "object",
+      "description": "A logged sale for a project.",
+      "properties": {
+        "date": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The date of the sale."
+        },
+        "source": {
+          "type": "string",
+          "description": "The source of the sale."
+        },
+        "value": {
+          "type": "number",
+          "description": "The value of the sale in ZAR."
+        },
+        "projectId": {
+          "type": "string",
+          "description": "The ID of the project this sale belongs to."
+        }
+      },
+      "required": [
+        "date",
+        "source",
+        "value",
+        "projectId"
+      ]
     }
   },
   "auth": {
@@ -234,10 +281,16 @@
       "description": "Stores the silos (task containers) for a project."
     },
     "/workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}": {
-        "schema": {
-            "$ref": "#/entities/Task"
-        },
-        "description": "Stores the individual tasks within a silo."
+      "schema": {
+        "$ref": "#/entities/Task"
+      },
+      "description": "Stores the individual tasks within a silo."
+    },
+    "/workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}": {
+      "schema": {
+        "$ref": "#/entities/Sale"
+      },
+      "description": "Stores the individual sales logged for a project."
     }
   }
 }

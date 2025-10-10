@@ -91,7 +91,8 @@ export function AddProjectDialog({ companyId, children }: AddProjectDialogProps)
         deadline: data.deadline.toISOString(),
         hasMonetaryValue: data.hasMonetaryValue,
         monetaryValue: data.hasMonetaryValue ? data.monetaryValue : null,
-        progress: Math.floor(Math.random() * 101), // Random progress for now
+        totalSalesValue: 0,
+        progress: 0,
         companyId: companyId
       });
       
@@ -204,7 +205,7 @@ export function AddProjectDialog({ companyId, children }: AddProjectDialogProps)
 
             {hasMonetaryValue && (
               <div className="space-y-2">
-                <Label htmlFor="monetaryValue">Monetary Value ($)</Label>
+                <Label htmlFor="monetaryValue">Monetary Value (ZAR)</Label>
                 <Input
                   id="monetaryValue"
                   type="number"

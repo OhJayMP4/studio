@@ -35,6 +35,7 @@ export type Project = {
   monetaryValue?: number;
   progress: number;
   companyId: string;
+  totalSalesValue: number;
 };
 
 export type Silo = {
@@ -51,3 +52,11 @@ export type Task = {
     priority: 'low' | 'medium' | 'high';
     assigneeId: string;
 };
+
+export type Sale = {
+    id: string;
+    date: string; // ISO 8601 date string
+    source: string;
+    value: number;
+    projectId: string;
+}
