@@ -4,7 +4,7 @@ import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 import { useFirestore } from "@/firebase";
-import { collection, collectionGroup, query, where, getDocs, doc } from "firebase/firestore";
+import { collectionGroup, query, where, getDocs, doc } from "firebase/firestore";
 import type { Project, Task } from "@/lib/types";
 import ProjectStatusChart from "@/components/reporting/project-status-chart";
 import TaskPriorityChart from "@/components/reporting/task-priority-chart";
@@ -28,13 +28,15 @@ function DashboardView() {
     const fetchWorkspaceData = async () => {
         setIsLoading(true);
         try {
-            const workspaceDocRef = doc(firestore, 'workspaces', selectedWorkspace.id);
+            const workspacePath = `workspaces/${selectedWorkspace.id}`;
+            const startPath = `${workspacePath}/companies/`;
+            const endPath = `${workspacePath}/companies0`; // '0' is the character after '/' in ASCII
 
             // Fetch all projects within the workspace using a collectionGroup query
             const projectsQuery = query(
               collectionGroup(firestore, 'projects'),
-              where('__name__', '>=', workspaceDocRef.path + '/companies/'),
-              where('__name__', '<', workspaceDocRef.path + '/companies0')
+              where('__name__', '>=', startPath),
+              where('__name__', '<', endPath)
             );
             const projectsSnap = await getDocs(projectsQuery);
             const allProjects = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
@@ -43,8 +45,8 @@ function DashboardView() {
             // Fetch all tasks within the workspace using a collectionGroup query
             const tasksQuery = query(
               collectionGroup(firestore, 'tasks'),
-              where('__name__', '>=', workspaceDocRef.path + '/companies/'),
-              where('__name__', '<', workspaceDocRef.path + '/companies0')
+               where('__name__', '>=', startPath),
+               where('__name__', '<', endPath)
             );
             const tasksSnap = await getDocs(tasksQuery);
             const allTasks = tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
