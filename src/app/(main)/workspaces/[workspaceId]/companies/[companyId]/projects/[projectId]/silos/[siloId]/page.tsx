@@ -9,7 +9,16 @@ import { Target, CheckCircle2 } from "lucide-react";
 import { collection, doc } from "firebase/firestore";
 import type { Silo, Task } from "@/lib/types";
 
-export default function SiloPage({ params }: { params: { workspaceId: string, companyId: string, projectId: string, siloId: string } }) {
+interface SiloPageProps {
+  params: {
+    workspaceId: string;
+    companyId: string;
+    projectId: string;
+    siloId: string;
+  };
+}
+
+export default function SiloPage({ params }: SiloPageProps) {
     const { projectId, siloId } = params;
     const firestore = useFirestore();
 

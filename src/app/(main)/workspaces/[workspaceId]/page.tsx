@@ -12,7 +12,11 @@ import { collection, doc } from "firebase/firestore";
 import type { Workspace, Company } from "@/lib/types";
 import { InviteUserButton } from "@/components/common/invite-user-button";
 
-export default function WorkspacePage({ params }: { params: { workspaceId: string } }) {
+interface WorkspacePageProps {
+  params: { workspaceId: string };
+}
+
+export default function WorkspacePage({ params }: WorkspacePageProps) {
     const { workspaceId } = params;
     const firestore = useFirestore();
 

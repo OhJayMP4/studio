@@ -10,7 +10,14 @@ import { AddProjectButton } from "@/components/common/add-project-button";
 import { collection, doc } from "firebase/firestore";
 import type { Company, Project } from "@/lib/types";
 
-export default function CompanyPage({ params }: { params: { workspaceId: string, companyId: string } }) {
+interface CompanyPageProps {
+  params: {
+    workspaceId: string;
+    companyId: string;
+  };
+}
+
+export default function CompanyPage({ params }: CompanyPageProps) {
     const { workspaceId, companyId } = params;
     const firestore = useFirestore();
 
