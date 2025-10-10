@@ -8,18 +8,19 @@ import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Checkbox } from "../ui/checkbox";
 import { useDoc } from "@/firebase/firestore/use-doc";
 import { Badge } from "../ui/badge";
-import { format } from "date-fns";
+import { format, isPast, isToday } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { Button } from "../ui/button";
-import { MoreHorizontal } from "lucide-react";
+import { GripVertical, MoreHorizontal } from "lucide-react";
 import { EditTaskDialog } from "./edit-task-dialog";
 import { DeleteDialog } from "./delete-dialog";
 import { useToast } from "@/hooks/use-toast";
 
 interface TaskItemProps {
     task: Task;
+    siloId: string;
     path: string; // full path to the task document
 }
 
@@ -73,7 +74,7 @@ function TaskActions({ task, path }: { task: Task, path: string }) {
     );
 }
 
-export function TaskItem({ task, path }: TaskItemProps) {
+export function TaskItem({ task, siloId, path }: TaskItemProps) {
     const firestore = useFirestore();
     const { isUserAdmin } = useSelectedWorkspace();
 
@@ -96,11 +97,15 @@ export function TaskItem({ task, path }: TaskItemProps) {
     const avatarUrl = assignee?.avatarUrl || '';
     const fallback = name.charAt(0).toUpperCase();
 
+    const dueDate = new Date(task.dueDate);
+    const isOverdue = !task.completed && isPast(dueDate) && !isToday(dueDate);
+
     return (
         <div className={cn("flex items-center justify-between p-3 rounded-md hover:bg-muted/50 group", {
             "opacity-60": task.completed,
         })}>
             <div className="flex items-center gap-4">
+                <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab active:cursor-grabbing" />
                 <Checkbox
                     id={`task-${task.id}`}
                     checked={task.completed}
@@ -116,8 +121,8 @@ export function TaskItem({ task, path }: TaskItemProps) {
                 </label>
             </div>
             <div className="flex items-center gap-3">
-                 <Badge variant={task.completed ? "secondary" : "outline"} className="hidden sm:inline-flex">
-                    Due: {format(new Date(task.dueDate), 'MMM d')}
+                 <Badge variant={isOverdue ? "destructive" : (task.completed ? "secondary" : "outline")} className="hidden sm:inline-flex">
+                    Due: {format(dueDate, 'MMM d')}
                 </Badge>
                 <TooltipProvider>
                     <Tooltip>

@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
 import type { Company, Project, Sale, Silo, Task } from '@/lib/types';
-import { collection, doc, query, orderBy, getDocs, runTransaction, deleteDoc } from 'firebase/firestore';
+import { collection, doc, query, orderBy, getDocs, runTransaction, deleteDoc, writeBatch } from 'firebase/firestore';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -27,7 +27,7 @@ import {
 import { AddTaskDialog } from '@/components/common/add-task-dialog';
 import { TaskItem } from '@/components/common/task-item';
 import { Progress } from '@/components/ui/progress';
-import { CheckCircle2, MoreVertical } from 'lucide-react';
+import { CheckCircle2, GripVertical, MoreVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AddSaleDialog } from '@/components/common/add-sale-dialog';
 import { format } from 'date-fns';
@@ -39,11 +39,29 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useEffect }from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { EditSiloDialog } from '@/components/common/edit-silo-dialog';
 import { DeleteDialog } from '@/components/common/delete-dialog';
 import { useToast } from '@/hooks/use-toast';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent,
+  DragOverlay,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 
 async function updateProjectProgress(firestore: any, workspaceId: string, companyId: string, projectId: string) {
@@ -194,6 +212,8 @@ function SiloActions({ silo, companyId, projectId }: { silo: Silo; companyId: st
     );
 }
 
+const priorityOrder = { high: 3, medium: 2, low: 1 };
+
 function SiloItem({ silo, companyId, projectId }: { silo: Silo, companyId: string, projectId: string }) {
   const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
@@ -205,12 +225,26 @@ function SiloItem({ silo, companyId, projectId }: { silo: Silo, companyId: strin
 
   const { data: tasks, isLoading: tasksLoading } = useCollection<Task>(tasksQuery);
   
-  // Recalculate project progress when tasks change for *this specific silo*
+  const sortedTasks = useMemo(() => {
+    if (!tasks) return [];
+    return [...tasks].sort((a, b) => {
+      // 1. Completed tasks go to the bottom
+      if (a.completed && !b.completed) return 1;
+      if (!a.completed && b.completed) return -1;
+      // 2. Sort by due date (ascending)
+      const dateA = new Date(a.dueDate).getTime();
+      const dateB = new Date(b.dueDate).getTime();
+      if (dateA !== dateB) return dateA - dateB;
+      // 3. Sort by priority (descending)
+      return priorityOrder[b.priority] - priorityOrder[a.priority];
+    });
+  }, [tasks]);
+
   useEffect(() => {
-    if (selectedWorkspace) {
+    if (selectedWorkspace && !tasksLoading) {
         updateProjectProgress(firestore, selectedWorkspace.id, companyId, projectId);
     }
-  }, [tasks, firestore, selectedWorkspace, companyId, projectId]); // This effect now correctly recalculates progress
+  }, [tasks, tasksLoading, firestore, selectedWorkspace, companyId, projectId]);
 
 
   const completedTasks = tasks?.filter(t => t.completed).length || 0;
@@ -219,47 +253,66 @@ function SiloItem({ silo, companyId, projectId }: { silo: Silo, companyId: strin
   const isSiloComplete = progress === 100 && totalTasks > 0;
 
   return (
-    <AccordionItem key={silo.id} value={silo.id} className="border-none">
-      <Card className="relative">
-          {isUserAdmin && <SiloActions silo={silo} companyId={companyId} projectId={projectId} />}
-          <AccordionTrigger className={cn("p-4 text-lg font-medium hover:no-underline pr-12", { "text-muted-foreground line-through": isSiloComplete })}>
-            <div className="flex-1 text-left flex items-center gap-2">
-              {isSiloComplete && <CheckCircle2 className="text-green-500" />}
-              <span>{silo.name}</span>
-            </div>
-          </AccordionTrigger>
-          <AccordionContent>
-            <div className='px-4 pb-4 space-y-4'>
-                <div className="space-y-2">
-                   <div className="flex justify-between items-center text-sm mb-1">
-                      <span className="text-muted-foreground">{completedTasks} of {totalTasks} tasks complete</span>
-                      <span className="font-medium">{progress}%</span>
-                  </div>
-                  <Progress value={progress} />
+    <Card className="relative">
+        <AccordionItem value={silo.id} className="border-none w-full">
+            {isUserAdmin && <SiloActions silo={silo} companyId={companyId} projectId={projectId} />}
+            <AccordionTrigger className={cn("p-4 text-lg font-medium hover:no-underline pr-12", { "text-muted-foreground line-through": isSiloComplete })}>
+                <div className="flex-1 text-left flex items-center gap-2">
+                    <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab active:cursor-grabbing" />
+                    {isSiloComplete && <CheckCircle2 className="text-green-500" />}
+                    <span>{silo.name}</span>
                 </div>
-                <div className="border rounded-md">
-                    {tasksLoading && <div className="p-4 text-center text-sm">Loading tasks...</div>}
-                    {tasks && tasks.length > 0 ? (
-                      <div className="divide-y">
-                        {tasks.map(task => (
-                           <TaskItem key={task.id} task={task} path={`workspaces/${selectedWorkspace?.id}/companies/${companyId}/projects/${projectId}/silos/${silo.id}/tasks/${task.id}`} />
-                        ))}
+            </AccordionTrigger>
+            <AccordionContent>
+                <div className='px-4 pb-4 space-y-4'>
+                    <div className="space-y-2">
+                       <div className="flex justify-between items-center text-sm mb-1">
+                          <span className="text-muted-foreground">{completedTasks} of {totalTasks} tasks complete</span>
+                          <span className="font-medium">{progress}%</span>
                       </div>
-                    ) : (
-                      !tasksLoading && <p className="p-4 text-center text-sm text-muted-foreground">No tasks in this silo yet.</p>
-                    )}
+                      <Progress value={progress} />
+                    </div>
+                    <div className="border rounded-md">
+                        {tasksLoading && <div className="p-4 text-center text-sm">Loading tasks...</div>}
+                        {sortedTasks && sortedTasks.length > 0 ? (
+                          <div className="divide-y">
+                            {sortedTasks.map(task => (
+                               <TaskItem key={task.id} task={task} siloId={silo.id} path={`workspaces/${selectedWorkspace?.id}/companies/${companyId}/projects/${projectId}/silos/${silo.id}/tasks/${task.id}`} />
+                            ))}
+                          </div>
+                        ) : (
+                          !tasksLoading && <p className="p-4 text-center text-sm text-muted-foreground">No tasks in this silo yet.</p>
+                        )}
+                    </div>
+                     {isUserAdmin && <AddTaskDialog companyId={companyId} projectId={projectId} siloId={silo.id} />}
                 </div>
-                 {isUserAdmin && <AddTaskDialog companyId={companyId} projectId={projectId} siloId={silo.id} />}
-            </div>
-          </AccordionContent>
-      </Card>
-    </AccordionItem>
+            </AccordionContent>
+        </AccordionItem>
+    </Card>
   )
+}
+
+function SortableSiloItem({ silo, companyId, projectId }: { silo: Silo; companyId: string; projectId: string }) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: silo.id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 10 : 'auto',
+        opacity: isDragging ? 0.8 : 1,
+    };
+
+    return (
+        <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+            <SiloItem silo={silo} companyId={companyId} projectId={projectId} />
+        </div>
+    );
 }
 
 function SilosList({ companyId, projectId }: { companyId: string, projectId: string }) {
   const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
+  const { toast } = useToast();
 
   const silosQuery = useMemoFirebase(() => {
     if (!selectedWorkspace) return null;
@@ -277,6 +330,49 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
   }, [firestore, selectedWorkspace, companyId, projectId]);
 
   const { data: silos, isLoading } = useCollection<Silo>(silosQuery);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+  
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveId(null);
+    const { active, over } = event;
+
+    if (active.id !== over?.id && silos) {
+      const oldIndex = silos.findIndex(s => s.id === active.id);
+      const newIndex = silos.findIndex(s => s.id === over?.id);
+
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      const newOrderSilos = Array.from(silos);
+      const [movedItem] = newOrderSilos.splice(oldIndex, 1);
+      newOrderSilos.splice(newIndex, 0, movedItem);
+
+      if (!selectedWorkspace) return;
+
+      const batch = writeBatch(firestore);
+      newOrderSilos.forEach((silo, index) => {
+        const siloRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', projectId, 'silos', silo.id);
+        batch.update(siloRef, { order: index });
+      });
+
+      try {
+        await batch.commit();
+        toast({ title: 'Silos reordered successfully.' });
+      } catch (e: any) {
+        toast({ variant: 'destructive', title: 'Error reordering silos', description: e.message });
+      }
+    }
+  };
 
   if (isLoading) {
     return (
@@ -293,17 +389,29 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
   }
 
   return (
-    <div>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-2xl font-headline">Silos</h2>
         {isUserAdmin && <AddSiloDialog companyId={companyId} projectId={projectId} />}
       </div>
-      <Accordion type="multiple" defaultValue={silos.map(s => s.id)} className="w-full space-y-4">
-        {silos.map(silo => (
-          <SiloItem key={silo.id} silo={silo} companyId={companyId} projectId={projectId} />
-        ))}
-      </Accordion>
-    </div>
+      <SortableContext items={silos.map(s => s.id)} strategy={verticalListSortingStrategy}>
+        <Accordion type="multiple" defaultValue={silos.map(s => s.id)} className="w-full space-y-4">
+            {silos.map(silo => (
+              <SortableSiloItem key={silo.id} silo={silo} companyId={companyId} projectId={projectId} />
+            ))}
+        </Accordion>
+      </SortableContext>
+      <DragOverlay>
+        {activeId && silos ? (
+            <SiloItem silo={silos.find(s => s.id === activeId)!} companyId={companyId} projectId={projectId} />
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 }
 
