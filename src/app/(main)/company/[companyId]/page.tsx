@@ -10,6 +10,7 @@ import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase
 import type { Company, Project } from "@/lib/types";
 import { collection, doc } from "firebase/firestore";
 import { format } from "date-fns";
+import Link from "next/link";
 
 function NoProjectsView({ companyId }: { companyId: string }) {
   const { isUserAdmin } = useSelectedWorkspace();
@@ -107,10 +108,9 @@ function ProjectsList({ companyId }: { companyId: string }) {
     )
 }
 
-export default function CompanyPage({ params }: { params: { companyId: string }}) {
+export default function CompanyPage({ params: { companyId } }: { params: { companyId: string }}) {
   const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
-  const { companyId } = params;
 
   const companyRef = useMemoFirebase(() => {
     if (!selectedWorkspace) return null;

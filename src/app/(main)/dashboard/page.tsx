@@ -8,6 +8,7 @@ import { collection } from "firebase/firestore";
 import type { Company } from "@/lib/types";
 import { AddCompanyDialog } from "@/components/common/add-company-dialog";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 function WorkspaceView() {
   const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
@@ -52,12 +53,14 @@ function WorkspaceView() {
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {companies.map((company) => (
-          <Card key={company.id}>
-            <CardHeader>
-              <CardTitle>{company.name}</CardTitle>
-              <CardDescription>{company.description}</CardDescription>
-            </CardHeader>
-          </Card>
+          <Link key={company.id} href={`/company/${company.id}`} passHref>
+            <Card className="cursor-pointer hover:shadow-lg transition-shadow">
+              <CardHeader>
+                <CardTitle>{company.name}</CardTitle>
+                <CardDescription>{company.description}</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
         ))}
       </div>
     </div>
