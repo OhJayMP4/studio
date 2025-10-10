@@ -36,7 +36,6 @@ export function AddWorkspaceDialog({ children }: AddWorkspaceDialogProps) {
 
     const workspacesCol = collection(firestore, 'workspaces');
     
-    // The initial user object to be stored in the workspace users map
     const workspaceUserData = {
       userId: user.uid,
       role: 'admin',
@@ -45,10 +44,10 @@ export function AddWorkspaceDialog({ children }: AddWorkspaceDialogProps) {
       avatarUrl: user.photoURL || ""
     };
 
-    // Create the main workspace document with the correct users map structure
     addDocumentNonBlocking(workspacesCol, {
       name: workspaceName,
       ownerId: user.uid,
+      memberIds: [user.uid],
       users: {
         [user.uid]: workspaceUserData
       }

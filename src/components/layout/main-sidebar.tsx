@@ -150,7 +150,7 @@ export default function MainSidebar() {
     if (!user) return null;
     return query(
       collection(firestore, "workspaces"),
-      where(`users.${user.uid}.role`, 'in', ['admin', 'contributor', 'viewer'])
+      where('memberIds', 'array-contains', user.uid)
     );
   }, [firestore, user]);
 

@@ -49,6 +49,7 @@ export type Workspace = {
   id: string;
   name: string;
   ownerId: string;
+  memberIds: string[];
   users?: { [key: string]: WorkspaceUser }; // Changed from User[] to a map
   companies?: Company[]; // Now optional as it's a subcollection
 };

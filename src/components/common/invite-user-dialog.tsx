@@ -16,7 +16,7 @@ import React, { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { useFirestore, setDocumentNonBlocking, useUser } from "@/firebase";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, arrayUnion } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 
 export function InviteUserDialog({ children, workspaceId }: { children: React.ReactNode, workspaceId: string }) {
@@ -38,7 +38,6 @@ export function InviteUserDialog({ children, workspaceId }: { children: React.Re
     const placeholderUserId = email.replace(/[^a-zA-Z0-9]/g, '');
     const workspaceRef = doc(firestore, `workspaces/${workspaceId}`);
     
-    // Create the user data object
     const newUserData = {
       userId: placeholderUserId,
       email: email,
@@ -47,9 +46,9 @@ export function InviteUserDialog({ children, workspaceId }: { children: React.Re
       role: role,
     };
 
-    // Atomically add a new user to the "users" map field.
     updateDoc(workspaceRef, {
-        [`users.${placeholderUserId}`]: newUserData
+        [`users.${placeholderUserId}`]: newUserData,
+        memberIds: arrayUnion(placeholderUserId)
     });
 
     toast({

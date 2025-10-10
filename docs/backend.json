@@ -46,6 +46,13 @@
           "type": "string",
           "description": "The ID of the user who owns the workspace."
         },
+        "memberIds": {
+          "type": "array",
+          "description": "An array of user IDs who are members of this workspace.",
+          "items": {
+            "type": "string"
+          }
+        },
         "users": {
           "type": "object",
           "description": "A map of user IDs to their roles and details within the workspace.",
@@ -58,7 +65,8 @@
       },
       "required": [
         "name",
-        "ownerId"
+        "ownerId",
+        "memberIds"
       ]
     },
     "WorkspaceUser": {
