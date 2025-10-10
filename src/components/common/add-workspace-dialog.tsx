@@ -53,6 +53,7 @@ export function AddWorkspaceDialog({ children }: { children?: React.ReactNode })
     }
 
     try {
+      // Create the workspace document
       const workspaceRef = await addDoc(collection(firestore, 'workspaces'), {
         name: data.name,
         ownerId: user.uid,
