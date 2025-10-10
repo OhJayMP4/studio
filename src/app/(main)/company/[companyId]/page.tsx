@@ -73,8 +73,17 @@ function ProjectsList({ companyId }: { companyId: string }) {
 
     if (isLoading) {
         return (
-             <div className="grid gap-4 md:grid-cols-2">
+             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 <Card>
+                    <CardHeader>
+                        <Skeleton className="h-6 w-3/4" />
+                        <Skeleton className="h-4 w-1/2" />
+                    </CardHeader>
+                    <CardContent>
+                        <Skeleton className="h-4 w-full" />
+                    </CardContent>
+                </Card>
+                 <Card>
                     <CardHeader>
                         <Skeleton className="h-6 w-3/4" />
                         <Skeleton className="h-4 w-1/2" />
@@ -106,7 +115,7 @@ function ProjectsList({ companyId }: { companyId: string }) {
                 <h2 className="text-2xl font-headline">Projects</h2>
                 {isUserAdmin && <AddProjectDialog companyId={companyId} />}
             </div>
-            <div className="grid gap-6">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {projects.map(project => (
                     <Card key={project.id}>
                         <CardHeader>
