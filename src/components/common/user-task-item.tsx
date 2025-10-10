@@ -1,9 +1,10 @@
 
 'use client';
 
-import { useFirestore } from "@/firebase";
-import { Task, UserProfile, UserTask } from "@/lib/types";
-import { doc, deleteDoc, updateDoc } from "firebase/firestore";
+import React from "react";
+import { useFirestore, useMemoFirebase } from "@/firebase";
+import { UserProfile, UserTask } from "@/lib/types";
+import { doc } from "firebase/firestore";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Checkbox } from "../ui/checkbox";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -85,10 +86,3 @@ export function UserTaskItem({ userTask }: UserTaskItemProps) {
         </div>
     )
 }
-
-// Minimal useMemoFirebase to satisfy the linter until it's globally available
-// In a real scenario, this would be in a shared utility file.
-const useMemoFirebase = <T>(factory: () => T, deps: React.DependencyList): T => {
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    return React.useMemo(factory, deps);
-};
