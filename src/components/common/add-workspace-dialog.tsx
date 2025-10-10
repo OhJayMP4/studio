@@ -27,7 +27,7 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
-export function AddWorkspaceDialog() {
+export function AddWorkspaceDialog({ children }: { children?: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const firestore = useFirestore();
   const { user } = useUser();
@@ -81,15 +81,21 @@ export function AddWorkspaceDialog() {
       });
     }
   };
+  
+  const trigger = children ? (
+    <DialogTrigger asChild>{children}</DialogTrigger>
+  ) : (
+    <DialogTrigger asChild>
+      <Button>
+        <PlusCircle className="mr-2" />
+        Create Workspace
+      </Button>
+    </DialogTrigger>
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button>
-          <PlusCircle className="mr-2" />
-          Create Workspace
-        </Button>
-      </DialogTrigger>
+      {trigger}
       <DialogContent className="sm:max-w-[425px]">
         <form onSubmit={handleSubmit(handleCreateWorkspace)}>
           <DialogHeader>

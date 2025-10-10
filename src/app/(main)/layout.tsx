@@ -3,11 +3,10 @@
 import MainSidebar from "@/components/layout/main-sidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import Header from "@/components/layout/header";
-import { useUser } from "@/firebase";
+import { useUser, useFirestore } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, createContext, useContext } from "react";
 import { doc, setDoc } from "firebase/firestore";
-import { useFirestore } from "@/firebase";
 import type { Workspace } from "@/lib/types";
 
 interface SelectedWorkspaceContextType {
