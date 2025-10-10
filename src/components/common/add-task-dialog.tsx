@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { Workspace } from '@/lib/types';
+import { FormControl } from '../ui/form';
 
 const formSchema = z.object({
   title: z.string().min(1, 'Task title is required.'),
