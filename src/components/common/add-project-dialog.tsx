@@ -111,9 +111,9 @@ export function AddProjectDialog({ companyId, children }: AddProjectDialogProps)
   };
   
   const trigger = children ? (
-    <DialogTrigger asChild>{children}</DialogTrigger>
+    <DialogTrigger asChild onClick={() => setIsOpen(true)}>{children}</DialogTrigger>
   ) : (
-    <DialogTrigger asChild>
+    <DialogTrigger asChild onClick={() => setIsOpen(true)}>
       <Button>
         <PlusCircle className="mr-2" />
         Add Project

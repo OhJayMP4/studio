@@ -12,6 +12,35 @@ import { collection, doc } from "firebase/firestore";
 import { format } from "date-fns";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import {
+  Breadcrumb as ShadBreadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+
+function CompanyBreadcrumb({ companyName }: { companyName?: string }) {
+  return (
+    <ShadBreadcrumb className="hidden md:flex">
+      <BreadcrumbList>
+        <BreadcrumbItem>
+          <BreadcrumbLink asChild>
+            <Link href="/dashboard">Dashboard</Link>
+          </BreadcrumbLink>
+        </BreadcrumbItem>
+        <BreadcrumbSeparator />
+        <BreadcrumbItem>
+          <BreadcrumbPage className="font-headline">
+            {companyName || <Skeleton className="h-5 w-24" />}
+          </BreadcrumbPage>
+        </BreadcrumbItem>
+      </BreadcrumbList>
+    </ShadBreadcrumb>
+  );
+}
+
 
 function NoProjectsView({ companyId }: { companyId: string }) {
   const { isUserAdmin } = useSelectedWorkspace();
@@ -125,7 +154,8 @@ export default function CompanyPage() {
   if (isLoading || !company) {
     return (
         <div className="space-y-6">
-            <Skeleton className="h-10 w-1/2" />
+            <CompanyBreadcrumb />
+            <Skeleton className="h-10 w-1/2 mt-4" />
             <Skeleton className="h-5 w-3/4" />
             <div className="mt-8">
                  <Skeleton className="h-40 w-full" />
@@ -136,7 +166,8 @@ export default function CompanyPage() {
   
   return (
     <div className="space-y-6">
-      <div>
+       <CompanyBreadcrumb companyName={company.name} />
+      <div className="mt-4">
         <h1 className="text-4xl font-headline font-bold">{company.name}</h1>
         <p className="text-lg text-muted-foreground mt-2">{company.description}</p>
       </div>

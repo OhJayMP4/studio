@@ -12,54 +12,20 @@ import {
 } from "@/components/ui/breadcrumb";
 import React from "react";
 
-function BreadcrumbSegment({
-  segment,
-  isLast,
-  path,
-}: {
-  segment: string;
-  isLast: boolean;
-  path: string;
-}) {
-  const name = segment.charAt(0).toUpperCase() + segment.slice(1);
-
-  return (
-    <React.Fragment>
-      <BreadcrumbItem>
-        {isLast ? (
-          <BreadcrumbPage className="font-headline">{name}</BreadcrumbPage>
-        ) : (
-          <BreadcrumbLink asChild>
-            <Link href={path}>{name}</Link>
-          </BreadcrumbLink>
-        )}
-      </BreadcrumbItem>
-      {!isLast && <BreadcrumbSeparator />}
-    </React.Fragment>
-  );
-}
-
-
+// This component is now simplified and might not be used directly for dynamic routes.
+// We are keeping it for simple, static routes.
 export function Breadcrumb() {
   const pathname = usePathname();
   const segments = pathname.split("/").filter(Boolean);
 
-  if (segments.length === 0) return null;
+  if (segments.length === 0 || segments[0] !== 'dashboard') return null;
 
   return (
     <ShadBreadcrumb className="hidden md:flex">
       <BreadcrumbList>
-        {segments.map((segment, index) => {
-          const path = `/${segments.slice(0, index + 1).join("/")}`;
-          return (
-            <BreadcrumbSegment
-              key={index}
-              segment={segment}
-              isLast={index === segments.length - 1}
-              path={path}
-            />
-          );
-        })}
+        <BreadcrumbItem>
+          <BreadcrumbPage className="font-headline">Dashboard</BreadcrumbPage>
+        </BreadcrumbItem>
       </BreadcrumbList>
     </ShadBreadcrumb>
   );
