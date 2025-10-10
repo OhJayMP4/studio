@@ -3,7 +3,7 @@
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { AddProjectDialog } from "@/components/common/add-project-dialog";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase";
@@ -117,9 +117,9 @@ function ProjectsList({ companyId }: { companyId: string }) {
             </div>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {projects.map(project => (
-                    <Card key={project.id}>
+                    <Card key={project.id} className="flex flex-col">
                         <CardHeader>
-                            <CardTitle className="flex justify-between items-center">
+                            <CardTitle className="flex justify-between items-start">
                                 <span>{project.name}</span>
                                 {project.hasMonetaryValue && project.monetaryValue && (
                                     <span className="text-lg font-semibold text-green-500">
@@ -131,15 +131,19 @@ function ProjectsList({ companyId }: { companyId: string }) {
                                 Deadline: {format(new Date(project.deadline), 'PPP')}
                             </CardDescription>
                         </CardHeader>
-                        <CardContent>
-                            <div className="space-y-2">
+                        <CardContent className="flex-grow">
+                            {/* Content can go here if needed in the future */}
+                        </CardContent>
+                        <CardFooter className="flex-col items-start gap-4">
+                             <div className="w-full space-y-2">
                                 <div className="flex justify-between items-center">
                                     <span className="text-sm text-muted-foreground">Progress</span>
                                     <span className="text-sm font-medium">{project.progress}%</span>
                                 </div>
                                 <Progress value={project.progress} />
                             </div>
-                        </CardContent>
+                            <Button variant="outline" className="w-full">View Project</Button>
+                        </CardFooter>
                     </Card>
                 ))}
             </div>
