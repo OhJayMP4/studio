@@ -174,10 +174,19 @@ function SiloActions({ silo, companyId, projectId }: { silo: Silo; companyId: st
         if (!selectedWorkspace) return;
         const siloRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', projectId, 'silos', silo.id);
         try {
-            await deleteDoc(siloRef);
+            // Also delete all tasks within the silo
+            const tasksCollection = collection(siloRef, 'tasks');
+            const tasksSnapshot = await getDocs(tasksCollection);
+            const batch = writeBatch(firestore);
+            tasksSnapshot.docs.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            batch.delete(siloRef);
+            await batch.commit();
+
             toast({
                 title: "Silo Deleted",
-                description: `"${silo.name}" has been deleted.`,
+                description: `"${silo.name}" and all its tasks have been deleted.`,
             });
         } catch (error: any) {
             toast({
@@ -215,91 +224,42 @@ function SiloActions({ silo, companyId, projectId }: { silo: Silo; companyId: st
 
 const priorityOrder = { high: 3, medium: 2, low: 1 };
 
-function SiloItemContent({ silo, companyId, projectId }: { silo: Silo, companyId: string, projectId: string }) {
-  const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
-  const firestore = useFirestore();
-
-  const tasksQuery = useMemoFirebase(() => {
-    if (!selectedWorkspace) return null;
-    return collection(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', projectId, 'silos', silo.id, 'tasks');
-  }, [firestore, selectedWorkspace, companyId, projectId, silo.id]);
-
-  const { data: tasks, isLoading: tasksLoading } = useCollection<Task>(tasksQuery);
-  
-  const sortedTasks = useMemo(() => {
-    if (!tasks) return [];
-    return [...tasks].sort((a, b) => {
-      if (a.completed && !b.completed) return 1;
-      if (!a.completed && b.completed) return -1;
-      const dateA = new Date(a.dueDate).getTime();
-      const dateB = new Date(b.dueDate).getTime();
-      if (dateA !== dateB) return dateA - dateB;
-      return priorityOrder[b.priority] - priorityOrder[a.priority];
-    });
-  }, [tasks]);
-
-  useEffect(() => {
-    if (selectedWorkspace && !tasksLoading) {
-        updateProjectProgress(firestore, selectedWorkspace.id, companyId, projectId);
-    }
-  }, [tasks, tasksLoading, firestore, selectedWorkspace, companyId, projectId]);
-
-
-  const completedTasks = tasks?.filter(t => t.completed).length || 0;
-  const totalTasks = tasks?.length || 0;
-  const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-  const isSiloComplete = progress === 100 && totalTasks > 0;
-
-  return (
-    <Card className="relative">
-      {isUserAdmin && <SiloActions silo={silo} companyId={companyId} projectId={projectId} />}
-      <AccordionTrigger className={cn("p-4 text-lg font-medium hover:no-underline pr-12", { "text-muted-foreground line-through": isSiloComplete })}>
-          <div className="flex-1 text-left flex items-center gap-2">
-              <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab active:cursor-grabbing" />
-              {isSiloComplete && <CheckCircle2 className="text-green-500" />}
-              <span>{silo.name}</span>
-          </div>
-      </AccordionTrigger>
-      <AccordionContent>
-          <div className='px-4 pb-4 space-y-4'>
-              <div className="space-y-2">
-                 <div className="flex justify-between items-center text-sm mb-1">
-                    <span className="text-muted-foreground">{completedTasks} of {totalTasks} tasks complete</span>
-                    <span className="font-medium">{progress}%</span>
-                </div>
-                <Progress value={progress} />
-              </div>
-              <div className="border rounded-md">
-                  {tasksLoading && <div className="p-4 text-center text-sm">Loading tasks...</div>}
-                  {sortedTasks && sortedTasks.length > 0 ? (
-                    <div className="divide-y">
-                      {sortedTasks.map(task => (
-                         <TaskItem key={task.id} task={task} siloId={silo.id} path={`workspaces/${selectedWorkspace?.id}/companies/${companyId}/projects/${projectId}/silos/${silo.id}/tasks/${task.id}`} />
-                      ))}
-                    </div>
-                  ) : (
-                    !tasksLoading && <p className="p-4 text-center text-sm text-muted-foreground">No tasks in this silo yet.</p>
-                  )}
-              </div>
-               {isUserAdmin && <AddTaskDialog companyId={companyId} projectId={projectId} siloId={silo.id} />}
-          </div>
-      </AccordionContent>
-    </Card>
-  )
-}
-
-function SiloItem({ silo, companyId, projectId, isOverlay = false }: { silo: Silo, companyId: string, projectId: string, isOverlay?: boolean }) {
-    return (
-        <Card className={cn("relative", isOverlay && "shadow-2xl")}>
-             <AccordionItem value={silo.id} className="border-none">
-                <SiloItemContent silo={silo} companyId={companyId} projectId={projectId} />
-            </AccordionItem>
-        </Card>
-    );
-}
-
 function SortableSiloItem({ silo, companyId, projectId }: { silo: Silo; companyId: string; projectId: string }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: silo.id });
+    const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
+    const firestore = useFirestore();
+    const [tasks, setTasks] = useState<Task[]>([]);
+    const [tasksLoading, setTasksLoading] = useState(true);
+
+    const tasksQuery = useMemoFirebase(() => {
+        if (!selectedWorkspace) return null;
+        return collection(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', projectId, 'silos', silo.id, 'tasks');
+    }, [firestore, selectedWorkspace, companyId, projectId, silo.id]);
+
+    const { data: rawTasks, isLoading: rawTasksLoading } = useCollection<Task>(tasksQuery);
+
+    const sortedTasks = useMemo(() => {
+        if (!rawTasks) return [];
+        return [...rawTasks].sort((a, b) => {
+        if (a.completed && !b.completed) return 1;
+        if (!a.completed && b.completed) return -1;
+        const dateA = new Date(a.dueDate).getTime();
+        const dateB = new Date(b.dueDate).getTime();
+        if (dateA !== dateB) return dateA - dateB;
+        return priorityOrder[b.priority] - priorityOrder[a.priority];
+        });
+    }, [rawTasks]);
+
+    useEffect(() => {
+        if (selectedWorkspace && !rawTasksLoading) {
+            updateProjectProgress(firestore, selectedWorkspace.id, companyId, projectId);
+        }
+    }, [rawTasks, rawTasksLoading, firestore, selectedWorkspace, companyId, projectId]);
+
+    const completedTasks = rawTasks?.filter(t => t.completed).length || 0;
+    const totalTasks = rawTasks?.length || 0;
+    const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+    const isSiloComplete = progress === 100 && totalTasks > 0;
 
     const style = {
         transform: CSS.Transform.toString(transform),
@@ -309,19 +269,49 @@ function SortableSiloItem({ silo, companyId, projectId }: { silo: Silo; companyI
     };
 
     return (
-       <div ref={setNodeRef} style={style}>
-            <Card>
-                 <AccordionItem value={silo.id} className="border-none">
-                    <div className="relative">
-                        {/* The drag handle area */}
-                        <div {...listeners} {...attributes} className="absolute top-0 left-0 h-12 w-8 cursor-grab active:cursor-grabbing z-10" />
-                        <SiloItemContent silo={silo} companyId={companyId} projectId={projectId} />
+       <div ref={setNodeRef} style={style} className='space-y-4'>
+            <AccordionItem value={silo.id} className="border-none bg-card rounded-lg overflow-hidden">
+                <div className="relative">
+                    <div {...listeners} {...attributes} className="absolute top-0 left-0 h-full w-8 cursor-grab active:cursor-grabbing z-10 flex items-center justify-center">
+                       <GripVertical className="h-5 w-5 text-muted-foreground" />
                     </div>
-                </AccordionItem>
-            </Card>
+                    <AccordionTrigger className={cn("p-4 text-lg font-medium hover:no-underline pr-12 pl-10", { "text-muted-foreground line-through": isSiloComplete })}>
+                        <div className="flex-1 text-left flex items-center gap-2">
+                            {isSiloComplete && <CheckCircle2 className="text-green-500" />}
+                            <span>{silo.name}</span>
+                        </div>
+                    </AccordionTrigger>
+                    {isUserAdmin && <SiloActions silo={silo} companyId={companyId} projectId={projectId} />}
+                    <AccordionContent>
+                        <div className='px-4 pb-4 space-y-4'>
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center text-sm mb-1">
+                                    <span className="text-muted-foreground">{completedTasks} of {totalTasks} tasks complete</span>
+                                    <span className="font-medium">{progress}%</span>
+                                </div>
+                                <Progress value={progress} />
+                            </div>
+                            <div className="border rounded-md">
+                                {rawTasksLoading && <div className="p-4 text-center text-sm">Loading tasks...</div>}
+                                {sortedTasks && sortedTasks.length > 0 ? (
+                                    <div className="divide-y">
+                                    {sortedTasks.map(task => (
+                                        <TaskItem key={task.id} task={task} siloId={silo.id} path={`workspaces/${selectedWorkspace?.id}/companies/${companyId}/projects/${projectId}/silos/${silo.id}/tasks/${task.id}`} />
+                                    ))}
+                                    </div>
+                                ) : (
+                                    !rawTasksLoading && <p className="p-4 text-center text-sm text-muted-foreground">No tasks in this silo yet.</p>
+                                )}
+                            </div>
+                            {isUserAdmin && <AddTaskDialog companyId={companyId} projectId={projectId} siloId={silo.id} />}
+                        </div>
+                    </AccordionContent>
+                </div>
+            </AccordionItem>
        </div>
     );
 }
+
 
 function SilosList({ companyId, projectId }: { companyId: string, projectId: string }) {
   const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
@@ -396,7 +386,8 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
     if (!overId || !selectedWorkspace) return;
 
     const activeIsTask = active.data.current?.type === 'Task';
-    const overIsSilo = over.data.current?.type === 'Silo';
+    const overIsSilo = over.data.current?.type === 'Silo' || over.data.current?.type === 'Accordion';
+
 
     if (activeIsTask && overIsSilo) {
         const task = active.data.current.task as Task;
@@ -410,8 +401,11 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
 
         try {
             await runTransaction(firestore, async (transaction) => {
+                const taskDoc = await transaction.get(sourceTaskRef);
+                if (!taskDoc.exists()) return;
+                const taskData = taskDoc.data();
                 transaction.delete(sourceTaskRef);
-                transaction.set(doc(targetTasksColRef, task.id), { ...task });
+                transaction.set(doc(targetTasksColRef, task.id), taskData);
             });
             toast({ title: "Task moved", description: `Task "${task.title}" moved to new silo.` });
         } catch(e: any) {
@@ -457,7 +451,16 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
         </Accordion>
       <DragOverlay>
         {activeSilo ? (
-            <SiloItem silo={activeSilo} companyId={companyId} projectId={projectId} isOverlay />
+             <Card className="shadow-2xl">
+                 <AccordionItem value={activeSilo.id} className="border-none">
+                    <AccordionTrigger className={cn("p-4 text-lg font-medium hover:no-underline pr-12")}>
+                        <div className="flex-1 text-left flex items-center gap-2">
+                            <GripVertical className="h-5 w-5 text-muted-foreground" />
+                            <span>{activeSilo.name}</span>
+                        </div>
+                    </AccordionTrigger>
+                </AccordionItem>
+            </Card>
         ) : null}
       </DragOverlay>
     </DndContext>
@@ -626,3 +629,5 @@ export default function ProjectPage() {
     </div>
   );
 }
+
+    
