@@ -27,6 +27,51 @@
         "uid",
         "email"
       ]
+    },
+    "Workspace": {
+      "title": "Workspace",
+      "type": "object",
+      "description": "A workspace containing companies, projects, etc.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the workspace."
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "The UID of the user who owns the workspace."
+        },
+        "memberIds": {
+          "type": "array",
+          "description": "An array of UIDs for all members of the workspace, for querying.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "users": {
+          "type": "object",
+          "description": "A map of user UIDs to their roles and info within the workspace.",
+          "patternProperties": {
+            "^[a-zA-Z0-9_]+$": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "enum": ["admin", "contributor", "viewer"]
+                },
+                 "name": {
+                  "type": "string"
+                },
+                "avatarUrl": {
+                  "type": "string"
+                }
+              },
+              "required": ["role"]
+            }
+          }
+        }
+      },
+      "required": ["name", "ownerId", "users", "memberIds"]
     }
   },
   "auth": {
@@ -40,6 +85,12 @@
         "$ref": "#/entities/UserProfile"
       },
       "description": "Stores public user profile information."
+    },
+    "/workspaces/{workspaceId}": {
+      "schema": {
+        "$ref": "#/entities/Workspace"
+      },
+      "description": "Stores workspace data, including member roles."
     }
   }
 }

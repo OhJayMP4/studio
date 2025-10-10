@@ -1,282 +1,60 @@
 /**
- * @fileoverview Firestore Security Rules for SaturnSync.
+ * @fileoverview Firestore Security Rules for Prototyping.
  *
  * Core Philosophy:
- * This ruleset enforces a hierarchical, role-based access control model. Access is generally restricted to authenticated users,
- * with ownership and membership determining specific permissions. It prioritizes strict authorization and avoids complex
- * schema validation in favor of rapid prototyping.
+ * This ruleset prioritizes strict user-based authorization while relaxing data validation to accelerate prototyping.
+ * It enforces that users can only access their own data tree under `/users/{userId}`.
  *
  * Data Structure:
- * The Firestore database is structured as follows:
- * - /users/{userId}: User profiles.
- * - /workspaces/{workspaceId}: Workspaces containing companies and users.
- * - /workspaces/{workspaceId}/users/{userId}: User's details within the workspace (duplicate of the workspace.users map, for flexibility)
- * - /workspaces/{workspaceId}/companies/{companyId}: Companies within a workspace.
- * - /companies/{companyId}/projects/{projectId}: Projects within a company.
- * - /projects/{projectId}/silos/{siloId}: Silos within a project.
- * - /silos/{siloId}/tasks/{taskId}: Tasks within a silo.
+ * - User profiles are stored under `/users/{userId}`.
  *
  * Key Security Decisions:
- * - Users can only read and write their own profiles.
- * - Workspaces are secured using a closed collaborator model (memberIds array).
- * - Subcollections inherit the workspace's access control.
- * - Data consistency between path variables and document data is enforced on creation and updates.
- * - List operations are generally allowed for workspace members.
+ * - Users can only read and write their own profile data.
+ * - Data validation is minimized to facilitate rapid schema iteration.
+ * - Listing users is not permitted.
  *
  * Denormalization for Authorization:
- * - Workspaces include a `memberIds` array to simplify membership checks.
+ *  - The `uid` is used to link user profile information.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Controls access to user profiles. Users can only read and write their own profiles.
+     * @description Secures user profile data. Only the authenticated user can read and write their own profile.
      * @path /users/{userId}
-     * @allow (create) User A can create their profile if request.auth.uid == userId
-     * @allow (get) User A can read their profile if request.auth.uid == userId
-     * @allow (update) User A can update their profile if request.auth.uid == userId
-     * @allow (delete) User A can delete their profile if request.auth.uid == userId
-     * @deny (create) User A cannot create User B's profile.
-     * @deny (get) User A cannot read User B's profile.
-     * @deny (update) User A cannot update User B's profile.
-     * @deny (delete) User A cannot delete User B's profile.
-     * @principle Enforces document ownership for all operations on user profiles.
+     * @allow (get, create, update, delete) User 'testuser' with UID 'testuid' can access /users/testuid
+     * @deny (get, create, update, delete) User 'otheruser' with UID 'otheruid' cannot access /users/testuid
+     * @principle Enforces document ownership for writes.
      */
     match /users/{userId} {
+      // Helper function to check if the user is signed in
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      // Helper function to check if the user is the owner of the document
       function isOwner(userId) {
         return request.auth.uid == userId;
       }
 
+      // Helper function to check if the user is the existing owner of the document.
       function isExistingOwner(userId) {
-        return isOwner(userId) && resource.data != null;
+        return isOwner(userId) && resource != null;
       }
 
-      allow get: if isOwner(userId);
+      // Allow access only if the user is signed in.
+      allow get: if isSignedIn() && isOwner(userId);
       allow list: if false;
-      allow create: if isOwner(userId);
-      allow update: if isExistingOwner(userId);
+
+      // Allow the user to create their own profile if the userId matches their auth uid.
+      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.uid == request.auth.uid;
+
+      // Allow the user to update their own profile if they are the owner. Enforce immutability of the uid.
+      allow update: if isExistingOwner(userId) && request.resource.data.uid == resource.data.uid;
+
+      // Allow the user to delete their own profile if they are the owner.
       allow delete: if isExistingOwner(userId);
-    }
-
-    /**
-     * @description Controls access to workspaces. Workspace access is based on membership in the 'memberIds' array.
-     * @path /workspaces/{workspaceId}
-     * @allow (create) User A can create a workspace.
-     * @allow (get) User A can read a workspace if they are a member.
-     * @allow (update) User A can update a workspace if they are a member.
-     * @allow (delete) User A can delete a workspace if they are the owner.
-     * @deny (create) User A cannot create a workspace if they are not authenticated.
-     * @deny (get) User A cannot read a workspace if they are not a member.
-     * @deny (update) User A cannot update a workspace if they are not a member.
-     * @deny (delete) User A cannot delete a workspace if they are not the owner.
-     * @principle Enforces closed collaborator access control for workspaces.
-     */
-    match /workspaces/{workspaceId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      function isMember(workspaceId) {
-        return isSignedIn() && resource.data.memberIds is list && resource.data.memberIds.hasAny([request.auth.uid]);
-      }
-
-      function isOwner(workspaceId) {
-        return isSignedIn() && request.auth.uid == resource.data.ownerId;
-      }
-
-      function canManageWorkspaceMembers(workspaceId) {
-        return isOwner(workspaceId); // Only owner can manage members for now
-      }
-
-      allow get: if isMember(workspaceId);
-      allow list: if false; // Listing workspaces is disallowed
-
-      // Anyone signed in can create
-      allow create: if isSignedIn();
-      allow update: if isMember(workspaceId); // Any member can update
-      allow delete: if isOwner(workspaceId) && resource.data != null;
-    }
-
-    /**
-     * @description Controls access to users within a workspace.
-     * @path /workspaces/{workspaceId}/users/{userId}
-     * @allow (create) User A can create a workspace user doc if User A is a member of the workspace.
-     * @allow (get) User A can read a workspace user doc if User A is a member of the workspace.
-     * @allow (update) User A can update a workspace user doc if User A is a member of the workspace.
-     * @allow (delete) User A can delete a workspace user doc if User A is a member of the workspace AND is the owner.
-     * @deny (create) User A cannot create a workspace user doc if User A is NOT a member of the workspace.
-     * @deny (get) User A cannot read a workspace user doc if User A is NOT a member of the workspace.
-     * @deny (update) User A cannot update a workspace user doc if User A is NOT a member of the workspace.
-     * @deny (delete) User A cannot delete a workspace user doc if User A is NOT a member of the workspace AND is NOT the owner.
-     * @principle Enforces workspace membership for accessing workspace user details.
-     */
-    match /workspaces/{workspaceId}/users/{userId} {
-        function isSignedIn() {
-          return request.auth != null;
-        }
-
-        function isWorkspaceMember(workspaceId) {
-          let workspace = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
-          return isSignedIn() && workspace.memberIds is list && workspace.memberIds.hasAny([request.auth.uid]);
-        }
-
-        function isWorkspaceOwner(workspaceId) {
-          let workspace = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
-          return isSignedIn() && workspace.ownerId == request.auth.uid;
-        }
-
-        allow get: if isWorkspaceMember(workspaceId);
-        allow list: if false; // Disable listing
-
-        allow create: if isWorkspaceMember(workspaceId);
-        allow update: if isWorkspaceMember(workspaceId);
-        allow delete: if isWorkspaceOwner(workspaceId) && resource.data != null;
-    }
-
-    /**
-     * @description Controls access to companies within a workspace.
-     * @path /workspaces/{workspaceId}/companies/{companyId}
-     * @allow (create) User A can create a company if User A is a member of the workspace.
-     * @allow (get) User A can read a company if User A is a member of the workspace.
-     * @allow (update) User A can update a company if User A is a member of the workspace.
-     * @allow (delete) User A can delete a company if User A is a member of the workspace AND is the owner.
-     * @deny (create) User A cannot create a company if User A is NOT a member of the workspace.
-     * @deny (get) User A cannot read a company if User A is NOT a member of the workspace.
-     * @deny (update) User A cannot update a company if User A is NOT a member of the workspace.
-     * @deny (delete) User A cannot delete a company if User A is NOT a member of the workspace AND is NOT the owner.
-     * @principle Enforces workspace membership for accessing companies.
-     */
-    match /workspaces/{workspaceId}/companies/{companyId} {
-        function isSignedIn() {
-          return request.auth != null;
-        }
-
-        function isWorkspaceMember(workspaceId) {
-          let workspace = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
-          return isSignedIn() && workspace.memberIds is list && workspace.memberIds.hasAny([request.auth.uid]);
-        }
-
-        function isWorkspaceOwner(workspaceId) {
-          let workspace = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
-          return isSignedIn() && workspace.ownerId == request.auth.uid;
-        }
-
-        allow get: if isWorkspaceMember(workspaceId);
-        allow list: if isWorkspaceMember(workspaceId);
-
-        allow create: if isWorkspaceMember(workspaceId);
-        allow update: if isWorkspaceMember(workspaceId);
-        allow delete: if isWorkspaceOwner(workspaceId) && resource.data != null;
-    }
-
-    /**
-     * @description Controls access to projects within a company.
-     * @path /companies/{companyId}/projects/{projectId}
-     * @allow (create) User A can create a project if User A is a member of the parent workspace.
-     * @allow (get) User A can read a project if User A is a member of the parent workspace.
-     * @allow (update) User A can update a project if User A is a member of the parent workspace.
-     * @allow (delete) User A can delete a project if User A is a member of the parent workspace and is owner of the parent workspace.
-     * @deny (create) User A cannot create a project if User A is NOT a member of the parent workspace.
-     * @deny (get) User A cannot read a project if User A is NOT a member of the parent workspace.
-     * @deny (update) User A cannot update a project if User A is NOT a member of the parent workspace.
-     * @deny (delete) User A cannot delete a project if User A is NOT a member of the parent workspace and is NOT owner of the parent workspace.
-     * @principle Restricts project access to members of the parent workspace.
-     */
-    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      function isWorkspaceMember(workspaceId) {
-          let workspace = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
-          return isSignedIn() && workspace.memberIds is list && workspace.memberIds.hasAny([request.auth.uid]);
-      }
-
-      function isWorkspaceOwner(workspaceId) {
-          let workspace = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
-          return isSignedIn() && workspace.ownerId == request.auth.uid;
-      }
-
-
-      allow get: if isWorkspaceMember(workspaceId);
-      allow list: if isWorkspaceMember(workspaceId);
-
-      allow create: if isWorkspaceMember(workspaceId);
-      allow update: if isWorkspaceMember(workspaceId);
-      allow delete: if isWorkspaceOwner(workspaceId) && resource.data != null;
-    }
-
-    /**
-     * @description Controls access to silos within a project.
-     * @path /projects/{projectId}/silos/{siloId}
-     * @allow (create) User A can create a silo if User A is a member of the grandparent workspace.
-     * @allow (get) User A can read a silo if User A is a member of the grandparent workspace.
-     * @allow (update) User A can update a silo if User A is a member of the grandparent workspace.
-     * @allow (delete) User A can delete a silo if User A is a member of the grandparent workspace and is owner of the grandparent workspace.
-     * @deny (create) User A cannot create a silo if User A is NOT a member of the grandparent workspace.
-     * @deny (get) User A cannot read a silo if User A is NOT a member of the grandparent workspace.
-     * @deny (update) User A cannot update a silo if User A is NOT a member of the grandparent workspace.
-     * @deny (delete) User A cannot delete a silo if User A is NOT a member of the grandparent workspace and is NOT owner of the grandparent workspace.
-     * @principle Restricts silo access to members of the grandparent workspace.
-     */
-    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      function isWorkspaceMember(workspaceId) {
-        let workspace = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
-        return isSignedIn() && workspace.memberIds is list && workspace.memberIds.hasAny([request.auth.uid]);
-      }
-
-      function isWorkspaceOwner(workspaceId) {
-        let workspace = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
-        return isSignedIn() && workspace.ownerId == request.auth.uid;
-      }
-
-      allow get: if isWorkspaceMember(workspaceId);
-      allow list: if isWorkspaceMember(workspaceId);
-
-      allow create: if isWorkspaceMember(workspaceId);
-      allow update: if isWorkspaceMember(workspaceId);
-      allow delete: if isWorkspaceOwner(workspaceId) && resource.data != null;
-    }
-
-    /**
-     * @description Controls access to tasks within a silo.
-     * @path /silos/{siloId}/tasks/{taskId}
-     * @allow (create) User A can create a task if User A is a member of the great-grandparent workspace.
-     * @allow (get) User A can read a task if User A is a member of the great-grandparent workspace.
-     * @allow (update) User A can update a task if User A is a member of the great-grandparent workspace.
-     * @allow (delete) User A can delete a task if User A is a member of the great-grandparent workspace and is owner of the great-grandparent workspace.
-     * @deny (create) User A cannot create a task if User A is NOT a member of the great-grandparent workspace.
-     * @deny (get) User A cannot read a task if User A is NOT a member of the great-grandparent workspace.
-     * @deny (update) User A cannot update a task if User A is NOT a member of the great-grandparent workspace.
-     * @deny (delete) User A cannot delete a task if User A is NOT a member of the great-grandparent workspace and is NOT owner of the great-grandparent workspace.
-     * @principle Restricts task access to members of the great-grandparent workspace.
-     */
-    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      function isWorkspaceMember(workspaceId) {
-        let workspace = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
-        return isSignedIn() && workspace.memberIds is list && workspace.memberIds.hasAny([request.auth.uid]);
-      }
-
-      function isWorkspaceOwner(workspaceId) {
-        let workspace = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
-        return isSignedIn() && workspace.ownerId == request.auth.uid;
-      }
-
-      allow get: if isWorkspaceMember(workspaceId);
-      allow list: if isWorkspaceMember(workspaceId);
-
-      allow create: if isWorkspaceMember(workspaceId);
-      allow update: if isWorkspaceMember(workspaceId);
-      allow delete: if isWorkspaceOwner(workspaceId) && resource.data != null;
     }
   }
 }
