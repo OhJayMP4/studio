@@ -1,99 +1,57 @@
 /**
- * @file Firestore Security Rules
- * @description This ruleset is currently in prototyping mode.
+ * @fileoverview Firestore Security Rules.
  *
  * Core Philosophy:
- * All reads and writes are allowed for all authenticated users.
+ * This ruleset is in prototyping mode. All access is open.
  *
  * Data Structure:
- * /users/{userId} - User profile information
- * /workspaces/{workspaceId} - Workspace data and member roles
- * /workspaces/{workspaceId}/companies/{companyId} - Company information within a workspace
- * /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId} - Project details for a company
- * /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId} - Silos (columns) in a project
- * /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId} - Tasks within a silo
+ * The Firestore database contains collections for users, workspaces, companies, projects, silos, tasks, and sales.
+ * The hierarchy is /users/{userId}, /workspaces/{workspaceId}, /workspaces/{workspaceId}/companies/{companyId},
+ * /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId},
+ * /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId},
+ * /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}, and
+ * /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}.
  *
  * Key Security Decisions:
- * - All reads and writes are allowed for all authenticated users during prototyping.
+ * In prototyping mode, all reads and writes are allowed for all users.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    /**
-     * @description Allows all reads and writes for user profiles during prototyping.
-     * @path /users/{userId}
-     * @allow (get, list, create, update, delete) - Any authenticated user.
-     * @deny None - All reads and writes are allowed.
-     * @principle Unrestricted access during prototyping.
-     */
     match /users/{userId} {
       allow get, list: if true;
-      allow create, update, delete: if isSignedIn();
+      allow create, update, delete: if true;
     }
 
-    /**
-     * @description Allows all reads and writes for workspaces during prototyping.
-     * @path /workspaces/{workspaceId}
-     * @allow (get, list, create, update, delete) - Any authenticated user.
-     * @deny None - All reads and writes are allowed.
-     * @principle Unrestricted access during prototyping.
-     */
     match /workspaces/{workspaceId} {
       allow get, list: if true;
-      allow create, update, delete: if isSignedIn();
+      allow create, update, delete: if true;
     }
 
-    /**
-     * @description Allows all reads and writes for companies during prototyping.
-     * @path /workspaces/{workspaceId}/companies/{companyId}
-     * @allow (get, list, create, update, delete) - Any authenticated user.
-     * @deny None - All reads and writes are allowed.
-     * @principle Unrestricted access during prototyping.
-     */
     match /workspaces/{workspaceId}/companies/{companyId} {
       allow get, list: if true;
-      allow create, update, delete: if isSignedIn();
+      allow create, update, delete: if true;
     }
 
-    /**
-     * @description Allows all reads and writes for projects during prototyping.
-     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}
-     * @allow (get, list, create, update, delete) - Any authenticated user.
-     * @deny None - All reads and writes are allowed.
-     * @principle Unrestricted access during prototyping.
-     */
     match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId} {
       allow get, list: if true;
-      allow create, update, delete: if isSignedIn();
+      allow create, update, delete: if true;
     }
 
-    /**
-     * @description Allows all reads and writes for silos during prototyping.
-     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}
-     * @allow (get, list, create, update, delete) - Any authenticated user.
-     * @deny None - All reads and writes are allowed.
-     * @principle Unrestricted access during prototyping.
-     */
     match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId} {
       allow get, list: if true;
-      allow create, update, delete: if isSignedIn();
+      allow create, update, delete: if true;
     }
 
-    /**
-     * @description Allows all reads and writes for tasks during prototyping.
-     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}
-     * @allow (get, list, create, update, delete) - Any authenticated user.
-     * @deny None - All reads and writes are allowed.
-     * @principle Unrestricted access during prototyping.
-     */
     match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId} {
       allow get, list: if true;
-      allow create, update, delete: if isSignedIn();
+      allow create, update, delete: if true;
     }
 
-    function isSignedIn() {
-      return request.auth != null;
+    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId} {
+      allow get, list: if true;
+      allow create, update, delete: if true;
     }
   }
 }
