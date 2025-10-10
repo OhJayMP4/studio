@@ -50,7 +50,8 @@ export default function MainLayout({
         uid: user.uid,
         email: user.email,
         name: user.displayName,
-        avatarUrl: user.photoURL
+        avatarUrl: user.photoURL,
+        workspaceIds: []
       }, { merge: true });
     }
   }, [user, firestore]);

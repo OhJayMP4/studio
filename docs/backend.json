@@ -21,6 +21,13 @@
         "avatarUrl": {
           "type": "string",
           "description": "URL for the user's avatar image."
+        },
+        "workspaceIds": {
+          "type": "array",
+          "description": "An array of workspace IDs the user is a member of.",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "required": [
@@ -334,5 +341,3 @@
     }
   }
 }
-
-    

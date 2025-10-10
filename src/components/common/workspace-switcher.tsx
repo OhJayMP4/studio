@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useState, useEffect } from 'react';
+import { useUser, useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { collection, query, where } from 'firebase/firestore';
-import type { Workspace } from '@/lib/types';
+import { collection, query, where, doc, getDoc } from 'firebase/firestore';
+import type { Workspace, UserProfile } from '@/lib/types';
 import {
   ChevronsUpDown,
   PlusCircle,
@@ -28,24 +28,47 @@ import {
 import { cn } from '@/lib/utils';
 import { AddWorkspaceDialog } from './add-workspace-dialog';
 import { Skeleton } from '../ui/skeleton';
+import { useDocs } from '@/firebase/firestore/use-docs';
+
+
+function useUserWorkspaces() {
+  const { user } = useUser();
+  const firestore = useFirestore();
+
+  const userProfileRef = useMemoFirebase(() => {
+    if (!user) return null;
+    return doc(firestore, 'users', user.uid);
+  }, [firestore, user]);
+
+  const { data: userProfile, isLoading: isUserProfileLoading } = useDoc<UserProfile>(userProfileRef);
+
+  const workspaceIds = userProfile?.workspaceIds || [];
+
+  const workspacePaths = useMemoFirebase(() => {
+    return workspaceIds.map(id => `workspaces/${id}`);
+  }, [workspaceIds]);
+
+  const { data: workspaces, isLoading: areWorkspacesLoading } = useDocs<Workspace>(workspacePaths);
+  
+  return { workspaces, isLoading: isUserProfileLoading || areWorkspacesLoading };
+}
+
 
 export function WorkspaceSwitcher() {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const { user } = useUser();
-  const firestore = useFirestore();
   const { selectedWorkspace, setSelectedWorkspace } = useSelectedWorkspace();
 
-  const workspacesQuery = useMemoFirebase(() => {
-    if (!user) return null;
-    // FIXED: Scoped to user
-    // This query now correctly fetches only the workspaces where the user is a member.
-    return query(
-      collection(firestore, 'workspaces'),
-      where('memberIds', 'array-contains', user.uid)
-    );
-  }, [firestore, user]);
+  const { workspaces, isLoading } = useUserWorkspaces();
 
-  const { data: workspaces, isLoading } = useCollection<Workspace>(workspacesQuery);
+  useEffect(() => {
+    if (!selectedWorkspace && workspaces && workspaces.length > 0) {
+      setSelectedWorkspace(workspaces[0]);
+    } else if (!workspaces || workspaces.length === 0) {
+      setSelectedWorkspace(null);
+    }
+  }, [workspaces, selectedWorkspace, setSelectedWorkspace]);
+
 
   if (isLoading || !user) {
     return (

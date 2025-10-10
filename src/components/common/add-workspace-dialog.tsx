@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFirestore, useUser } from '@/firebase';
-import { addDoc, collection } from 'firebase/firestore';
+import { addDoc, collection, doc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle } from 'lucide-react';
 
@@ -53,7 +53,7 @@ export function AddWorkspaceDialog({ children }: { children?: React.ReactNode })
     }
 
     try {
-      await addDoc(collection(firestore, 'workspaces'), {
+      const workspaceRef = await addDoc(collection(firestore, 'workspaces'), {
         name: data.name,
         ownerId: user.uid,
         memberIds: [user.uid],
@@ -64,6 +64,12 @@ export function AddWorkspaceDialog({ children }: { children?: React.ReactNode })
             avatarUrl: user.photoURL,
           },
         },
+      });
+
+      // Also update the user's document with the new workspace ID
+      const userRef = doc(firestore, 'users', user.uid);
+      await updateDoc(userRef, {
+        workspaceIds: arrayUnion(workspaceRef.id),
       });
       
       toast({
