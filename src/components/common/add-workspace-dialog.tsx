@@ -12,7 +12,7 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import React, { useState, type FC, type ReactNode } from "react";
+import React, { useState, type ReactNode } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { useFirestore, useUser, addDocumentNonBlocking, setDocumentNonBlocking } from "@/firebase";
@@ -22,7 +22,7 @@ interface AddWorkspaceDialogProps {
   children: ReactNode;
 }
 
-export const AddWorkspaceDialog: FC<AddWorkspaceDialogProps> = ({ children }) => {
+export function AddWorkspaceDialog({ children }: AddWorkspaceDialogProps) {
   const { toast } = useToast();
   const router = useRouter();
   const firestore = useFirestore();
@@ -30,35 +30,38 @@ export const AddWorkspaceDialog: FC<AddWorkspaceDialogProps> = ({ children }) =>
   const [open, setOpen] = useState(false);
   const [workspaceName, setWorkspaceName] = useState("");
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!workspaceName || !user) return;
 
     const workspacesCol = collection(firestore, 'workspaces');
     
-    const usersMap = {
-        [user.uid]: {
-            role: 'admin',
-            name: user.displayName || user.email,
-            email: user.email,
-        }
+    // The initial user object to be stored in the workspace
+    const workspaceUserData = {
+      role: 'admin',
+      name: user.displayName || user.email || "Owner",
+      email: user.email,
+      avatarUrl: user.photoURL
     };
 
+    // Create the main workspace document
     const newWorkspaceRefPromise = addDocumentNonBlocking(workspacesCol, {
       name: workspaceName,
       ownerId: user.uid,
-      users: usersMap
+      // We will now store a map of users directly on the workspace document
+      // to simplify initial creation and rules.
+      users: {
+        [user.uid]: workspaceUserData
+      }
     });
 
+    // We can also create the user document in the subcollection for more detailed profiles later.
     newWorkspaceRefPromise.then(newWorkspaceRef => {
         if (newWorkspaceRef) {
             const userSubcollectionRef = doc(firestore, `workspaces/${newWorkspaceRef.id}/users/${user.uid}`);
             setDocumentNonBlocking(userSubcollectionRef, {
                 userId: user.uid,
-                email: user.email,
-                name: user.displayName,
-                avatarUrl: user.photoURL,
-                role: 'admin',
+                ...workspaceUserData
             }, { merge: true });
         }
     });
