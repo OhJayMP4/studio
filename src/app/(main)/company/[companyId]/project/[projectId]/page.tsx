@@ -269,53 +269,61 @@ function SalesProgress({ project, companyId }: { project: Project, companyId: st
     const { data: sales, isLoading } = useCollection<Sale>(salesQuery);
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Sales Progress</CardTitle>
-                <CardDescription>
-                    Track sales towards the project target of ZAR {salesTarget.toLocaleString()}.
-                </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="space-y-2">
-                    <div className="flex justify-between items-center text-sm mb-1">
-                        <span className="text-muted-foreground">
-                            ZAR {salesAchieved.toLocaleString()} / ZAR {salesTarget.toLocaleString()}
-                        </span>
-                        <span className="font-medium">{salesProgress}%</span>
+      <Accordion type="single" collapsible defaultValue="sales-progress" className="w-full">
+        <AccordionItem value="sales-progress" className="border-none">
+          <Card>
+              <AccordionTrigger className="p-4 text-lg font-medium hover:no-underline">
+                  <div className="flex-1 text-left">
+                    Sales Progress
+                  </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <CardContent className="space-y-4 pt-0">
+                    <CardDescription className="pb-4">
+                        Track sales towards the project target of ZAR {salesTarget.toLocaleString()}.
+                    </CardDescription>
+                    <div className="space-y-2">
+                        <div className="flex justify-between items-center text-sm mb-1">
+                            <span className="text-muted-foreground">
+                                ZAR {salesAchieved.toLocaleString()} / ZAR {salesTarget.toLocaleString()}
+                            </span>
+                            <span className="font-medium">{salesProgress}%</span>
+                        </div>
+                        <Progress value={salesProgress} />
                     </div>
-                    <Progress value={salesProgress} />
-                </div>
-                
-                <div className="border rounded-md">
-                     <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Date</TableHead>
-                                <TableHead>Source</TableHead>
-                                <TableHead className="text-right">Amount (ZAR)</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {isLoading && <TableRow><TableCell colSpan={3} className="text-center">Loading sales...</TableCell></TableRow>}
-                            {sales && sales.length > 0 ? (
-                                sales.map(sale => (
-                                    <TableRow key={sale.id}>
-                                        <TableCell>{format(new Date(sale.date), 'PPP')}</TableCell>
-                                        <TableCell className="font-medium">{sale.source}</TableCell>
-                                        <TableCell className="text-right">{sale.value.toLocaleString()}</TableCell>
-                                    </TableRow>
-                                ))
-                            ) : (
-                                !isLoading && <TableRow><TableCell colSpan={3} className="text-center h-24">No sales logged yet.</TableCell></TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
-                </div>
+                    
+                    <div className="border rounded-md">
+                         <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Date</TableHead>
+                                    <TableHead>Source</TableHead>
+                                    <TableHead className="text-right">Amount (ZAR)</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {isLoading && <TableRow><TableCell colSpan={3} className="text-center">Loading sales...</TableCell></TableRow>}
+                                {sales && sales.length > 0 ? (
+                                    sales.map(sale => (
+                                        <TableRow key={sale.id}>
+                                            <TableCell>{format(new Date(sale.date), 'PPP')}</TableCell>
+                                            <TableCell className="font-medium">{sale.source}</TableCell>
+                                            <TableCell className="text-right">{sale.value.toLocaleString()}</TableCell>
+                                        </TableRow>
+                                    ))
+                                ) : (
+                                    !isLoading && <TableRow><TableCell colSpan={3} className="text-center h-24">No sales logged yet.</TableCell></TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
 
-                {isUserAdmin && <AddSaleDialog project={project} companyId={companyId} />}
-            </CardContent>
-        </Card>
+                    {isUserAdmin && <AddSaleDialog project={project} companyId={companyId} />}
+                </CardContent>
+              </AccordionContent>
+          </Card>
+        </AccordionItem>
+      </Accordion>
     )
 }
 
