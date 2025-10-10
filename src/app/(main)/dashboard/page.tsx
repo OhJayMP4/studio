@@ -23,14 +23,13 @@ export default function DashboardPage() {
     const { user } = useUser();
 
     const workspacesQuery = useMemoFirebase(() => {
-        if (!user) return null;
+        if (!user || !firestore) return null;
         // Query for workspaces where the user is a member.
-        // This requires a composite index on `users.{userId}`
-        // Firestore can auto-create this for you from a console error link.
-        // For now, we query where the user is an owner, which is simpler.
+        // This query requires a composite index:
+        // collection: workspaces, fields: users array contains, __name__ ascending
         return query(
             collection(firestore, "workspaces"),
-            where("ownerId", "==", user.uid)
+            where(`users.${user.uid}`, "!=", "")
         );
     }, [firestore, user]);
 

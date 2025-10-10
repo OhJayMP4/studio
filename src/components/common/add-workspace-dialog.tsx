@@ -12,13 +12,17 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import React, { useState } from "react";
+import React, { useState, type FC, type ReactNode } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { useFirestore, useUser, addDocumentNonBlocking, setDocumentNonBlocking } from "@/firebase";
 import { collection, doc } from "firebase/firestore";
 
-export function AddWorkspaceDialog({ children }: { children: React.ReactNode }) {
+interface AddWorkspaceDialogProps {
+  children: ReactNode;
+}
+
+export const AddWorkspaceDialog: FC<AddWorkspaceDialogProps> = ({ children }) => {
   const { toast } = useToast();
   const router = useRouter();
   const firestore = useFirestore();
@@ -32,10 +36,18 @@ export function AddWorkspaceDialog({ children }: { children: React.ReactNode }) 
 
     const workspacesCol = collection(firestore, 'workspaces');
     
-    // Non-blocking add
+    const usersMap = {
+        [user.uid]: {
+            role: 'admin',
+            name: user.displayName,
+            email: user.email,
+        }
+    };
+
     const newWorkspaceRefPromise = addDocumentNonBlocking(workspacesCol, {
       name: workspaceName,
       ownerId: user.uid,
+      users: usersMap
     });
 
     newWorkspaceRefPromise.then(newWorkspaceRef => {
