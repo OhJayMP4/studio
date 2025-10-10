@@ -24,7 +24,7 @@ export default function DashboardPage() {
 
     const workspacesQuery = useMemoFirebase(() => {
         if (!user || !firestore) return null;
-        // This query finds workspaces where the user is a member by checking their role.
+        // This query finds workspaces where the user is a member by checking their role in the users map.
         return query(
             collection(firestore, "workspaces"),
             where(`users.${user.uid}.role`, 'in', ['admin', 'contributor', 'viewer'])

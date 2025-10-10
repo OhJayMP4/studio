@@ -37,11 +37,19 @@ export type Company = {
   projects?: Project[]; // Now optional as it's a subcollection
 };
 
+export type WorkspaceUser = {
+    userId: string;
+    role: 'admin' | 'contributor' | 'viewer';
+    name: string;
+    email: string | null;
+    avatarUrl?: string | null;
+}
+
 export type Workspace = {
   id: string;
   name: string;
   ownerId: string;
-  users?: User[]; // Now optional as it's a subcollection
+  users?: { [key: string]: WorkspaceUser }; // Changed from User[] to a map
   companies?: Company[]; // Now optional as it's a subcollection
 };
 

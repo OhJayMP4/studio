@@ -45,6 +45,15 @@
         "ownerId": {
           "type": "string",
           "description": "The ID of the user who owns the workspace."
+        },
+        "users": {
+          "type": "object",
+          "description": "A map of user IDs to their roles and details within the workspace.",
+          "patternProperties": {
+            "^[a-zA-Z0-9_]+$": {
+              "$ref": "#/entities/WorkspaceUser"
+            }
+          }
         }
       },
       "required": [
@@ -172,7 +181,7 @@
     },
     "/workspaces/{workspaceId}/users/{userId}": {
         "schema": { "$ref": "#/entities/WorkspaceUser" },
-        "description": "Sub-collection for users within a workspace."
+        "description": "Sub-collection for users within a workspace. This can store more detailed info than the map on the workspace doc."
     },
     "/workspaces/{workspaceId}/companies/{companyId}": {
         "schema": { "$ref": "#/entities/Company" },

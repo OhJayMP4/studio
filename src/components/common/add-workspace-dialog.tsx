@@ -15,8 +15,8 @@ import { Label } from "../ui/label";
 import React, { useState, type ReactNode } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { useFirestore, useUser, addDocumentNonBlocking, setDocumentNonBlocking } from "@/firebase";
-import { collection, doc } from "firebase/firestore";
+import { useFirestore, useUser, addDocumentNonBlocking } from "@/firebase";
+import { collection } from "firebase/firestore";
 
 interface AddWorkspaceDialogProps {
   children: ReactNode;
@@ -36,34 +36,22 @@ export function AddWorkspaceDialog({ children }: AddWorkspaceDialogProps) {
 
     const workspacesCol = collection(firestore, 'workspaces');
     
-    // The initial user object to be stored in the workspace
+    // The initial user object to be stored in the workspace users map
     const workspaceUserData = {
+      userId: user.uid,
       role: 'admin',
       name: user.displayName || user.email || "Owner",
       email: user.email,
       avatarUrl: user.photoURL
     };
 
-    // Create the main workspace document
-    const newWorkspaceRefPromise = addDocumentNonBlocking(workspacesCol, {
+    // Create the main workspace document with the correct users map structure
+    addDocumentNonBlocking(workspacesCol, {
       name: workspaceName,
       ownerId: user.uid,
-      // We will now store a map of users directly on the workspace document
-      // to simplify initial creation and rules.
       users: {
         [user.uid]: workspaceUserData
       }
-    });
-
-    // We can also create the user document in the subcollection for more detailed profiles later.
-    newWorkspaceRefPromise.then(newWorkspaceRef => {
-        if (newWorkspaceRef) {
-            const userSubcollectionRef = doc(firestore, `workspaces/${newWorkspaceRef.id}/users/${user.uid}`);
-            setDocumentNonBlocking(userSubcollectionRef, {
-                userId: user.uid,
-                ...workspaceUserData
-            }, { merge: true });
-        }
     });
 
     toast({
