@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { useFirestore } from "@/firebase";
 import { Project } from "@/lib/types";
-import { collectionGroup, getDocs, query, where, documentId } from "firebase/firestore";
+import { collection, getDocs, query } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Skeleton } from "../ui/skeleton";
@@ -23,26 +23,28 @@ export default function ProjectStatusChart({ workspaceId }: { workspaceId: strin
             setIsLoading(true);
             
             try {
-                const pathPrefix = `workspaces/${workspaceId}/companies`;
-                const projectsQuery = query(collectionGroup(firestore, 'projects'), where('__name__', '>=', `${pathPrefix}/`), where('__name__', '<', `${pathPrefix}0`));
-            
-                const projectsSnap = await getDocs(projectsQuery);
-                
+                const companiesRef = collection(firestore, `workspaces/${workspaceId}/companies`);
+                const companiesSnap = await getDocs(companiesRef);
+
                 let notStarted = 0;
                 let inProgress = 0;
                 let completed = 0;
 
-                projectsSnap.docs.forEach(doc => {
-                    const project = doc.data() as Project;
-                    if (project.progress === 0) {
-                        notStarted++;
-                    } else if (project.progress > 0 && project.progress < 100) {
-                        inProgress++;
-                    } else if (project.progress === 100) {
-                        completed++;
-                    }
-                });
-
+                for (const companyDoc of companiesSnap.docs) {
+                    const projectsRef = collection(companyDoc.ref, 'projects');
+                    const projectsSnap = await getDocs(query(projectsRef));
+                    projectsSnap.forEach(doc => {
+                        const project = doc.data() as Project;
+                        if (project.progress === 0) {
+                            notStarted++;
+                        } else if (project.progress > 0 && project.progress < 100) {
+                            inProgress++;
+                        } else if (project.progress === 100) {
+                            completed++;
+                        }
+                    });
+                }
+                
                 setChartData([
                     { status: 'Not Started', count: notStarted, fill: 'var(--color-notStarted)' },
                     { status: 'In Progress', count: inProgress, fill: 'var(--color-inProgress)' },

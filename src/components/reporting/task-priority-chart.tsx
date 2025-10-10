@@ -2,7 +2,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart";
 import { Task } from "@/lib/types";
-import { collectionGroup, getDocs, query, where, documentId } from "firebase/firestore";
+import { collection, getDocs, query } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { Pie, PieChart, Cell } from "recharts";
 import { useFirestore } from "@/firebase";
@@ -22,20 +22,27 @@ export default function TaskPriorityChart({ workspaceId }: { workspaceId: string
             setIsLoading(true);
 
             try {
-                const pathPrefix = `workspaces/${workspaceId}/companies`;
-                const tasksQuery = query(collectionGroup(firestore, 'tasks'), where('__name__', '>=', `${pathPrefix}/`), where('__name__', '<', `${pathPrefix}0`));
-                const tasksSnap = await getDocs(tasksQuery);
-                
+                const companiesRef = collection(firestore, `workspaces/${workspaceId}/companies`);
+                const companiesSnap = await getDocs(companiesRef);
+
                 let low = 0;
                 let medium = 0;
                 let high = 0;
 
-                tasksSnap.docs.forEach(doc => {
-                    const task = doc.data() as Task;
-                    if (task.priority === 'low') low++;
-                    if (task.priority === 'medium') medium++;
-                    if (task.priority === 'high') high++;
-                });
+                for (const companyDoc of companiesSnap.docs) {
+                     const projectsRef = collection(companyDoc.ref, 'projects');
+                     const projectsSnap = await getDocs(query(projectsRef));
+                     for (const projectDoc of projectsSnap.docs) {
+                        const tasksRef = collection(projectDoc.ref, 'tasks');
+                        const tasksSnap = await getDocs(query(tasksRef));
+                        tasksSnap.forEach(doc => {
+                            const task = doc.data() as Task;
+                            if (task.priority === 'low') low++;
+                            if (task.priority === 'medium') medium++;
+                            if (task.priority === 'high') high++;
+                        });
+                     }
+                }
 
                 setChartData([
                     { priority: 'Low', count: low, fill: 'var(--color-low)' },

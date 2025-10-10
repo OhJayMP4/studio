@@ -3,12 +3,9 @@
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
-import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, collectionGroup, query, where, documentId, getDocs } from "firebase/firestore";
-import type { Company, Project, Task } from "@/lib/types";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
-import { useToast } from "@/hooks/use-toast";
+import { useFirestore } from "@/firebase";
+import { collection, collectionGroup, query, where, getDocs } from "firebase/firestore";
+import type { Project, Task } from "@/lib/types";
 import ProjectStatusChart from "@/components/reporting/project-status-chart";
 import TaskPriorityChart from "@/components/reporting/task-priority-chart";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,25 +20,39 @@ function DashboardView() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (!selectedWorkspace?.id || !firestore) return;
+    if (!selectedWorkspace?.id || !firestore) {
+        setIsLoading(false);
+        return;
+    }
 
     const fetchWorkspaceData = async () => {
         setIsLoading(true);
         try {
-            const projectsPath = `workspaces/${selectedWorkspace.id}/companies`;
-            const projectsQuery = query(collectionGroup(firestore, 'projects'), where('__name__', '>=', `${projectsPath}/`), where('__name__', '<', `${projectsPath}0`));
-            const tasksQuery = query(collectionGroup(firestore, 'tasks'), where('__name__', '>=', `${projectsPath}/`), where('__name__', '<', `${projectsPath}0`));
+            const companiesRef = collection(firestore, `workspaces/${selectedWorkspace.id}/companies`);
+            const companiesSnap = await getDocs(companiesRef);
+            
+            const allProjects: Project[] = [];
+            const allTasks: Task[] = [];
 
-            const [projectsSnap, tasksSnap] = await Promise.all([
-                getDocs(projectsQuery),
-                getDocs(tasksQuery)
-            ]);
+            for (const companyDoc of companiesSnap.docs) {
+                const projectsRef = collection(companyDoc.ref, 'projects');
+                const projectsSnap = await getDocs(projectsRef);
+                projectsSnap.forEach(projectDoc => {
+                    allProjects.push({ id: projectDoc.id, ...projectDoc.data() } as Project);
+                });
 
-            const projectsData = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
-            const tasksData = tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
+                for (const projectDoc of projectsSnap.docs) {
+                    const tasksRef = collection(projectDoc.ref, 'tasks');
+                    const tasksSnap = await getDocs(tasksRef);
+                     tasksSnap.forEach(taskDoc => {
+                        allTasks.push({ id: taskDoc.id, ...taskDoc.data() } as Task);
+                    });
+                }
+            }
+            
+            setProjects(allProjects);
+            setTasks(allTasks);
 
-            setProjects(projectsData);
-            setTasks(tasksData);
         } catch (error) {
             console.error("Error fetching dashboard data: ", error);
         } finally {
