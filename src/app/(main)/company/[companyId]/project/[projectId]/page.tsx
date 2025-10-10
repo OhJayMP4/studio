@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
 import type { Company, Project, Sale, Silo, Task } from '@/lib/types';
-import { collection, doc, query, orderBy, getDocs, runTransaction } from 'firebase/firestore';
+import { collection, doc, query, orderBy, getDocs, runTransaction, DocumentReference } from 'firebase/firestore';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -27,7 +27,7 @@ import {
 import { AddTaskDialog } from '@/components/common/add-task-dialog';
 import { TaskItem } from '@/components/common/task-item';
 import { Progress } from '@/components/ui/progress';
-import { CheckCircle2, MoreVertical, Trash2 } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AddSaleDialog } from '@/components/common/add-sale-dialog';
 import { format } from 'date-fns';
@@ -39,12 +39,30 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useEffect } from 'react';
+import { useEffect }from 'react';
 
 
 async function updateProjectProgress(firestore: any, workspaceId: string, companyId: string, projectId: string) {
     const projectRef = doc(firestore, 'workspaces', workspaceId, 'companies', companyId, 'projects', projectId);
 
+    // Perform reads outside of the transaction
+    const silosCollection = collection(projectRef, 'silos');
+    const silosSnapshot = await getDocs(silosCollection);
+    let totalTasks = 0;
+    let completedTasks = 0;
+
+    for (const siloDoc of silosSnapshot.docs) {
+        const tasksCollection = collection(siloDoc.ref, 'tasks');
+        const tasksSnapshot = await getDocs(tasksCollection);
+        totalTasks += tasksSnapshot.size;
+        tasksSnapshot.forEach(taskDoc => {
+            if (taskDoc.data().completed) {
+                completedTasks++;
+            }
+        });
+    }
+
+    // Now run the transaction to read the project and update it atomically
     await runTransaction(firestore, async (transaction) => {
         const projectDoc = await transaction.get(projectRef);
         if (!projectDoc.exists()) {
@@ -52,25 +70,9 @@ async function updateProjectProgress(firestore: any, workspaceId: string, compan
         }
         const projectData = projectDoc.data() as Project;
 
-        // Calculate task progress
-        const silosCollection = collection(projectRef, 'silos');
-        const silosSnapshot = await getDocs(silosCollection);
-        let totalTasks = 0;
-        let completedTasks = 0;
-
-        for (const siloDoc of silosSnapshot.docs) {
-            const tasksCollection = collection(siloDoc.ref, 'tasks');
-            const tasksSnapshot = await getDocs(tasksCollection);
-            totalTasks += tasksSnapshot.size;
-            tasksSnapshot.forEach(taskDoc => {
-                if (taskDoc.data().completed) {
-                    completedTasks++;
-                }
-            });
-        }
         const taskProgress = totalTasks > 0 ? (completedTasks / totalTasks) : 0;
         
-        // Calculate sales progress
+        // Use existing sales data from the project doc
         const salesTarget = projectData.monetaryValue || 0;
         const currentSales = projectData.totalSalesValue || 0;
         const salesProgress = salesTarget > 0 ? Math.min(currentSales / salesTarget, 1) : 0;
@@ -151,12 +153,12 @@ function SiloItem({ silo, companyId, projectId }: { silo: Silo, companyId: strin
 
   const { data: tasks, isLoading: tasksLoading } = useCollection<Task>(tasksQuery);
   
-  // Recalculate project progress when tasks change
+  // Recalculate project progress when tasks change for *this specific silo*
   useEffect(() => {
     if (selectedWorkspace) {
         updateProjectProgress(firestore, selectedWorkspace.id, companyId, projectId);
     }
-  }, [tasks, firestore, selectedWorkspace, companyId, projectId]);
+  }, [tasks, firestore, selectedWorkspace, companyId, projectId]); // This effect now correctly recalculates progress
 
 
   const completedTasks = tasks?.filter(t => t.completed).length || 0;
@@ -368,11 +370,12 @@ export default function ProjectPage() {
 
   const isLoading = isProjectLoading || isCompanyLoading;
 
+  // Initial progress calculation on load
   useEffect(() => {
-    if (selectedWorkspace && !isLoading) {
+    if (selectedWorkspace && !isLoading && project) {
         updateProjectProgress(firestore, selectedWorkspace.id, companyId, projectId);
     }
-  }, [firestore, selectedWorkspace, companyId, projectId, isLoading]);
+  }, [firestore, selectedWorkspace, companyId, projectId, isLoading, project]);
 
   if (isLoading || !project || !company) {
     return (
