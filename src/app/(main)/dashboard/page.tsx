@@ -77,39 +77,39 @@ function DashboardView() {
          <h1 className="text-3xl font-headline">Dashboard for {selectedWorkspace?.name}</h1>
       </div>
        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-        <Card>
+        <Card className="flex flex-col">
           <CardHeader>
             <CardTitle>Total Projects</CardTitle>
             <CardDescription>All projects in the workspace.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-grow flex flex-col justify-end">
             {isLoading ? <Skeleton className="h-8 w-1/4"/> : <p className="text-4xl font-bold">{projects?.length || 0}</p>}
           </CardContent>
         </Card>
-        <Card>
+        <Card className="flex flex-col">
           <CardHeader>
             <CardTitle>Completed Projects</CardTitle>
             <CardDescription>Projects marked as 100% complete.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-grow flex flex-col justify-end">
              {isLoading ? <Skeleton className="h-8 w-1/4"/> : <p className="text-4xl font-bold">{completedProjects}</p>}
           </CardContent>
         </Card>
-        <Card>
+        <Card className="flex flex-col">
           <CardHeader>
             <CardTitle>Total Tasks</CardTitle>
             <CardDescription>All tasks across all projects.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-grow flex flex-col justify-end">
              {isLoading ? <Skeleton className="h-8 w-1/4"/> : <p className="text-4xl font-bold">{tasks?.length || 0}</p>}
           </CardContent>
         </Card>
-        <Card>
+        <Card className="flex flex-col">
           <CardHeader>
             <CardTitle className="text-destructive">Overdue Tasks</CardTitle>
             <CardDescription>Tasks past their due date.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-grow flex flex-col justify-end">
              {isLoading ? <Skeleton className="h-8 w-1/4"/> : <p className="text-4xl font-bold text-destructive">{overdueTasks}</p>}
           </CardContent>
         </Card>
