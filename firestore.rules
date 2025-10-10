@@ -1,57 +1,105 @@
 /**
- * @fileoverview Firestore Security Rules.
+ * @fileOverview Firestore Security Rules for the application.
  *
  * Core Philosophy:
- * This ruleset is in prototyping mode. All access is open.
+ * This ruleset is in PROTOTYPE MODE and allows completely open read and write access to all data.
+ * BEFORE deploying to production, you MUST lock down these rules based on your application's
+ * security requirements. This initial state is intended for rapid prototyping and development only.
  *
  * Data Structure:
- * The Firestore database contains collections for users, workspaces, companies, projects, silos, tasks, and sales.
- * The hierarchy is /users/{userId}, /workspaces/{workspaceId}, /workspaces/{workspaceId}/companies/{companyId},
- * /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId},
- * /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId},
- * /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}, and
- * /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}.
+ * The Firestore database is structured as follows:
+ * - /users/{userId}: Stores user profile information.
+ * - /workspaces/{workspaceId}: Stores workspace data, including member roles.
+ * - /workspaces/{workspaceId}/companies/{companyId}: Stores company data within a workspace.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}: Stores project data within a company.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}: Stores silos (task containers) for a project.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}: Stores individual tasks within a silo.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}: Stores individual sales logged for a project.
  *
  * Key Security Decisions:
- * In prototyping mode, all reads and writes are allowed for all users.
+ * - All read and write access is currently open to all users (authenticated or not).
+ * - No data validation is performed in this prototype mode.
+ * - This is for prototyping only, and will require a more granular approach later.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    /**
+     * @description Allows any user to read or write user profile information.
+     * @path /users/{userId}
+     * @allow (read, write) - Any user can read or write any user profile.
+     * @principle PROTOTYPE MODE - LOCK DOWN BEFORE PROD.
+     */
     match /users/{userId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
+      allow get, list: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
+      allow create, update, delete: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
     }
 
+    /**
+     * @description Allows any user to read or write workspace data.
+     * @path /workspaces/{workspaceId}
+     * @allow (read, write) - Any user can read or write any workspace.
+     * @principle PROTOTYPE MODE - LOCK DOWN BEFORE PROD.
+     */
     match /workspaces/{workspaceId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
-    }
+      allow get, list: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
+      allow create, update, delete: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
 
-    match /workspaces/{workspaceId}/companies/{companyId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
-    }
+      /**
+       * @description Allows any user to read or write company data within a workspace.
+       * @path /workspaces/{workspaceId}/companies/{companyId}
+       * @allow (read, write) - Any user can read or write any company.
+       * @principle PROTOTYPE MODE - LOCK DOWN BEFORE PROD.
+       */
+      match /companies/{companyId} {
+        allow get, list: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
+        allow create, update, delete: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
 
-    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
-    }
+        /**
+         * @description Allows any user to read or write project data within a company.
+         * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}
+         * @allow (read, write) - Any user can read or write any project.
+         * @principle PROTOTYPE MODE - LOCK DOWN BEFORE PROD.
+         */
+        match /projects/{projectId} {
+          allow get, list: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
+          allow create, update, delete: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
 
-    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
-    }
+          /**
+           * @description Allows any user to read or write silo data within a project.
+           * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}
+           * @allow (read, write) - Any user can read or write any silo.
+           * @principle PROTOTYPE MODE - LOCK DOWN BEFORE PROD.
+           */
+          match /silos/{siloId} {
+            allow get, list: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
+            allow create, update, delete: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
 
-    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
-    }
+            /**
+             * @description Allows any user to read or write task data within a silo.
+             * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}
+             * @allow (read, write) - Any user can read or write any task.
+             * @principle PROTOTYPE MODE - LOCK DOWN BEFORE PROD.
+             */
+            match /tasks/{taskId} {
+              allow get, list: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
+              allow create, update, delete: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
+            }
+          }
 
-    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
+          /**
+           * @description Allows any user to read or write sale data within a project.
+           * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}
+           * @allow (read, write) - Any user can read or write any sale.
+           * @principle PROTOTYPE MODE - LOCK DOWN BEFORE PROD.
+           */
+          match /sales/{saleId} {
+            allow get, list: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
+            allow create, update, delete: if true; // PROTOTYPE MODE - LOCK DOWN BEFORE PROD
+          }
+        }
+      }
     }
   }
 }
