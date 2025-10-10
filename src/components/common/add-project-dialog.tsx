@@ -37,7 +37,7 @@ const formSchema = z.object({
   ),
 }).refine(data => {
     if (data.hasMonetaryValue) {
-        return data.monetaryValue !== undefined;
+        return data.monetaryValue !== undefined && data.monetaryValue > 0;
     }
     return true;
 }, {
@@ -92,6 +92,7 @@ export function AddProjectDialog({ companyId, children }: AddProjectDialogProps)
         hasMonetaryValue: data.hasMonetaryValue,
         monetaryValue: data.hasMonetaryValue ? data.monetaryValue : null,
         progress: Math.floor(Math.random() * 101), // Random progress for now
+        companyId: companyId
       });
       
       toast({

@@ -21,7 +21,7 @@ export type Workspace = {
 
 export type Company = {
   id: string;
-  name: string;
+  name:string;
   description: string;
   logoUrl?: string;
   yearlyTurnoverTarget?: number;
@@ -34,4 +34,18 @@ export type Project = {
   hasMonetaryValue: boolean;
   monetaryValue?: number;
   progress: number;
+  companyId: string;
+};
+
+export type Silo = {
+    id: string;
+    name: string;
+    order: number;
+};
+
+export type Task = {
+    id: string;
+    title: string;
+    description?: string;
+    status: 'todo' | 'in_progress' | 'done' | 'archived';
 };

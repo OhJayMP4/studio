@@ -13,7 +13,7 @@ import { format } from "date-fns";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
-  Breadcrumb as ShadBreadcrumb,
+  Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
@@ -23,7 +23,7 @@ import {
 
 function CompanyBreadcrumb({ companyName }: { companyName?: string }) {
   return (
-    <ShadBreadcrumb className="hidden md:flex">
+    <Breadcrumb className="hidden md:flex">
       <BreadcrumbList>
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
@@ -37,7 +37,7 @@ function CompanyBreadcrumb({ companyName }: { companyName?: string }) {
           </BreadcrumbPage>
         </BreadcrumbItem>
       </BreadcrumbList>
-    </ShadBreadcrumb>
+    </Breadcrumb>
   );
 }
 
@@ -120,7 +120,9 @@ function ProjectsList({ companyId }: { companyId: string }) {
                     <Card key={project.id} className="flex flex-col">
                         <CardHeader>
                             <CardTitle className="flex justify-between items-start">
-                                <span>{project.name}</span>
+                                <Link href={`/company/${companyId}/project/${project.id}`} className="hover:underline">
+                                    {project.name}
+                                </Link>
                                 {project.hasMonetaryValue && project.monetaryValue && (
                                     <span className="text-lg font-semibold text-green-500">
                                         ${project.monetaryValue.toLocaleString()}
@@ -142,7 +144,9 @@ function ProjectsList({ companyId }: { companyId: string }) {
                                 </div>
                                 <Progress value={project.progress} />
                             </div>
-                            <Button variant="outline" className="w-full">View Project</Button>
+                            <Button variant="outline" className="w-full" asChild>
+                                <Link href={`/company/${companyId}/project/${project.id}`}>View Project</Link>
+                            </Button>
                         </CardFooter>
                     </Card>
                 ))}

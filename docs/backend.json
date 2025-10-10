@@ -134,16 +134,58 @@
           "description": "The monetary value of the project."
         },
         "progress": {
-            "type": "number",
-            "description": "The project's progress from 0 to 100."
+          "type": "number",
+          "description": "The project's progress from 0 to 100."
+        },
+        "companyId": {
+            "type": "string",
+            "description": "The ID of the company this project belongs to."
         }
       },
       "required": [
         "name",
         "deadline",
         "hasMonetaryValue",
-        "progress"
+        "progress",
+        "companyId"
       ]
+    },
+    "Silo": {
+      "title": "Silo",
+      "type": "object",
+      "description": "A container for tasks within a project (e.g., a column in a Kanban board).",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the silo (e.g., To Do, In Progress)."
+        },
+        "order": {
+            "type": "number",
+            "description": "The order of the silo in the project view."
+        }
+      },
+      "required": ["name", "order"]
+    },
+    "Task": {
+      "title": "Task",
+      "type": "object",
+      "description": "A single task item within a silo.",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "The title of the task."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of the task."
+        },
+        "status": {
+            "type": "string",
+            "enum": ["todo", "in_progress", "done", "archived"],
+            "description": "The current status of the task."
+        }
+      },
+      "required": ["title", "status"]
     }
   },
   "auth": {
@@ -175,6 +217,18 @@
         "$ref": "#/entities/Project"
       },
       "description": "Stores project data within a company."
+    },
+    "/workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}": {
+      "schema": {
+        "$ref": "#/entities/Silo"
+      },
+      "description": "Stores the silos (task containers) for a project."
+    },
+    "/workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}": {
+        "schema": {
+            "$ref": "#/entities/Task"
+        },
+        "description": "Stores the individual tasks within a silo."
     }
   }
 }
