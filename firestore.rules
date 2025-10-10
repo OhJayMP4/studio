@@ -1,127 +1,99 @@
 /**
- * @fileoverview Firestore Security Rules for the application.
+ * @file Firestore Security Rules
+ * @description This ruleset is currently in prototyping mode.
  *
  * Core Philosophy:
- * This ruleset aims to disable rules on the project and silo as well as task level for now, due to errors, per user request.
+ * All reads and writes are allowed for all authenticated users.
  *
  * Data Structure:
- * - /users/{userId}: Stores public user profiles. Access is restricted to the owning user.
- * - /workspaces/{workspaceId}: Stores workspace data and member roles. Access controlled via workspace membership.
- * - /workspaces/{workspaceId}/companies/{companyId}: Stores company data. Access controlled via workspace membership.
- * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}: Stores project data. Access controlled via workspace membership. Currently disabled.
- * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}: Stores silo data. Access controlled via workspace membership. Currently disabled.
- * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}: Stores task data. Access controlled via workspace membership. Currently disabled.
+ * /users/{userId} - User profile information
+ * /workspaces/{workspaceId} - Workspace data and member roles
+ * /workspaces/{workspaceId}/companies/{companyId} - Company information within a workspace
+ * /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId} - Project details for a company
+ * /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId} - Silos (columns) in a project
+ * /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId} - Tasks within a silo
  *
  * Key Security Decisions:
- * - User profiles are private and only accessible to the owning user.
- * - Workspace membership is managed via the `users` map on the workspace document.
- * - Listing of any collections is restricted to the owner.
+ * - All reads and writes are allowed for all authenticated users during prototyping.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Controls access to user profile documents.
+     * @description Allows all reads and writes for user profiles during prototyping.
      * @path /users/{userId}
-     * @allow (create) User 'user_abc' can create their own profile.
-     * @deny (create) User 'user_xyz' cannot create a profile for 'user_abc'.
-     * @allow (get) User 'user_abc' can read their own profile.
-     * @deny (get) User 'user_xyz' cannot read 'user_abc' profile.
-     * @principle Enforces user-ownership for profile data.
+     * @allow (get, list, create, update, delete) - Any authenticated user.
+     * @deny None - All reads and writes are allowed.
+     * @principle Unrestricted access during prototyping.
      */
     match /users/{userId} {
-      // Allow the user to read/write their own profile data.
-      allow get: if isOwner(userId);
-      allow list: if false;
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId) && isSignedIn();
-      allow delete: if isOwner(userId) && isSignedIn();
+      allow get, list: if true;
+      allow create, update, delete: if isSignedIn();
     }
 
     /**
-     * @description Controls access to workspace documents.
+     * @description Allows all reads and writes for workspaces during prototyping.
      * @path /workspaces/{workspaceId}
-     * @allow (create) User 'user_abc' can create a workspace if they are the owner.
-     * @deny (create) User 'user_xyz' cannot create a workspace owned by 'user_abc'.
-     * @allow (get) Any workspace member can read workspace details.
-     * @deny (get) A non-member cannot read workspace details.
-     * @principle Enforces workspace membership for access.
+     * @allow (get, list, create, update, delete) - Any authenticated user.
+     * @deny None - All reads and writes are allowed.
+     * @principle Unrestricted access during prototyping.
      */
     match /workspaces/{workspaceId} {
-      allow get: if isSignedIn();
-      allow list: if false;
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      allow get, list: if true;
+      allow create, update, delete: if isSignedIn();
     }
 
     /**
-     * @description Controls access to company documents within a workspace.
+     * @description Allows all reads and writes for companies during prototyping.
      * @path /workspaces/{workspaceId}/companies/{companyId}
-     * @allow (create) A workspace member can create a company within the workspace.
-     * @deny (create) A non-member cannot create a company within the workspace.
-     * @allow (get) A workspace member can read company details.
-     * @deny (get) A non-member cannot read company details.
-     * @principle Enforces workspace membership for access.
+     * @allow (get, list, create, update, delete) - Any authenticated user.
+     * @deny None - All reads and writes are allowed.
+     * @principle Unrestricted access during prototyping.
      */
     match /workspaces/{workspaceId}/companies/{companyId} {
-      allow get: if isSignedIn();
-      allow list: if false;
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      allow get, list: if true;
+      allow create, update, delete: if isSignedIn();
     }
 
     /**
-     * @description Controls access to project documents within a company in a workspace. DISABLED PER USER REQUEST.
+     * @description Allows all reads and writes for projects during prototyping.
      * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}
+     * @allow (get, list, create, update, delete) - Any authenticated user.
+     * @deny None - All reads and writes are allowed.
+     * @principle Unrestricted access during prototyping.
      */
     match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId} {
-      allow get: if isSignedIn();
-      allow list: if false;
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      allow get, list: if true;
+      allow create, update, delete: if isSignedIn();
     }
 
     /**
-     * @description Controls access to silo documents within a project. DISABLED PER USER REQUEST.
+     * @description Allows all reads and writes for silos during prototyping.
      * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}
+     * @allow (get, list, create, update, delete) - Any authenticated user.
+     * @deny None - All reads and writes are allowed.
+     * @principle Unrestricted access during prototyping.
      */
     match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId} {
-      allow get: if isSignedIn();
-      allow list: if false;
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      allow get, list: if true;
+      allow create, update, delete: if isSignedIn();
     }
 
-       /**
-        * @description Controls access to task documents within a silo. DISABLED PER USER REQUEST.
-        * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}
-        */
+    /**
+     * @description Allows all reads and writes for tasks during prototyping.
+     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}
+     * @allow (get, list, create, update, delete) - Any authenticated user.
+     * @deny None - All reads and writes are allowed.
+     * @principle Unrestricted access during prototyping.
+     */
     match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId} {
-      allow get: if isSignedIn();
-      allow list: if false;
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      allow get, list: if true;
+      allow create, update, delete: if isSignedIn();
     }
-  }
 
-  // Helper function to determine if the current user is the document owner.
-  function isOwner(userId) {
-    return request.auth.uid == userId;
-  }
-
-    // Helper function to determine if the current user is the document owner and that the document exists.
-  function isExistingOwner(userId) {
-    return isOwner(userId) && exists(/databases/$(database)/documents/users/$(userId));
-  }
-
-    // Helper function to determine if a user is signed in
-  function isSignedIn() {
-    return request.auth != null;
+    function isSignedIn() {
+      return request.auth != null;
+    }
   }
 }
