@@ -20,9 +20,6 @@ export default function ProjectStatusChart({ workspaceId }: { workspaceId: strin
             setIsLoading(true);
             
             try {
-                // Construct the path to the workspace to use in the query
-                const workspacePath = `workspaces/${workspaceId}`;
-                
                 // Query the 'projects' collection group
                 const projectsQuery = query(
                     collectionGroup(firestore, 'projects'),

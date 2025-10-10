@@ -22,8 +22,8 @@ function DashboardView() {
     if (!selectedWorkspace?.id) return null;
     return query(
       collectionGroup(firestore, 'projects'),
-      where(documentId(), '>=', `workspaces/${selectedWorkspace.id}/`),
-      where(documentId(), '<', `workspaces/${selectedWorkspace.id}/\uf8ff`)
+      where(documentId(), '>=', `workspaces/${selectedWorkspace.id}/companies/`),
+      where(documentId(), '<', `workspaces/${selectedWorkspace.id}/companies/\uf8ff`)
     );
   }, [firestore, selectedWorkspace]);
 
@@ -33,8 +33,8 @@ function DashboardView() {
       if (!selectedWorkspace?.id) return null;
       return query(
         collectionGroup(firestore, 'tasks'),
-        where(documentId(), '>=', `workspaces/${selectedWorkspace.id}/`),
-        where(documentId(), '<', `workspaces/${selectedWorkspace.id}/\uf8ff`)
+        where(documentId(), '>=', `workspaces/${selectedWorkspace.id}/companies/`),
+        where(documentId(), '<', `workspaces/${selectedWorkspace.id}/companies/\uf8ff`)
       );
   }, [firestore, selectedWorkspace]);
   
