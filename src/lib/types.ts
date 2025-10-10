@@ -18,3 +18,11 @@ export type Workspace = {
     };
   };
 };
+
+export type Company = {
+  id: string;
+  name: string;
+  description: string;
+  logoUrl?: string;
+  yearlyTurnoverTarget?: number;
+};
