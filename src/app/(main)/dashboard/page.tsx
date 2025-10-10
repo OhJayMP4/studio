@@ -24,10 +24,10 @@ export default function DashboardPage() {
 
     const workspacesQuery = useMemoFirebase(() => {
         if (!user || !firestore) return null;
-        // Query for workspaces where the user is the owner.
+        // This query finds workspaces where the user is a member by checking their role.
         return query(
             collection(firestore, "workspaces"),
-            where("ownerId", "==", user.uid)
+            where(`users.${user.uid}.role`, 'in', ['admin', 'contributor', 'viewer'])
         );
     }, [firestore, user]);
 
