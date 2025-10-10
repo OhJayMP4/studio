@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useUser, useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
+import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { collection, query, where, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import type { Workspace, UserProfile } from '@/lib/types';
 import {
   ChevronsUpDown,
@@ -35,42 +35,91 @@ function useUserWorkspaces() {
   const { user } = useUser();
   const firestore = useFirestore();
 
-  const userProfileRef = useMemoFirebase(() => {
-    if (!user) return null;
-    return doc(firestore, 'users', user.uid);
-  }, [firestore, user]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const { data: userProfile, isLoading: isUserProfileLoading } = useDoc<UserProfile>(userProfileRef);
+  useEffect(() => {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
 
-  const workspaceIds = userProfile?.workspaceIds || [];
+    const userRef = doc(firestore, 'users', user.uid);
+    const unsubUser = onSnapshot(userRef, (userSnap) => {
+      if (!userSnap.exists()) {
+        setError("User document not found.");
+        setIsLoading(false);
+        return;
+      }
+      
+      const { workspaceIds = [] } = userSnap.data() as UserProfile;
+      setWorkspaces([]); // Reset on new workspace list
+      
+      if (workspaceIds.length === 0) {
+        setIsLoading(false);
+        return;
+      }
 
-  const workspacePaths = useMemoFirebase(() => {
-    return workspaceIds.map(id => `workspaces/${id}`);
-  }, [workspaceIds]);
+      setIsLoading(true);
+      const unsubs: (() => void)[] = [];
 
-  const { data: workspaces, isLoading: areWorkspacesLoading } = useDocs<Workspace>(workspacePaths);
+      workspaceIds.forEach(wsId => {
+        const wsRef = doc(firestore, 'workspaces', wsId);
+        const wsUnsub = onSnapshot(wsRef, (wsSnap) => {
+          if (wsSnap.exists()) {
+            const wsData = wsSnap.data() as Omit<Workspace, 'id'>;
+            // Add or update workspace in the local state
+            setWorkspaces(prev => {
+              const existing = prev.find(w => w.id === wsId);
+              if (existing) {
+                return prev.map(w => w.id === wsId ? { id: wsId, ...wsData } : w);
+              }
+              return [...prev, { id: wsId, ...wsData }];
+            });
+          } else {
+             // If a workspace is deleted, remove it from local state
+             setWorkspaces(prev => prev.filter(w => w.id !== wsId));
+          }
+        }, (err) => {
+          console.error(`Error fetching workspace ${wsId}:`, err);
+        });
+        unsubs.push(wsUnsub);
+      });
+
+      setIsLoading(false);
+
+      // Cleanup listeners for workspaces when workspaceIds array changes
+      return () => unsubs.forEach(u => u());
+    }, (err) => {
+      console.error("Error fetching user profile:", err);
+      setError(err.message);
+      setIsLoading(false);
+    });
+
+    return unsubUser; // Cleanup user profile listener
+  }, [user, firestore]);
   
-  return { workspaces, isLoading: isUserProfileLoading || areWorkspacesLoading };
+  return { workspaces, isLoading, error };
 }
 
 
 export function WorkspaceSwitcher() {
   const [popoverOpen, setPopoverOpen] = useState(false);
-  const { user } = useUser();
   const { selectedWorkspace, setSelectedWorkspace } = useSelectedWorkspace();
-
   const { workspaces, isLoading } = useUserWorkspaces();
 
   useEffect(() => {
-    if (!selectedWorkspace && workspaces && workspaces.length > 0) {
-      setSelectedWorkspace(workspaces[0]);
-    } else if (!workspaces || workspaces.length === 0) {
-      setSelectedWorkspace(null);
+    // When workspaces load, if no workspace is selected, or the selected one is no longer available, select the first one.
+    if (!isLoading && workspaces) {
+      if (!selectedWorkspace || !workspaces.find(w => w.id === selectedWorkspace.id)) {
+        setSelectedWorkspace(workspaces[0] || null);
+      }
     }
-  }, [workspaces, selectedWorkspace, setSelectedWorkspace]);
+  }, [workspaces, isLoading, selectedWorkspace, setSelectedWorkspace]);
 
 
-  if (isLoading || !user) {
+  if (isLoading) {
     return (
       <div className="flex items-center gap-2">
          <Skeleton className="h-10 w-10 rounded-lg" />
@@ -89,9 +138,15 @@ export function WorkspaceSwitcher() {
           className="w-full justify-between"
         >
           <div className="flex items-center gap-2 overflow-hidden">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs font-bold">
-               {selectedWorkspace ? selectedWorkspace.name.charAt(0).toUpperCase() : '-'}
-            </div>
+             {selectedWorkspace ? (
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs font-bold">
+                    {selectedWorkspace.name.charAt(0).toUpperCase()}
+                </div>
+            ) : (
+                 <div className="flex h-6 w-6 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs font-bold">
+                    -
+                 </div>
+            )}
             <span className="truncate">
               {selectedWorkspace
                 ? selectedWorkspace.name
@@ -105,7 +160,12 @@ export function WorkspaceSwitcher() {
         <Command>
           <CommandList>
             <CommandInput placeholder="Search workspace..." />
-            <CommandEmpty>No workspace found.</CommandEmpty>
+            <CommandEmpty>
+                <div className='p-4 text-sm text-center'>
+                    <p>No workspace found.</p>
+                    <p className='text-muted-foreground'>Create one to get started.</p>
+                </div>
+            </CommandEmpty>
             <CommandGroup heading="Workspaces">
               {workspaces?.map((workspace) => (
                 <CommandItem

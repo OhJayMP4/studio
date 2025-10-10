@@ -57,7 +57,7 @@ export function AddWorkspaceDialog({ children }: { children?: React.ReactNode })
       const workspaceRef = await addDoc(collection(firestore, 'workspaces'), {
         name: data.name,
         ownerId: user.uid,
-        memberIds: [user.uid],
+        memberIds: [user.uid], // FIXED: use memberIds for array-contains queries
         users: {
           [user.uid]: {
             role: 'admin',
@@ -90,9 +90,9 @@ export function AddWorkspaceDialog({ children }: { children?: React.ReactNode })
   };
   
   const trigger = children ? (
-    <DialogTrigger asChild>{children}</DialogTrigger>
+    <DialogTrigger asChild onClick={() => setIsOpen(true)}>{children}</DialogTrigger>
   ) : (
-    <DialogTrigger asChild>
+    <DialogTrigger asChild onClick={() => setIsOpen(true)}>
       <Button>
         <PlusCircle className="mr-2" />
         Create Workspace
@@ -112,20 +112,16 @@ export function AddWorkspaceDialog({ children }: { children?: React.ReactNode })
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="text-right">
-                Name
-              </Label>
-              <div className="col-span-3">
-                <Input
-                  id="name"
-                  placeholder="e.g. Marketing Team"
-                  {...register('name')}
-                />
-                {errors.name && (
-                  <p className="text-sm text-destructive mt-1">{errors.name.message}</p>
-                )}
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="name">Workspace Name</Label>
+              <Input
+                id="name"
+                placeholder="e.g. Marketing Team"
+                {...register('name')}
+              />
+              {errors.name && (
+                <p className="text-sm text-destructive mt-1">{errors.name.message}</p>
+              )}
             </div>
           </div>
           <DialogFooter>
