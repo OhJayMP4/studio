@@ -40,7 +40,7 @@ import { AddProjectButton } from "../common/add-project-button";
 import { AddSiloButton } from "../common/add-silo-button";
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase";
 import { collection, query, where } from "firebase/firestore";
-import type { Workspace, Company, Project, Silo, UserProfile } from "@/lib/types";
+import type { Workspace, Company, Project, Silo } from "@/lib/types";
 
 
 function SiloSubMenu({ workspace, company, project }: { workspace: Workspace, company: Company, project: Project }) {
@@ -148,8 +148,10 @@ export default function MainSidebar() {
 
   const workspacesQuery = useMemoFirebase(() => {
     if (!user) return null;
-    // This is a simplification. In a real app, you'd likely have a 'members' subcollection or array.
-    return query(collection(firestore, "workspaces"), where("ownerId", "==", user.uid));
+    return query(
+      collection(firestore, "workspaces"),
+      where(`users.${user.uid}.role`, 'in', ['admin', 'contributor', 'viewer'])
+    );
   }, [firestore, user]);
 
   const { data: workspaces } = useCollection<Workspace>(workspacesQuery);
