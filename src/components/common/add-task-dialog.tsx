@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { Workspace } from '@/lib/types';
-import { FormControl } from '../ui/form';
+import { FormControl, FormField, FormItem, FormMessage } from '../ui/form';
 
 const formSchema = z.object({
   title: z.string().min(1, 'Task title is required.'),
@@ -67,13 +67,7 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
   const { selectedWorkspace } = useSelectedWorkspace();
   const { toast } = useToast();
 
-  const {
-    register,
-    handleSubmit,
-    control,
-    formState: { errors, isSubmitting },
-    reset,
-  } = useForm<FormValues>({
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
   });
   
@@ -103,7 +97,7 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
         title: 'Task Created',
         description: `The "${data.title}" task has been successfully created.`,
       });
-      reset();
+      form.reset();
       setIsOpen(false);
     } catch (error: any) {
       console.error('Error creating task:', error);
@@ -130,117 +124,117 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       {trigger}
       <DialogContent className="sm:max-w-[425px]">
-        <form onSubmit={handleSubmit(handleCreateTask)}>
-          <DialogHeader>
-            <DialogTitle>Add a new task</DialogTitle>
-            <DialogDescription>
-              Fill in the details for the new task in this silo.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="title">Task Title</Label>
-              <Input
-                id="title"
-                placeholder="e.g. Design the landing page"
-                {...register('title')}
+        <FormProvider {...form}>
+          <form onSubmit={form.handleSubmit(handleCreateTask)}>
+            <DialogHeader>
+              <DialogTitle>Add a new task</DialogTitle>
+              <DialogDescription>
+                Fill in the details for the new task in this silo.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <FormField
+                control={form.control}
+                name="title"
+                render={({ field }) => (
+                  <FormItem>
+                    <Label>Task Title</Label>
+                    <FormControl>
+                      <Input placeholder="e.g. Design the landing page" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-              {errors.title && (
-                <p className="text-sm text-destructive mt-1">{errors.title.message}</p>
-              )}
+
+              <FormField
+                  control={form.control}
+                  name="priority"
+                  render={({ field }) => (
+                      <FormItem>
+                          <Label>Priority</Label>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                  <SelectTrigger>
+                                      <SelectValue placeholder="Select priority" />
+                                  </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                  <SelectItem value="low">Low</SelectItem>
+                                  <SelectItem value="medium">Medium</SelectItem>
+                                  <SelectItem value="high">High</SelectItem>
+                              </SelectContent>
+                          </Select>
+                          <FormMessage />
+                      </FormItem>
+                  )}
+              />
+
+              <FormField
+                  control={form.control}
+                  name="assigneeId"
+                  render={({ field }) => (
+                      <FormItem>
+                          <Label>Assign To</Label>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                  <SelectTrigger>
+                                      <SelectValue placeholder="Select a team member" />
+                                  </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                  {workspaceUsers.map(user => (
+                                      <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
+                                  ))}
+                              </SelectContent>
+                          </Select>
+                          <FormMessage />
+                      </FormItem>
+                  )}
+              />
+
+              <FormField
+                control={form.control}
+                name="dueDate"
+                render={({ field }) => (
+                  <FormItem className='flex flex-col'>
+                      <Label>Due Date</Label>
+                      <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                  variant={"outline"}
+                                  className={cn(
+                                  "w-full justify-start text-left font-normal",
+                                  !field.value && "text-muted-foreground"
+                                  )}
+                              >
+                                  <CalendarIcon className="mr-2 h-4 w-4" />
+                                  {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0">
+                              <Calendar
+                                  mode="single"
+                                  selected={field.value}
+                                  onSelect={field.onChange}
+                                  initialFocus
+                              />
+                          </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
-
-            <Controller
-                name="priority"
-                control={control}
-                render={({ field }) => (
-                    <div className="space-y-2">
-                        <Label htmlFor="priority">Priority</Label>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                            <FormControl>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select priority" />
-                                </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                                <SelectItem value="low">Low</SelectItem>
-                                <SelectItem value="medium">Medium</SelectItem>
-                                <SelectItem value="high">High</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        {errors.priority && (
-                            <p className="text-sm text-destructive mt-1">{errors.priority.message}</p>
-                        )}
-                    </div>
-                )}
-            />
-
-            <Controller
-                name="assigneeId"
-                control={control}
-                render={({ field }) => (
-                    <div className="space-y-2">
-                        <Label htmlFor="assigneeId">Assign To</Label>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                            <FormControl>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select a team member" />
-                                </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                                {workspaceUsers.map(user => (
-                                    <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                         {errors.assigneeId && (
-                            <p className="text-sm text-destructive mt-1">{errors.assigneeId.message}</p>
-                        )}
-                    </div>
-                )}
-            />
-
-            <Controller
-              name="dueDate"
-              control={control}
-              render={({ field }) => (
-                <div className="space-y-2">
-                    <Label htmlFor="dueDate">Due Date</Label>
-                    <Popover>
-                        <PopoverTrigger asChild>
-                        <Button
-                            variant={"outline"}
-                            className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !field.value && "text-muted-foreground"
-                            )}
-                        >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
-                        </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                            <Calendar
-                                mode="single"
-                                selected={field.value}
-                                onSelect={field.onChange}
-                                initialFocus
-                            />
-                        </PopoverContent>
-                    </Popover>
-                    {errors.dueDate && (
-                        <p className="text-sm text-destructive mt-1">{errors.dueDate.message}</p>
-                    )}
-                </div>
-              )}
-            />
-          </div>
-          <DialogFooter>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Adding...' : 'Add Task'}
-            </Button>
-          </DialogFooter>
-        </form>
+            <DialogFooter>
+              <Button type="submit" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting ? 'Adding...' : 'Add Task'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </FormProvider>
       </DialogContent>
     </Dialog>
   );
