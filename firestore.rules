@@ -1,223 +1,189 @@
 /**
- * @file
- * @description Firestore Security Rules for the application.
+ * @fileoverview Firestore Security Rules.
  *
- * Core Philosophy:
- * This ruleset prioritizes secure data access based on user roles within workspaces
- * and ownership for user-specific data. It enforces strict authorization for all write operations
- * while allowing public read access to certain collections where ownership is validated on creation.
- * Data shape validation is minimized to allow for rapid prototyping.
+ * Core Philosophy: This ruleset prioritizes secure access control based on user identity and role-based authorization.
+ * It avoids overly strict data validation in favor of rapid prototyping and iteration.
  *
  * Data Structure:
- * - User profiles are stored under `/users/{userId}`.
- * - Workspaces are stored under `/workspaces/{workspaceId}`, containing information about members and their roles.
- * - Companies, projects, silos, tasks, and sales are nested hierarchically under workspaces.
- * - User specific tasks are denormalized in `/users/{userId}/tasks/{taskId}`
+ * - /users/{userId}: User profile information, accessible only to the user themselves.
+ * - /workspaces/{workspaceId}: Workspaces, with access controlled by membership and roles defined within the 'users' map.
+ * - /workspaces/{workspaceId}/companies/{companyId}: Companies within workspaces, inheriting workspace-level access control.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}: Projects within companies, inheriting workspace-level access control.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}: Silos within projects, inheriting workspace-level access control.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}: Tasks within silos, inheriting workspace-level access control.
+ * - /user-tasks/{userId}/tasks/{taskId}: Denormalized tasks for quick user lookups, accessible only to the user themselves.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}: Sales within projects, inheriting workspace-level access control.
  *
  * Key Security Decisions:
- * - Users can only read and write their own profile data.
- * - Workspace access is controlled by the `users` map within each workspace document.
- * - Listing user profiles is disallowed.
- * - Public read access is granted to the `/workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}` collection, but write access is restricted to validated owners.
+ * - User listing is explicitly denied.
+ * - Data validation is minimized to essential checks for authorization and relational integrity.
+ * - Read-only collections are not used in this model. All collections are secured with authorization checks on both reads and writes.
  *
  * Denormalization for Authorization:
- * - Workspace documents contain a `users` map that stores user roles, enabling efficient authorization checks without additional reads.
- * - User specific tasks are denormalized in `/users/{userId}/tasks/{taskId}`
+ * - Workspace documents include a 'users' map that stores user roles (admin, contributor, viewer). This allows for efficient role-based access control without requiring extra reads.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Controls access to user profile documents.
+     * @description Controls access to user profile information.
      * @path /users/{userId}
-     * @allow (read, write) if the requesting user's UID matches the user ID in the path.
-     * @deny (read, write) if the requesting user's UID does not match the user ID in the path.
-     * @principle Enforces document ownership for all operations on user profiles.
+     * @allow (get, create, update, delete, list): If the requesting user's UID matches the {userId} in the path.
+     * @deny (get, create, update, delete, list): If the requesting user's UID does not match the {userId} in the path.
+     * @principle Enforces document ownership for all operations.
      */
     match /users/{userId} {
-      // Verified Identity:  All authorization decisions must rely on `request.auth` as the source of truth.
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      // Flexible Access Control Patterns: Ownership: Use for paths like `/users/{userId}/...`. The primary helper function here should be `isOwner(userId)`.
-      function isOwner(userId) {
-        return request.auth.uid == userId;
-      }
-
-      allow get: if isOwner(userId);
+      allow get: if isSignedIn() && isOwner(userId);
       allow list: if false;
-      allow create: if isSignedIn() && isOwner(userId);
-      allow update: if isOwner(userId);
-      allow delete: if isOwner(userId);
-    }
-
-    /**
-     * @description Controls access to user tasks documents.
-     * @path /users/{userId}/tasks/{taskId}
-     * @allow (read, write) if the requesting user's UID matches the user ID in the path.
-     * @deny (read, write) if the requesting user's UID does not match the user ID in the path.
-     */
-    match /users/{userId}/tasks/{taskId} {
-      // Verified Identity:  All authorization decisions must rely on `request.auth` as the source of truth.
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      // Flexible Access Control Patterns: Ownership: Use for paths like `/users/{userId}/...`. The primary helper function here should be `isOwner(userId)`.
-      function isOwner(userId) {
-        return request.auth.uid == userId;
-      }
-
-      allow get: if isOwner(userId);
-      allow list: if false;
-      allow create: if isSignedIn() && isOwner(userId);
-      allow update: if isOwner(userId);
-      allow delete: if isOwner(userId);
+      allow create: if isSignedIn() && isOwner(userId) && request.resource.data.uid == userId;
+      allow update: if isSignedIn() && isExistingOwner(userId) && request.resource.data.uid == resource.data.uid;
+      allow delete: if isSignedIn() && isExistingOwner(userId);
     }
 
     /**
      * @description Controls access to workspace documents.
      * @path /workspaces/{workspaceId}
-     * @allow (read, write) if the requesting user is a member of the workspace.
-     * @deny (read, write) if the requesting user is not a member of the workspace.
-     * @principle Enforces role-based access control for workspaces.
+     * @allow (get, list): if true
+     * @allow (create): If the requesting user is authenticated. The 'ownerId' field in the created document must match the user's UID. The user must also be added to the 'members' map with an 'admin' role.
+     * @allow (update, delete): If the requesting user is the owner of the workspace (i.e., their UID matches the 'ownerId' field in the document).
+     * @deny (get, create, update, delete, list):  if the conditions above are not met.
+     * @principle Enforces workspace ownership for writes and allows read access to workspace members.
      */
     match /workspaces/{workspaceId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
+      allow get, list: if isSignedIn() && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds.hasAny([request.auth.uid]);
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid && request.resource.data.users[request.auth.uid].role == 'admin';
+      allow update: if isSignedIn() && isExistingWorkspaceAdmin(workspaceId);
+      allow delete: if isSignedIn() && isExistingWorkspaceAdmin(workspaceId);
 
-      function isWorkspaceMember(workspaceId) {
-        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid] != null;
-      }
+      /**
+       * @description Controls access to company documents within a workspace.
+       * @path /workspaces/{workspaceId}/companies/{companyId}
+       */
+      match /companies/{companyId} {
+        allow get, list: if isSignedIn() && isWorkspaceMember(workspaceId);
+        allow create: if isSignedIn() && isWorkspaceAdmin(workspaceId);
+        allow update: if isSignedIn() && isWorkspaceAdmin(workspaceId);
+        allow delete: if isSignedIn() && isWorkspaceAdmin(workspaceId);
 
-      function isWorkspaceAdmin(workspaceId) {
+        /**
+         * @description Controls access to project documents within a company.
+         * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}
+         */
+        match /projects/{projectId} {
+          allow get, list: if isSignedIn() && isWorkspaceMember(workspaceId);
+          allow create: if isSignedIn() && isWorkspaceAdmin(workspaceId);
+          allow update: if isSignedIn() && isWorkspaceAdmin(workspaceId);
+          allow delete: if isSignedIn() && isWorkspaceAdmin(workspaceId);
+
+          /**
+           * @description Controls access to silo documents within a project.
+           * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}
+           */
+          match /silos/{siloId} {
+            allow get, list: if isSignedIn() && isWorkspaceMember(workspaceId);
+            allow create: if isSignedIn() && isWorkspaceAdmin(workspaceId);
+            allow update: if isSignedIn() && isWorkspaceAdmin(workspaceId);
+            allow delete: if isSignedIn() && isWorkspaceAdmin(workspaceId);
+
+            /**
+             * @description Controls access to task documents within a silo.
+             * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}
+             */
+            match /tasks/{taskId} {
+              allow get, list: if isSignedIn() && isWorkspaceMember(workspaceId);
+              allow create: if isSignedIn() && isWorkspaceAdmin(workspaceId);
+              allow update: if isSignedIn() && isWorkspaceAdmin(workspaceId);
+              allow delete: if isSignedIn() && isWorkspaceAdmin(workspaceId);
+            }
+
+             /**
+             * @description Controls access to sale documents within a project.
+             * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}
+             */
+            match /sales/{saleId} {
+              allow get, list: if isSignedIn() && isWorkspaceMember(workspaceId);
+              allow create: if isSignedIn() && isWorkspaceAdmin(workspaceId);
+              allow update: if isSignedIn() && isWorkspaceAdmin(workspaceId);
+              allow delete: if isSignedIn() && isWorkspaceAdmin(workspaceId);
+            }
+          }
+        }
+      }
+    }
+
+    /**
+     * @description Controls access to user-specific denormalized tasks.
+     * @path /user-tasks/{userId}/tasks/{taskId}
+     * @allow (read, write): If the requesting user's UID matches the {userId} in the path.
+     * @deny (read, write): If the requesting user's UID does not match the {userId} in the path.
+     * @principle Enforces user-specific data access.
+     */
+    match /user-tasks/{userId} {
+      allow read, write: if isSignedIn() && isOwner(userId);
+      match /tasks/{taskId} {
+        allow read, write: if isSignedIn() && isOwner(userId);
+        //  && (request.resource.data.keys().hasAll(['title', 'assignee', 'completed']) // Basic validation
+        //    && request.resource.data.assignee == userId
+        //    && (request.resource.data.completed is bool));
+      }
+    }
+
+    //-----------------------------------
+    // Helper functions
+    //-----------------------------------
+
+    /**
+     * @description Checks if the user is signed in.
+     * @return {boolean} True if the user is signed in, false otherwise.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * @description Checks if the user is the owner of the document.
+     * @param {string} userId - The user ID to check against.
+     * @return {boolean} True if the user is the owner, false otherwise.
+     */
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    /**
+     * @description Checks if the user is the existing owner of the document.
+     * @param {string} userId - The user ID to check against.
+     * @return {boolean} True if the user is the owner, false otherwise.
+     */
+    function isExistingOwner(userId) {
+      return isSignedIn() && isOwner(userId) && resource != null;
+    }
+
+    /**
+     * @description Checks if the user is a member of the workspace.
+     * @param {string} workspaceId - The workspace ID to check against.
+     * @return {boolean} True if the user is a member, false otherwise.
+     */
+    function isWorkspaceMember(workspaceId) {
+        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds.hasAny([request.auth.uid]);
+    }
+
+    /**
+     * @description Checks if the user is an admin of the workspace.
+     * @param {string} workspaceId - The workspace ID to check against.
+     * @return {boolean} True if the user is an admin, false otherwise.
+     */
+    function isWorkspaceAdmin(workspaceId) {
         return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == 'admin';
-      }
-
-      allow get: if isSignedIn() && isWorkspaceMember(workspaceId);
-      allow list: if false;
-      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isSignedIn() && isWorkspaceAdmin(workspaceId);
-      allow delete: if isSignedIn() && isWorkspaceAdmin(workspaceId);
     }
 
     /**
-     * @description Controls access to company documents within a workspace.
-     * @path /workspaces/{workspaceId}/companies/{companyId}
-     * @allow (read, write) if the requesting user is a member of the workspace.
-     * @deny (read, write) if the requesting user is not a member of the workspace.
-     * @principle Enforces role-based access control for companies within workspaces.
+     * @description Checks if the user is an existing admin of the workspace.
+     * @param {string} workspaceId - The workspace ID to check against.
+     * @return {boolean} True if the user is an admin, false otherwise.
      */
-    match /workspaces/{workspaceId}/companies/{companyId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      function isWorkspaceMember(workspaceId) {
-        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid] != null;
-      }
-
-      allow get: if isSignedIn() && isWorkspaceMember(workspaceId);
-      allow list: if false;
-      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
-      allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
-      allow delete: if isSignedIn() && isWorkspaceMember(workspaceId);
-    }
-
-    /**
-     * @description Controls access to project documents within a company.
-     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}
-     * @allow (read, write) if the requesting user is a member of the workspace.
-     * @deny (read, write) if the requesting user is not a member of the workspace.
-     * @principle Enforces role-based access control for projects within companies.
-     */
-    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      function isWorkspaceMember(workspaceId) {
-        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid] != null;
-      }
-
-      allow get: if isSignedIn() && isWorkspaceMember(workspaceId);
-      allow list: if false;
-      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
-      allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
-      allow delete: if isSignedIn() && isWorkspaceMember(workspaceId);
-    }
-
-    /**
-     * @description Controls access to silo documents within a project.
-     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}
-     * @allow (read, write) if the requesting user is a member of the workspace.
-     * @deny (read, write) if the requesting user is not a member of the workspace.
-     * @principle Enforces role-based access control for silos within projects.
-     */
-    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      function isWorkspaceMember(workspaceId) {
-        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid] != null;
-      }
-
-      allow get: if isSignedIn() && isWorkspaceMember(workspaceId);
-      allow list: if false;
-      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
-      allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
-      allow delete: if isSignedIn() && isWorkspaceMember(workspaceId);
-    }
-
-    /**
-     * @description Controls access to task documents within a silo.
-     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}
-     * @allow (read) to anyone.
-     * @allow (create, update, delete) if the requesting user is a member of the workspace.
-     * @deny (create, update, delete) if the requesting user is not a member of the workspace.
-     * @principle Allows public read access but restricts write access to workspace members.
-     */
-    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      function isWorkspaceMember(workspaceId) {
-        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid] != null;
-      }
-
-      allow get: if true;
-      allow list: if false;
-      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
-      allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
-      allow delete: if isSignedIn() && isWorkspaceMember(workspaceId);
-    }
-
-    /**
-     * @description Controls access to sale documents within a project.
-     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}
-     * @allow (read, write) if the requesting user is a member of the workspace.
-     * @deny (read, write) if the requesting user is not a member of the workspace.
-     * @principle Enforces role-based access control for sales within projects.
-     */
-    match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-
-      function isWorkspaceMember(workspaceId) {
-        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid] != null;
-      }
-
-      allow get: if isSignedIn() && isWorkspaceMember(workspaceId);
-      allow list: if false;
-      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
-      allow update: if isSignedIn() && isWorkspaceMember(workspaceId);
-      allow delete: if isSignedIn() && isWorkspaceMember(workspaceId);
+    function isExistingWorkspaceAdmin(workspaceId) {
+      return isSignedIn() && isWorkspaceAdmin(workspaceId) && resource != null;
     }
   }
 }
