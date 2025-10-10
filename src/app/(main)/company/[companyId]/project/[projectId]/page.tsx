@@ -100,7 +100,7 @@ function SiloItem({ silo, companyId, projectId }: { silo: Silo, companyId: strin
 
   const completedTasks = tasks?.filter(t => t.completed).length || 0;
   const totalTasks = tasks?.length || 0;
-  const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+  const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   const isSiloComplete = progress === 100 && totalTasks > 0;
 
   return (
@@ -115,8 +115,11 @@ function SiloItem({ silo, companyId, projectId }: { silo: Silo, companyId: strin
           <AccordionContent>
             <div className='px-4 pb-4 space-y-4'>
                 <div className="space-y-2">
+                   <div className="flex justify-between items-center text-sm mb-1">
+                      <span className="text-muted-foreground">{completedTasks} of {totalTasks} tasks complete</span>
+                      <span className="font-medium">{progress}%</span>
+                  </div>
                   <Progress value={progress} />
-                  <p className="text-xs text-muted-foreground text-right">{completedTasks} of {totalTasks} tasks complete</p>
                 </div>
                 <div className="border rounded-md">
                     {tasksLoading && <div className="p-4 text-center text-sm">Loading tasks...</div>}
