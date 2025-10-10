@@ -4,7 +4,7 @@ import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, collectionGroup, query, where, documentId } from "firebase/firestore";
+import { collection, collectionGroup, query, where, documentId, getDocs } from "firebase/firestore";
 import type { Company, Project, Task } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -12,38 +12,47 @@ import { useToast } from "@/hooks/use-toast";
 import ProjectStatusChart from "@/components/reporting/project-status-chart";
 import TaskPriorityChart from "@/components/reporting/task-priority-chart";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useEffect, useState } from "react";
 
 
 function DashboardView() {
   const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const projectsQuery = useMemoFirebase(() => {
-    if (!selectedWorkspace?.id) return null;
-    const pathPrefix = `workspaces/${selectedWorkspace.id}/companies`;
-    return query(
-      collectionGroup(firestore, 'projects'),
-      where(documentId(), '>=', `${pathPrefix}/`),
-      where(documentId(), '<', `${pathPrefix}0`)
-    );
-  }, [firestore, selectedWorkspace]);
+  useEffect(() => {
+    if (!selectedWorkspace?.id || !firestore) return;
 
-  const { data: projects, isLoading: projectsLoading } = useCollection<Project>(projectsQuery);
+    const fetchWorkspaceData = async () => {
+        setIsLoading(true);
+        try {
+            const projectsPath = `workspaces/${selectedWorkspace.id}/companies`;
+            const projectsQuery = query(collectionGroup(firestore, 'projects'), where('__name__', '>=', `${projectsPath}/`), where('__name__', '<', `${projectsPath}0`));
+            const tasksQuery = query(collectionGroup(firestore, 'tasks'), where('__name__', '>=', `${projectsPath}/`), where('__name__', '<', `${projectsPath}0`));
 
-  const tasksQuery = useMemoFirebase(() => {
-      if (!selectedWorkspace?.id) return null;
-      const pathPrefix = `workspaces/${selectedWorkspace.id}/companies`;
-      return query(
-        collectionGroup(firestore, 'tasks'),
-        where(documentId(), '>=', `${pathPrefix}/`),
-        where(documentId(), '<', `${pathPrefix}0`)
-      );
-  }, [firestore, selectedWorkspace]);
+            const [projectsSnap, tasksSnap] = await Promise.all([
+                getDocs(projectsQuery),
+                getDocs(tasksQuery)
+            ]);
+
+            const projectsData = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+            const tasksData = tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
+
+            setProjects(projectsData);
+            setTasks(tasksData);
+        } catch (error) {
+            console.error("Error fetching dashboard data: ", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    fetchWorkspaceData();
+}, [selectedWorkspace, firestore]);
+
   
-  const { data: tasks, isLoading: tasksLoading } = useCollection<Task>(tasksQuery);
-  
-  const isLoading = projectsLoading || tasksLoading;
-
   const completedProjects = projects?.filter(p => p.progress === 100).length || 0;
   const overdueTasks = tasks?.filter(t => !t.completed && new Date(t.dueDate) < new Date()).length || 0;
 
