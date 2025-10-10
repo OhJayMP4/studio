@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase";
 import type { Company, Project } from "@/lib/types";
-import { collection, doc } from "firebase/firestore";
+import { collection, doc, deleteDoc } from "firebase/firestore";
 import { format } from "date-fns";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -20,6 +20,11 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { MoreVertical } from "lucide-react";
+import { EditProjectDialog } from "@/components/common/edit-project-dialog";
+import { DeleteDialog } from "@/components/common/delete-dialog";
+import { useToast } from "@/hooks/use-toast";
 
 function CompanyBreadcrumb({ companyName }: { companyName?: string }) {
   return (
@@ -57,6 +62,54 @@ function NoProjectsView({ companyId }: { companyId: string }) {
         )}
     </div>
   )
+}
+
+function ProjectActions({ project, companyId }: { project: Project, companyId: string }) {
+    const { toast } = useToast();
+    const firestore = useFirestore();
+    const { selectedWorkspace } = useSelectedWorkspace();
+
+    const handleDelete = async () => {
+        if (!selectedWorkspace) return;
+        const projectRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', project.id);
+        try {
+            await deleteDoc(projectRef);
+            toast({
+                title: "Project Deleted",
+                description: `"${project.name}" has been deleted.`,
+            });
+        } catch (error: any) {
+            toast({
+                variant: 'destructive',
+                title: "Error Deleting Project",
+                description: error.message,
+            });
+        }
+    };
+
+    return (
+        <div className="absolute top-2 right-2">
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon">
+                        <MoreVertical className="h-4 w-4" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                     <EditProjectDialog project={project} companyId={companyId}>
+                         <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                            Edit
+                        </DropdownMenuItem>
+                    </EditProjectDialog>
+                    <DeleteDialog onConfirm={handleDelete} itemName={project.name}>
+                        <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
+                            Delete
+                        </DropdownMenuItem>
+                    </DeleteDialog>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+    );
 }
 
 function ProjectsList({ companyId }: { companyId: string }) {
@@ -117,9 +170,10 @@ function ProjectsList({ companyId }: { companyId: string }) {
             </div>
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {projects.map(project => (
-                    <Card key={project.id} className="flex flex-col">
+                    <Card key={project.id} className="flex flex-col relative">
+                        {isUserAdmin && <ProjectActions project={project} companyId={companyId} />}
                         <CardHeader>
-                            <CardTitle className="flex justify-between items-start">
+                            <CardTitle className="flex justify-between items-start pr-8">
                                 <Link href={`/company/${companyId}/project/${project.id}`} className="hover:underline">
                                     {project.name}
                                 </Link>

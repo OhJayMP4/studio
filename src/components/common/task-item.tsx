@@ -3,7 +3,7 @@
 import { useFirestore, useMemoFirebase } from "@/firebase";
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Task, UserProfile } from "@/lib/types";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Checkbox } from "../ui/checkbox";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -11,6 +11,12 @@ import { Badge } from "../ui/badge";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
+import { Button } from "../ui/button";
+import { MoreHorizontal } from "lucide-react";
+import { EditTaskDialog } from "./edit-task-dialog";
+import { DeleteDialog } from "./delete-dialog";
+import { useToast } from "@/hooks/use-toast";
 
 interface TaskItemProps {
     task: Task;
@@ -23,8 +29,53 @@ const priorityStyles = {
     high: 'bg-red-500',
 }
 
+function TaskActions({ task, path }: { task: Task, path: string }) {
+    const { toast } = useToast();
+    const firestore = useFirestore();
+
+    const handleDelete = async () => {
+        const taskRef = doc(firestore, path);
+        try {
+            await deleteDoc(taskRef);
+            toast({
+                title: "Task Deleted",
+                description: `"${task.title}" has been deleted.`,
+            });
+        } catch (error: any) {
+            toast({
+                variant: 'destructive',
+                title: "Error Deleting Task",
+                description: error.message,
+            });
+        }
+    };
+    
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6">
+                    <MoreHorizontal className="h-4 w-4" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+                <EditTaskDialog task={task} path={path}>
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                        Edit
+                    </DropdownMenuItem>
+                </EditTaskDialog>
+                <DeleteDialog onConfirm={handleDelete} itemName={task.title}>
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
+                        Delete
+                    </DropdownMenuItem>
+                </DeleteDialog>
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
+}
+
 export function TaskItem({ task, path }: TaskItemProps) {
     const firestore = useFirestore();
+    const { isUserAdmin } = useSelectedWorkspace();
 
     const assigneeRef = useMemoFirebase(() => {
         return task.assigneeId ? doc(firestore, 'users', task.assigneeId) : null;
@@ -46,7 +97,7 @@ export function TaskItem({ task, path }: TaskItemProps) {
     const fallback = name.charAt(0).toUpperCase();
 
     return (
-        <div className={cn("flex items-center justify-between p-3 rounded-md hover:bg-muted/50", {
+        <div className={cn("flex items-center justify-between p-3 rounded-md hover:bg-muted/50 group", {
             "opacity-60": task.completed,
         })}>
             <div className="flex items-center gap-4">
@@ -91,6 +142,7 @@ export function TaskItem({ task, path }: TaskItemProps) {
                         </TooltipContent>
                     </Tooltip>
                 </TooltipProvider>
+                {isUserAdmin && <div className="opacity-0 group-hover:opacity-100 transition-opacity"><TaskActions task={task} path={path} /></div>}
             </div>
         </div>
     )

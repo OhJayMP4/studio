@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
 import type { Company, Project, Sale, Silo, Task } from '@/lib/types';
-import { collection, doc, query, orderBy, getDocs, runTransaction, DocumentReference } from 'firebase/firestore';
+import { collection, doc, query, orderBy, getDocs, runTransaction, deleteDoc } from 'firebase/firestore';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -27,7 +27,7 @@ import {
 import { AddTaskDialog } from '@/components/common/add-task-dialog';
 import { TaskItem } from '@/components/common/task-item';
 import { Progress } from '@/components/ui/progress';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, MoreVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AddSaleDialog } from '@/components/common/add-sale-dialog';
 import { format } from 'date-fns';
@@ -40,6 +40,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useEffect }from 'react';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { EditSiloDialog } from '@/components/common/edit-silo-dialog';
+import { DeleteDialog } from '@/components/common/delete-dialog';
+import { useToast } from '@/hooks/use-toast';
 
 
 async function updateProjectProgress(firestore: any, workspaceId: string, companyId: string, projectId: string) {
@@ -142,6 +146,54 @@ function NoSilosView({ companyId, projectId }: { companyId: string, projectId: s
   );
 }
 
+function SiloActions({ silo, companyId, projectId }: { silo: Silo; companyId: string; projectId: string; }) {
+    const { toast } = useToast();
+    const firestore = useFirestore();
+    const { selectedWorkspace } = useSelectedWorkspace();
+
+    const handleDelete = async () => {
+        if (!selectedWorkspace) return;
+        const siloRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', projectId, 'silos', silo.id);
+        try {
+            await deleteDoc(siloRef);
+            toast({
+                title: "Silo Deleted",
+                description: `"${silo.name}" has been deleted.`,
+            });
+        } catch (error: any) {
+            toast({
+                variant: 'destructive',
+                title: "Error Deleting Silo",
+                description: error.message,
+            });
+        }
+    };
+    
+    return (
+        <div className="absolute top-2 right-2">
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon">
+                        <MoreVertical className="h-4 w-4" />
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                    <EditSiloDialog silo={silo} companyId={companyId} projectId={projectId}>
+                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                            Edit
+                        </DropdownMenuItem>
+                    </EditSiloDialog>
+                    <DeleteDialog onConfirm={handleDelete} itemName={silo.name}>
+                        <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
+                            Delete
+                        </DropdownMenuItem>
+                    </DeleteDialog>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+    );
+}
+
 function SiloItem({ silo, companyId, projectId }: { silo: Silo, companyId: string, projectId: string }) {
   const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
@@ -168,8 +220,9 @@ function SiloItem({ silo, companyId, projectId }: { silo: Silo, companyId: strin
 
   return (
     <AccordionItem key={silo.id} value={silo.id} className="border-none">
-      <Card>
-          <AccordionTrigger className={cn("p-4 text-lg font-medium hover:no-underline", { "text-muted-foreground line-through": isSiloComplete })}>
+      <Card className="relative">
+          {isUserAdmin && <SiloActions silo={silo} companyId={companyId} projectId={projectId} />}
+          <AccordionTrigger className={cn("p-4 text-lg font-medium hover:no-underline pr-12", { "text-muted-foreground line-through": isSiloComplete })}>
             <div className="flex-1 text-left flex items-center gap-2">
               {isSiloComplete && <CheckCircle2 className="text-green-500" />}
               <span>{silo.name}</span>
