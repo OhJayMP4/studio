@@ -34,14 +34,10 @@ function WorkspaceList({ workspaces }: { workspaces: Workspace[] }) {
 
 function EmptyDashboard() {
   return (
-    <div className="text-center">
-      <h2 className="text-2xl font-semibold tracking-tight">
-        No workspaces found
-      </h2>
-      <p className="mt-2 text-muted-foreground">
-        Get started by creating a new workspace.
-      </p>
-      <div className="mt-4">
+    <div className="flex h-[450px] shrink-0 items-center justify-center rounded-md border border-dashed">
+      <div className="mx-auto flex max-w-[420px] flex-col items-center justify-center text-center">
+        <h3 className="text-2xl font-semibold">You have no workspaces</h3>
+        <p className="text-sm text-muted-foreground mt-2 mb-4">Get started by creating a new workspace.</p>
         <AddWorkspaceDialog>
             <Button>
                 <PlusCircle className="mr-2 h-4 w-4" />
