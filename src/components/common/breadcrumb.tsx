@@ -11,62 +11,17 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import React from "react";
-import { useDoc, useFirestore, useMemoFirebase } from "@/firebase";
-import { doc } from "firebase/firestore";
-import { Workspace, Company, Project, Silo } from "@/lib/types";
 
-// A hook to fetch a single document and return its name.
-function useDocumentName(collectionPath: string | null, docId: string | null) {
-  const firestore = useFirestore();
-  const docRef = useMemoFirebase(
-    () => (collectionPath && docId ? doc(firestore, collectionPath, docId) : null),
-    [firestore, collectionPath, docId]
-  );
-  const { data } = useDoc<Workspace | Company | Project | Silo>(docRef);
-  return data?.name;
-}
-
-// A new component to render a single breadcrumb segment.
-// This component can call hooks unconditionally.
 function BreadcrumbSegment({
   segment,
-  segments,
-  index,
+  isLast,
+  path,
 }: {
   segment: string;
-  segments: string[];
-  index: number;
+  isLast: boolean;
+  path: string;
 }) {
-  const path = `/${segments.slice(0, index + 1).join("/")}`;
-  const isLast = index === segments.length - 1;
-
-  let collectionPath: string | null = null;
-  let docId: string | null = null;
-
-  // Determine if this segment is a document ID that needs a name lookup.
-  const prevSegment = segments[index - 1];
-  if (prevSegment === 'workspaces') {
-    collectionPath = 'workspaces';
-    docId = segment;
-  } else if (prevSegment === 'companies') {
-    const workspaceId = segments[index - 2];
-    collectionPath = `workspaces/${workspaceId}/companies`;
-    docId = segment;
-  } else if (prevSegment === 'projects') {
-    const companyId = segments[index - 2];
-    collectionPath = `companies/${companyId}/projects`;
-    docId = segment;
-  } else if (prevSegment === 'silos') {
-    const projectId = segments[index - 2];
-    collectionPath = `projects/${projectId}/silos`;
-    docId = segment;
-  }
-
-  // Call the hook at the top level of the component.
-  const docName = useDocumentName(collectionPath, docId);
-
-  // Determine the display name for the breadcrumb.
-  let name = docName || segment.charAt(0).toUpperCase() + segment.slice(1);
+  const name = segment.charAt(0).toUpperCase() + segment.slice(1);
 
   return (
     <React.Fragment>
@@ -94,14 +49,17 @@ export function Breadcrumb() {
   return (
     <ShadBreadcrumb className="hidden md:flex">
       <BreadcrumbList>
-        {segments.map((segment, index) => (
-          <BreadcrumbSegment
-            key={index}
-            segment={segment}
-            segments={segments}
-            index={index}
-          />
-        ))}
+        {segments.map((segment, index) => {
+          const path = `/${segments.slice(0, index + 1).join("/")}`;
+          return (
+            <BreadcrumbSegment
+              key={index}
+              segment={segment}
+              isLast={index === segments.length - 1}
+              path={path}
+            />
+          );
+        })}
       </BreadcrumbList>
     </ShadBreadcrumb>
   );

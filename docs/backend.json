@@ -1,13 +1,13 @@
 {
   "entities": {
-    "User": {
-      "title": "User",
+    "UserProfile": {
+      "title": "User Profile",
       "type": "object",
-      "description": "Represents a user within the SaturnSync application.",
+      "description": "Represents a user's public profile.",
       "properties": {
-        "id": {
+        "uid": {
           "type": "string",
-          "description": "Unique identifier for the User entity."
+          "description": "The unique identifier for the user."
         },
         "email": {
           "type": "string",
@@ -16,196 +16,30 @@
         },
         "name": {
           "type": "string",
-          "description": "The full name of the user."
+          "description": "The display name of the user."
         },
         "avatarUrl": {
           "type": "string",
-          "description": "URL for the user's avatar."
-        },
-        "role": {
-          "type": "string",
-          "enum": ["admin", "contributor", "viewer"]
+          "description": "URL for the user's avatar image."
         }
       },
       "required": [
-        "id",
-        "email",
-        "name"
-      ]
-    },
-    "Workspace": {
-      "title": "Workspace",
-      "type": "object",
-      "description": "Represents a workspace containing companies and users.",
-      "properties": {
-        "name": {
-          "type": "string",
-          "description": "The name of the workspace."
-        },
-        "ownerId": {
-          "type": "string",
-          "description": "The ID of the user who owns the workspace."
-        },
-        "memberIds": {
-          "type": "array",
-          "description": "An array of user IDs who are members of this workspace.",
-          "items": {
-            "type": "string"
-          }
-        },
-        "users": {
-          "type": "object",
-          "description": "A map of user IDs to their roles and details within the workspace.",
-          "patternProperties": {
-            "^[a-zA-Z0-9_]+$": {
-              "$ref": "#/entities/WorkspaceUser"
-            }
-          }
-        }
-      },
-      "required": [
-        "name",
-        "ownerId",
-        "memberIds"
-      ]
-    },
-    "WorkspaceUser": {
-        "title": "WorkspaceUser",
-        "type": "object",
-        "description": "The association between a user and a workspace.",
-        "properties": {
-            "userId": { "type": "string" },
-            "name": { "type": "string" },
-            "email": { "type": "string", "format": "email" },
-            "avatarUrl": { "type": "string" },
-            "role": { "type": "string", "enum": ["admin", "contributor", "viewer"] }
-        },
-        "required": ["userId", "name", "email", "role"]
-    },
-    "Company": {
-      "title": "Company",
-      "type": "object",
-      "description": "Represents a company within a workspace.",
-      "properties": {
-        "name": {
-          "type": "string",
-          "description": "The name of the company."
-        },
-        "workspaceId": {
-          "type": "string",
-          "description": "ID of the parent workspace."
-        }
-      },
-      "required": [
-        "name",
-        "workspaceId"
-      ]
-    },
-    "Project": {
-      "title": "Project",
-      "type": "object",
-      "description": "Represents a project within a company.",
-      "properties": {
-        "name": {
-          "type": "string",
-          "description": "The name of the project."
-        },
-        "companyId": {
-          "type": "string",
-          "description": "ID of the parent company."
-        }
-      },
-      "required": [
-        "name",
-        "companyId"
-      ]
-    },
-    "Silo": {
-      "title": "Silo",
-      "type": "object",
-      "description": "Represents a silo within a project.",
-      "properties": {
-        "name": {
-          "type": "string",
-          "description": "The name of the silo."
-        },
-        "projectId": {
-          "type": "string",
-          "description": "ID of the parent project."
-        }
-      },
-      "required": [
-        "name",
-        "projectId"
-      ]
-    },
-    "Task": {
-      "title": "Task",
-      "type": "object",
-      "description": "Represents a task within a silo.",
-      "properties": {
-        "name": {
-          "type": "string",
-          "description": "The name of the task."
-        },
-        "siloId": {
-          "type": "string",
-          "description": "ID of the parent silo."
-        },
-        "description": {
-          "type": "string",
-          "description": "A description of the task."
-        },
-        "completed": {
-          "type": "boolean",
-          "description": "Indicates whether the task is completed."
-        },
-        "priority": {
-          "type": "string",
-          "enum": ["low", "medium", "high"]
-        }
-      },
-      "required": [
-        "name",
-        "siloId",
-        "completed",
-        "priority"
+        "uid",
+        "email"
       ]
     }
   },
   "auth": {
     "providers": [
-      "anonymous"
+      "password"
     ]
   },
   "firestore": {
     "/users/{userId}": {
-      "schema": { "$ref": "#/entities/User" },
-      "description": "Stores user profiles."
-    },
-    "/workspaces/{workspaceId}": {
-        "schema": { "$ref": "#/entities/Workspace" },
-        "description": "Top-level collection for workspaces."
-    },
-    "/workspaces/{workspaceId}/users/{userId}": {
-        "schema": { "$ref": "#/entities/WorkspaceUser" },
-        "description": "Sub-collection for users within a workspace. This can store more detailed info than the map on the workspace doc."
-    },
-    "/workspaces/{workspaceId}/companies/{companyId}": {
-        "schema": { "$ref": "#/entities/Company" },
-        "description": "Sub-collection for companies within a workspace."
-    },
-    "/companies/{companyId}/projects/{projectId}": {
-        "schema": { "$ref": "#/entities/Project" },
-        "description": "Sub-collection for projects within a company."
-    },
-    "/projects/{projectId}/silos/{siloId}": {
-        "schema": { "$ref": "#/entities/Silo" },
-        "description": "Sub-collection for silos within a project."
-    },
-    "/silos/{siloId}/tasks/{taskId}": {
-        "schema": { "$ref": "#/entities/Task" },
-        "description": "Sub-collection for tasks within a silo."
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Stores public user profile information."
     }
   }
 }

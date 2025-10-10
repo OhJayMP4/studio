@@ -1,6 +1,8 @@
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Breadcrumb } from "../common/breadcrumb";
-import { AddTaskButton } from "../common/add-task-button";
+import { Button } from "../ui/button";
+import Link from "next/link";
+import { PlusCircle } from "lucide-react";
 
 export default function Header() {
   return (
@@ -8,7 +10,6 @@ export default function Header() {
       <SidebarTrigger className="md:hidden" />
       <Breadcrumb />
       <div className="ml-auto flex items-center gap-4">
-        <AddTaskButton />
       </div>
     </header>
   );
