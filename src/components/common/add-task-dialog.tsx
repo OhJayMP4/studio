@@ -91,6 +91,7 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
         priority: data.priority,
         assigneeId: data.assigneeId,
         completed: false,
+        projectId: projectId,
       });
       
       toast({
@@ -180,7 +181,7 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
                               <FormControl>
                                   <SelectTrigger>
                                       <SelectValue placeholder="Select a team member" />
-                                  </SelectTrigger>
+                                  </Trigger>
                               </FormControl>
                               <SelectContent>
                                   {workspaceUsers.map(user => (

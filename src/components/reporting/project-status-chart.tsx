@@ -1,63 +1,38 @@
 'use client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { useFirestore } from "@/firebase";
 import { Project } from "@/lib/types";
-import { collection, getDocs, query } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Skeleton } from "../ui/skeleton";
 
 
-export default function ProjectStatusChart({ workspaceId }: { workspaceId: string }) {
-    const firestore = useFirestore();
+export default function ProjectStatusChart({ projects, isLoading }: { projects: Project[], isLoading: boolean }) {
     const [chartData, setChartData] = useState<any[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        const fetchData = async () => {
-            if (!workspaceId || !firestore) {
-                setIsLoading(false);
-                return;
-            };
-            setIsLoading(true);
-            
-            try {
-                const companiesRef = collection(firestore, `workspaces/${workspaceId}/companies`);
-                const companiesSnap = await getDocs(companiesRef);
+        if (isLoading || !projects) return;
+        
+        let notStarted = 0;
+        let inProgress = 0;
+        let completed = 0;
 
-                let notStarted = 0;
-                let inProgress = 0;
-                let completed = 0;
-
-                for (const companyDoc of companiesSnap.docs) {
-                    const projectsRef = collection(companyDoc.ref, 'projects');
-                    const projectsSnap = await getDocs(query(projectsRef));
-                    projectsSnap.forEach(doc => {
-                        const project = doc.data() as Project;
-                        if (project.progress === 0) {
-                            notStarted++;
-                        } else if (project.progress > 0 && project.progress < 100) {
-                            inProgress++;
-                        } else if (project.progress === 100) {
-                            completed++;
-                        }
-                    });
-                }
-                
-                setChartData([
-                    { status: 'Not Started', count: notStarted, fill: 'var(--color-notStarted)' },
-                    { status: 'In Progress', count: inProgress, fill: 'var(--color-inProgress)' },
-                    { status: 'Completed', count: completed, fill: 'var(--color-completed)' },
-                ]);
-            } catch (error) {
-                console.error("Error fetching project status data:", error);
-            } finally {
-                setIsLoading(false);
+        for (const project of projects) {
+            if (project.progress === 0) {
+                notStarted++;
+            } else if (project.progress > 0 && project.progress < 100) {
+                inProgress++;
+            } else if (project.progress === 100) {
+                completed++;
             }
-        };
-        fetchData();
-    }, [firestore, workspaceId]);
+        }
+        
+        setChartData([
+            { status: 'Not Started', count: notStarted, fill: 'var(--color-notStarted)' },
+            { status: 'In Progress', count: inProgress, fill: 'var(--color-inProgress)' },
+            { status: 'Completed', count: completed, fill: 'var(--color-completed)' },
+        ]);
+    }, [projects, isLoading]);
     
     const chartConfig = {
         count: {

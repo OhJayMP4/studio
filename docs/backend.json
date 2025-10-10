@@ -203,6 +203,10 @@
         "assigneeId": {
           "type": "string",
           "description": "The UID of the user assigned to this task."
+        },
+        "projectId": {
+          "type": "string",
+          "description": "The ID of the project this task belongs to."
         }
       },
       "required": [
@@ -210,7 +214,8 @@
         "completed",
         "priority",
         "assigneeId",
-        "dueDate"
+        "dueDate",
+        "projectId"
       ]
     },
     "Sale": {

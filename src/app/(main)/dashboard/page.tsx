@@ -28,30 +28,30 @@ function DashboardView() {
     const fetchWorkspaceData = async () => {
         setIsLoading(true);
         try {
-            const companiesRef = collection(firestore, `workspaces/${selectedWorkspace.id}/companies`);
-            const companiesSnap = await getDocs(companiesRef);
-            
-            const allProjects: Project[] = [];
-            const allTasks: Task[] = [];
-
-            for (const companyDoc of companiesSnap.docs) {
-                const projectsRef = collection(companyDoc.ref, 'projects');
-                const projectsSnap = await getDocs(projectsRef);
-                projectsSnap.forEach(projectDoc => {
-                    allProjects.push({ id: projectDoc.id, ...projectDoc.data() } as Project);
-                });
-
-                for (const projectDoc of projectsSnap.docs) {
-                    const tasksRef = collection(projectDoc.ref, 'tasks');
-                    const tasksSnap = await getDocs(tasksRef);
-                     tasksSnap.forEach(taskDoc => {
-                        allTasks.push({ id: taskDoc.id, ...taskDoc.data() } as Task);
-                    });
-                }
-            }
-            
+            // Fetch all projects within the workspace
+            const projectsQuery = query(
+              collectionGroup(firestore, 'projects'),
+              where('companyId', 'in', (await getDocs(collection(firestore, 'workspaces', selectedWorkspace.id, 'companies'))).docs.map(d => d.id))
+            );
+            const projectsSnap = await getDocs(projectsQuery);
+            const allProjects = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
             setProjects(allProjects);
-            setTasks(allTasks);
+
+            // Fetch all tasks within the workspace
+            if (allProjects.length > 0) {
+              const projectIds = allProjects.map(p => p.id);
+              // Firestore 'in' queries are limited to 30 items. 
+              // If there can be more projects, this needs chunking. For now, assume < 30.
+              const tasksQuery = query(
+                collectionGroup(firestore, 'tasks'),
+                where('projectId', 'in', projectIds)
+              );
+              const tasksSnap = await getDocs(tasksQuery);
+              const allTasks = tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
+              setTasks(allTasks);
+            } else {
+              setTasks([]);
+            }
 
         } catch (error) {
             console.error("Error fetching dashboard data: ", error);
@@ -112,8 +112,8 @@ function DashboardView() {
       </div>
 
       <div className="grid gap-8 md:grid-cols-2">
-        <ProjectStatusChart workspaceId={selectedWorkspace!.id} />
-        <TaskPriorityChart workspaceId={selectedWorkspace!.id} />
+        <ProjectStatusChart projects={projects} isLoading={isLoading} />
+        <TaskPriorityChart tasks={tasks} isLoading={isLoading} />
       </div>
     </div>
   );

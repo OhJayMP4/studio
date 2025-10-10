@@ -51,6 +51,7 @@ export type Task = {
     dueDate: string; // ISO 8601 date string
     priority: 'low' | 'medium' | 'high';
     assigneeId: string;
+    projectId: string; // Added to link task to project
 };
 
 export type Sale = {
