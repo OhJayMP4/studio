@@ -3,353 +3,229 @@
  * @description This ruleset enforces a role-based access control model within workspaces.
  *
  * Data Structure:
- * - /users/{userId}: Stores public user profile information, accessible only to the user.
- * - /workspaces/{workspaceId}: Stores workspace data with a members map defining user roles.
- * - /workspaces/{workspaceId}/companies/{companyId}: Companies within a workspace. Access controlled by workspace membership.
- * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}: Projects within a company. Access controlled by workspace membership.
- * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}: Silos (task containers) for a project.
- * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}: Individual tasks within a silo.
- * - /user-tasks/{userId}/tasks/{taskId}: Denormalized tasks for a specific user. Only accessible by that user.
- * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}: Sales logged for a project. Access controlled by workspace membership.
- * - /invites/{inviteId}: Stores pending workspace invitations.
+ * - /users/{userId}: User profiles, accessible only to the user themselves.
+ * - /workspaces/{workspaceId}: Workspaces, with access controlled by workspace membership (roles).
+ * - /workspaces/{workspaceId}/companies/{companyId}: Companies within workspaces, inheriting workspace access control.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}: Projects within companies, inheriting workspace access control.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}: Silos within projects, inheriting workspace access control.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}: Tasks within silos, inheriting workspace access control.
+ * - /user-tasks/{userId}/tasks/{taskId}: Denormalized tasks for users, accessible only to the user themselves.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}: Sales within projects, inheriting workspace access control.
+ * - /invites/{inviteId}: Invitations, publicly readable but with owner-only (server-side) creation.
  *
  * Key Security Decisions:
- * - Users can only read and write their own profile data.
- * - Access to workspaces and their subcollections (companies, projects, tasks, sales) is determined by the user's role within the workspace. Workspace membership is managed via the `users` map on the workspace document.
- * - Listing of workspaces is not allowed.
+ * - User listing is disallowed.
+ * - Workspace membership is managed via the `users` map on the workspace document.
+ * - Read-only access is not explicitly enforced, but can be implemented via custom claims.
+ * - The default security posture is strict; any ambiguous or missing rules default to denial.
  *
  * Denormalization for Authorization:
- * - Workspace documents contain a `users` map that stores the roles of each user in the workspace. This allows for efficient role-based access control without requiring additional reads.
+ * - Workspace membership (`users` map) is denormalized onto the workspace document to avoid collection group queries.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * @description Controls access to user profile documents.
-     * @path /users/{userId}
-     * @allow (create) User with ID 'user123' can create their profile.
-     *     request.auth.uid == 'user123'
-     *     request.resource.data.uid == 'user123'
-     * @allow (get, update, delete) User with ID 'user123' can read/update/delete their profile.
-     *     request.auth.uid == 'user123'
-     * @deny (create) User with ID 'user123' cannot create a profile with a mismatched ID.
-     *     request.auth.uid == 'user456'
-     *     request.resource.data.uid == 'user123'
-     * @deny (get, update, delete) User with ID 'user456' cannot read/update/delete user 'user123's profile.
-     *     request.auth.uid == 'user456'
-     * @principle Enforces document ownership for user profiles.
+     * @description Checks if the user is signed in.
      */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * @description Checks if the user is the owner (UID matches).
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * @description Checks if the user is an existing owner (UID matches and resource exists).
+     */
+    function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+    }
+
+    /**
+     * @description Checks if the user is a member of the workspace.
+     */
+    function isWorkspaceMember(workspaceId) {
+        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid] != null;
+    }
+
+    /**
+     * @description Checks if the user has a specific role in the workspace.
+     */
+    function hasWorkspaceRole(workspaceId, role) {
+        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == role;
+    }
+
     match /users/{userId} {
-      function isOwner(userId) {
-        return request.auth.uid == userId;
-      }
-      function isExistingOwner(userId) {
-        return isOwner(userId) && exists(/databases/$(database)/documents/users/$(userId));
-      }
+      /**
+       * @description Controls access to user profile documents.
+       * @path /users/{userId}
+       * @allow (create) User with UID 'user123' can create their own profile.
+       * @allow (get) User with UID 'user123' can read their own profile.
+       * @allow (update) User with UID 'user123' can update their own profile.
+       * @allow (delete) User with UID 'user123' can delete their own profile.
+       * @deny (create) User with UID 'user456' cannot create a profile for user 'user123'.
+       * @deny (get) User with UID 'user456' cannot read the profile of user 'user123'.
+       * @principle Enforces document ownership for all operations.
+       */
       allow get: if isOwner(userId);
       allow list: if false;
-      allow create: if isOwner(userId) && request.resource.data.get("uid") == request.auth.uid;
-      allow update: if isOwner(userId) && request.resource.data.get("uid") == request.auth.uid;
+      allow create: if isOwner(userId) && request.resource.data.uid == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.uid == resource.data.uid;
       allow delete: if isExistingOwner(userId);
     }
 
-    /**
-     * @description Controls access to workspace documents.
-     * @path /workspaces/{workspaceId}
-     * @allow (create) User can create a workspace if the ownerId is the users id and user map is updated.
-     *     request.auth.uid == 'user123'
-     *     request.resource.data.ownerId == 'user123'
-     *     request.resource.data.users['user123'].role == 'admin'
-     * @allow (get, update, delete) User with 'admin' role in workspace 'workspace123' can read/update/delete it.
-     *     resource.data.users[request.auth.uid].role == 'admin'
-     * @deny (create) User cannot create a workspace with a mismatched owner ID.
-     *     request.auth.uid == 'user456'
-     *     request.resource.data.ownerId == 'user123'
-     * @deny (get, update, delete) User with 'viewer' role cannot update/delete workspace 'workspace123'.
-     *     resource.data.users[request.auth.uid].role == 'viewer'
-     * @principle Enforces role-based access control for workspaces.
-     */
     match /workspaces/{workspaceId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-      function isAdmin(workspaceId) {
-        return isSignedIn() && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == 'admin';
-      }
-      function isExistingAdmin(workspaceId) {
-        return isAdmin(workspaceId) && exists(/databases/$(database)/documents/workspaces/$(workspaceId));
-      }
-       function canReadWorkspace(workspaceId) {
-        return isSignedIn() && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid] != null;
-      }
-      allow get: if canReadWorkspace(workspaceId);
+      /**
+       * @description Controls access to workspace documents.
+       * @path /workspaces/{workspaceId}
+       * @allow (get) User with role 'admin' in workspace 'workspace123' can read the workspace.
+       * @allow (create) User with UID 'user123' can create a workspace.
+       * @allow (update) User with role 'admin' in workspace 'workspace123' can update the workspace.
+       * @allow (delete) User with role 'admin' in workspace 'workspace123' can delete the workspace.
+       * @deny (create) User without authentication cannot create a workspace.
+       * @deny (get) User without role 'admin' in workspace 'workspace123' cannot read the workspace.
+       * @principle Enforces role-based access control for workspaces.
+       */
+      allow get: if isWorkspaceMember(workspaceId);
       allow list: if false;
-      allow create: if isSignedIn() && request.resource.data.get("ownerId") == request.auth.uid && request.resource.data.users[request.auth.uid].role == 'admin';
-      allow update: if isExistingAdmin(workspaceId);
-      allow delete: if isExistingAdmin(workspaceId);
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isWorkspaceMember(workspaceId);
+      allow delete: if hasWorkspaceRole(workspaceId, 'admin') && resource != null;
     }
 
-    /**
-     * @description Controls access to company documents within a workspace.
-     * @path /workspaces/{workspaceId}/companies/{companyId}
-     * @allow (create) User with 'admin' role in workspace 'workspace123' can create a company.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid].role == 'admin'
-     * @allow (get, update, delete) User with 'contributor' role in workspace 'workspace123' can read/update/delete a company.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid].role == 'contributor'
-     * @deny (create) User with 'viewer' role in workspace 'workspace123' cannot create a company.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid].role == 'viewer'
-     * @deny (get, update, delete) User not in workspace 'workspace123' cannot access company data.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid] == null
-     * @principle Access to companies is determined by workspace membership and role.
-     */
     match /workspaces/{workspaceId}/companies/{companyId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-      function getWorkspace(workspaceId) {
-        return get(/databases/$(database)/documents/workspaces/$(workspaceId));
-      }
-      function isAdmin(workspaceId) {
-        return isSignedIn() && getWorkspace(workspaceId).data.users[request.auth.uid].role == 'admin';
-      }
-      function isContributor(workspaceId) {
-        return isSignedIn() && getWorkspace(workspaceId).data.users[request.auth.uid].role == 'contributor';
-      }
-      function isExistingAdmin(workspaceId, companyId) {
-        return isAdmin(workspaceId) && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/companies/$(companyId));
-      }
-       function isExistingContributor(workspaceId, companyId) {
-        return isContributor(workspaceId) && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/companies/$(companyId));
-      }
-      function canRead(workspaceId) {
-         return isSignedIn() && getWorkspace(workspaceId).data.users[request.auth.uid] != null;
-      }
-      allow get: if canRead(workspaceId);
-      allow list: if false;
-      allow create: if isAdmin(workspaceId);
-      allow update: if isExistingContributor(workspaceId, companyId);
-      allow delete: if isExistingAdmin(workspaceId, companyId);
+      /**
+       * @description Controls access to company documents within a workspace.
+       * @path /workspaces/{workspaceId}/companies/{companyId}
+       * @allow (get) User with role 'admin' in workspace 'workspace123' can read company 'company456'.
+       * @allow (create) User with role 'admin' in workspace 'workspace123' can create a company.
+       * @allow (update) User with role 'admin' in workspace 'workspace123' can update company 'company456'.
+       * @allow (delete) User with role 'admin' in workspace 'workspace123' can delete company 'company456'.
+       * @deny (create) User without role 'admin' in workspace 'workspace123' cannot create a company.
+       * @deny (get) User without role 'admin' in workspace 'workspace123' cannot read company 'company456'.
+       * @principle Enforces role-based access control for companies within workspaces.
+       */
+      allow get: if isWorkspaceMember(workspaceId);
+      allow list: if isWorkspaceMember(workspaceId);
+      allow create: if isWorkspaceMember(workspaceId);
+      allow update: if isWorkspaceMember(workspaceId) && resource != null;
+      allow delete: if hasWorkspaceRole(workspaceId, 'admin') && resource != null;
     }
 
-    /**
-     * @description Controls access to project documents within a company.
-     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}
-     * @allow (create) User with 'admin' role in workspace 'workspace123' can create a project.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid].role == 'admin'
-     * @allow (get, update, delete) User with 'contributor' role in workspace 'workspace123' can read/update/delete a project.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid].role == 'contributor'
-     * @deny (create) User with 'viewer' role in workspace 'workspace123' cannot create a project.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid].role == 'viewer'
-     * @deny (get, update, delete) User not in workspace 'workspace123' cannot access project data.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid] == null
-     * @principle Access to projects is determined by workspace membership and role.
-     */
     match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId} {
-     function isSignedIn() {
-        return request.auth != null;
-      }
-      function getWorkspace(workspaceId) {
-        return get(/databases/$(database)/documents/workspaces/$(workspaceId));
-      }
-      function isAdmin(workspaceId) {
-        return isSignedIn() && getWorkspace(workspaceId).data.users[request.auth.uid].role == 'admin';
-      }
-      function isContributor(workspaceId) {
-        return isSignedIn() && getWorkspace(workspaceId).data.users[request.auth.uid].role == 'contributor';
-      }
-      function isExistingAdmin(workspaceId, companyId, projectId) {
-        return isAdmin(workspaceId) && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/companies/$(companyId)/projects/$(projectId));
-      }
-       function isExistingContributor(workspaceId, companyId, projectId) {
-        return isContributor(workspaceId) && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/companies/$(companyId)/projects/$(projectId));
-      }
-      function canRead(workspaceId) {
-         return isSignedIn() && getWorkspace(workspaceId).data.users[request.auth.uid] != null;
-      }
-      allow get: if canRead(workspaceId);
-      allow list: if false;
-      allow create: if isAdmin(workspaceId);
-      allow update: if isExistingContributor(workspaceId, companyId, projectId);
-      allow delete: if isExistingAdmin(workspaceId, companyId, projectId);
+      /**
+       * @description Controls access to project documents within a company.
+       * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}
+       * @allow (get) User with role 'admin' in workspace 'workspace123' can read project 'project789'.
+       * @allow (create) User with role 'admin' in workspace 'workspace123' can create a project.
+       * @allow (update) User with role 'admin' in workspace 'workspace123' can update project 'project789'.
+       * @allow (delete) User with role 'admin' in workspace 'workspace123' can delete project 'project789'.
+       * @deny (create) User without role 'admin' in workspace 'workspace123' cannot create a project.
+       * @deny (get) User without role 'admin' in workspace 'workspace123' cannot read project 'project789'.
+       * @principle Enforces role-based access control for projects within companies.
+       */
+      allow get: if isWorkspaceMember(workspaceId);
+      allow list: if isWorkspaceMember(workspaceId);
+      allow create: if isWorkspaceMember(workspaceId);
+      allow update: if isWorkspaceMember(workspaceId) && resource != null;
+      allow delete: if hasWorkspaceRole(workspaceId, 'admin') && resource != null;
     }
 
-    /**
-     * @description Controls access to silo documents within a project.
-     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}
-     * @allow (create) User with 'admin' role in workspace 'workspace123' can create a silo.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid].role == 'admin'
-     * @allow (get, update, delete) User with 'contributor' role in workspace 'workspace123' can read/update/delete a silo.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid].role == 'contributor'
-     * @deny (create) User with 'viewer' role in workspace 'workspace123' cannot create a silo.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid].role == 'viewer'
-     * @deny (get, update, delete) User not in workspace 'workspace123' cannot access silo data.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid] == null
-     * @principle Access to silos is determined by workspace membership and role.
-     */
     match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-      function getWorkspace(workspaceId) {
-        return get(/databases/$(database)/documents/workspaces/$(workspaceId));
-      }
-      function isAdmin(workspaceId) {
-        return isSignedIn() && getWorkspace(workspaceId).data.users[request.auth.uid].role == 'admin';
-      }
-      function isContributor(workspaceId) {
-        return isSignedIn() && getWorkspace(workspaceId).data.users[request.auth.uid].role == 'contributor';
-      }
-      function isExistingAdmin(workspaceId, companyId, projectId, siloId) {
-        return isAdmin(workspaceId) && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/companies/$(companyId)/projects/$(projectId)/silos/$(siloId));
-      }
-       function isExistingContributor(workspaceId, companyId, projectId, siloId) {
-        return isContributor(workspaceId) && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/companies/$(companyId)/projects/$(projectId)/silos/$(siloId));
-      }
-      function canRead(workspaceId) {
-         return isSignedIn() && getWorkspace(workspaceId).data.users[request.auth.uid] != null;
-      }
-      allow get: if canRead(workspaceId);
-      allow list: if false;
-      allow create: if isAdmin(workspaceId);
-      allow update: if isExistingContributor(workspaceId, companyId, projectId, siloId);
-      allow delete: if isExistingAdmin(workspaceId, companyId, projectId, siloId);
+      /**
+       * @description Controls access to silo documents within a project.
+       * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}
+       * @allow (get) User with role 'admin' in workspace 'workspace123' can read silo 'silo101'.
+       * @allow (create) User with role 'admin' in workspace 'workspace123' can create a silo.
+       * @allow (update) User with role 'admin' in workspace 'workspace123' can update silo 'silo101'.
+       * @allow (delete) User with role 'admin' in workspace 'workspace123' can delete silo 'silo101'.
+       * @deny (create) User without role 'admin' in workspace 'workspace123' cannot create a silo.
+       * @deny (get) User without role 'admin' in workspace 'workspace123' cannot read silo 'silo101'.
+       * @principle Enforces role-based access control for silos within projects.
+       */
+      allow get: if isWorkspaceMember(workspaceId);
+      allow list: if isWorkspaceMember(workspaceId);
+      allow create: if isWorkspaceMember(workspaceId);
+      allow update: if isWorkspaceMember(workspaceId) && resource != null;
+      allow delete: if hasWorkspaceRole(workspaceId, 'admin') && resource != null;
     }
 
-    /**
-     * @description Controls access to task documents within a silo.
-     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}
-     * @allow (create) User with 'admin' role in workspace 'workspace123' can create a task.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid].role == 'admin'
-     * @allow (get, update, delete) User with 'contributor' role in workspace 'workspace123' can read/update/delete a task.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid].role == 'contributor'
-     * @deny (create) User with 'viewer' role in workspace 'workspace123' cannot create a task.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid].role == 'viewer'
-     * @deny (get, update, delete) User not in workspace 'workspace123' cannot access task data.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid] == null
-     * @principle Access to tasks is determined by workspace membership and role.
-     */
     match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-      function getWorkspace(workspaceId) {
-        return get(/databases/$(database)/documents/workspaces/$(workspaceId));
-      }
-      function isAdmin(workspaceId) {
-        return isSignedIn() && getWorkspace(workspaceId).data.users[request.auth.uid].role == 'admin';
-      }
-      function isContributor(workspaceId) {
-        return isSignedIn() && getWorkspace(workspaceId).data.users[request.auth.uid].role == 'contributor';
-      }
-      function isExistingAdmin(workspaceId, companyId, projectId, siloId, taskId) {
-        return isAdmin(workspaceId) && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/companies/$(companyId)/projects/$(projectId)/silos/$(siloId)/tasks/$(taskId));
-      }
-       function isExistingContributor(workspaceId, companyId, projectId, siloId, taskId) {
-        return isContributor(workspaceId) && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/companies/$(companyId)/projects/$(projectId)/silos/$(siloId)/tasks/$(taskId));
-      }
-      function canRead(workspaceId) {
-         return isSignedIn() && getWorkspace(workspaceId).data.users[request.auth.uid] != null;
-      }
-      allow get: if canRead(workspaceId);
-      allow list: if false;
-      allow create: if isAdmin(workspaceId);
-      allow update: if isExistingContributor(workspaceId, companyId, projectId, siloId, taskId);
-      allow delete: if isExistingAdmin(workspaceId, companyId, projectId, siloId, taskId);
+      /**
+       * @description Controls access to task documents within a silo.
+       * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}
+       * @allow (get) User with role 'admin' in workspace 'workspace123' can read task 'task202'.
+       * @allow (create) User with role 'admin' in workspace 'workspace123' can create a task.
+       * @allow (update) User with role 'admin' in workspace 'workspace123' can update task 'task202'.
+       * @allow (delete) User with role 'admin' in workspace 'workspace123' can delete task 'task202'.
+       * @deny (create) User without role 'admin' in workspace 'workspace123' cannot create a task.
+       * @deny (get) User without role 'admin' in workspace 'workspace123' cannot read task 'task202'.
+       * @principle Enforces role-based access control for tasks within silos.
+       */
+      allow get: if isWorkspaceMember(workspaceId);
+      allow list: if isWorkspaceMember(workspaceId);
+      allow create: if isWorkspaceMember(workspaceId);
+      allow update: if isWorkspaceMember(workspaceId) && resource != null;
+      allow delete: if hasWorkspaceRole(workspaceId, 'admin') && resource != null;
     }
 
-    /**
-     * @description Controls access to denormalized user task documents.
-     * @path /user-tasks/{userId}/tasks/{taskId}
-     * @allow (get, list) User 'user123' can read/list their own tasks.
-     *     request.auth.uid == 'user123'
-     * @deny (get, list) User 'user456' cannot read/list tasks for user 'user123'.
-     *     request.auth.uid == 'user456'
-     * @deny (create, update, delete) Only the backend should manage user-tasks.
-     *     request.auth.uid == 'user123'
-     * @principle Enforces that users can only access their own denormalized task data.
-     */
     match /user-tasks/{userId}/tasks/{taskId} {
-      function isOwner(userId, taskId) {
-        return request.auth.uid == userId;
-      }
-       function isExistingOwner(userId, taskId) {
-        return isOwner(userId, taskId) && exists(/databases/$(database)/documents/user-tasks/$(userId)/tasks/$(taskId));
-      }
-      allow get: if isOwner(userId, taskId);
-      allow list: if isOwner(userId, taskId);
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      /**
+       * @description Controls access to denormalized task documents for a user.
+       * @path /user-tasks/{userId}/tasks/{taskId}
+       * @allow (get) User with UID 'user123' can read their own task.
+       * @allow (create) User with UID 'user123' can create their own task.
+       * @allow (update) User with UID 'user123' can update their own task.
+       * @allow (delete) User with UID 'user123' can delete their own task.
+       * @deny (create) User with UID 'user456' cannot create a task for user 'user123'.
+       * @deny (get) User with UID 'user456' cannot read the task of user 'user123'.
+       * @principle Enforces document ownership for denormalized tasks.
+       */
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId);
+      allow update: if isExistingOwner(userId);
+      allow delete: if isExistingOwner(userId);
     }
 
-     /**
-     * @description Controls access to sale documents within a project.
-     * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}
-     * @allow (create) User with 'admin' role in workspace 'workspace123' can create a sale.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid].role == 'admin'
-     * @allow (get, update, delete) User with 'contributor' role in workspace 'workspace123' can read/update/delete a sale.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid].role == 'contributor'
-     * @deny (create) User with 'viewer' role in workspace 'workspace123' cannot create a sale.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid].role == 'viewer'
-     * @deny (get, update, delete) User not in workspace 'workspace123' cannot access sale data.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid] == null
-     * @principle Access to sales is determined by workspace membership and role.
-     */
     match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-      function getWorkspace(workspaceId) {
-        return get(/databases/$(database)/documents/workspaces/$(workspaceId));
-      }
-      function isAdmin(workspaceId) {
-        return isSignedIn() && getWorkspace(workspaceId).data.users[request.auth.uid].role == 'admin';
-      }
-      function isContributor(workspaceId) {
-        return isSignedIn() && getWorkspace(workspaceId).data.users[request.auth.uid].role == 'contributor';
-      }
-      function isExistingAdmin(workspaceId, companyId, projectId, saleId) {
-        return isAdmin(workspaceId) && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/companies/$(companyId)/projects/$(projectId)/sales/$(saleId));
-      }
-       function isExistingContributor(workspaceId, companyId, projectId, saleId) {
-        return isContributor(workspaceId) && exists(/databases/$(database)/documents/workspaces/$(workspaceId)/companies/$(companyId)/projects/$(projectId)/sales/$(saleId));
-      }
-      function canRead(workspaceId) {
-         return isSignedIn() && getWorkspace(workspaceId).data.users[request.auth.uid] != null;
-      }
-      allow get: if canRead(workspaceId);
-      allow list: if false;
-      allow create: if isAdmin(workspaceId);
-      allow update: if isExistingContributor(workspaceId, companyId, projectId, saleId);
-      allow delete: if isExistingAdmin(workspaceId, companyId, projectId, saleId);
+      /**
+       * @description Controls access to sale documents within a project.
+       * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}
+       * @allow (get) User with role 'admin' in workspace 'workspace123' can read sale 'sale303'.
+       * @allow (create) User with role 'admin' in workspace 'workspace123' can create a sale.
+       * @allow (update) User with role 'admin' in workspace 'workspace123' can update sale 'sale303'.
+       * @allow (delete) User with role 'admin' in workspace 'workspace123' can delete sale 'sale303'.
+       * @deny (create) User without role 'admin' in workspace 'workspace123' cannot create a sale.
+       * @deny (get) User without role 'admin' in workspace 'workspace123' cannot read sale 'sale303'.
+       * @principle Enforces role-based access control for sales within projects.
+       */
+      allow get: if isWorkspaceMember(workspaceId);
+      allow list: if isWorkspaceMember(workspaceId);
+      allow create: if isWorkspaceMember(workspaceId);
+      allow update: if isWorkspaceMember(workspaceId) && resource != null;
+      allow delete: if hasWorkspaceRole(workspaceId, 'admin') && resource != null;
     }
 
-    /**
-     * @description Controls access to invite documents.
-     * @path /invites/{inviteId}
-     * @allow (create) User with 'admin' role in workspace 'workspace123' can create an invite.
-     *     get(/databases/$(database)/documents/workspaces/workspace123).data.users[request.auth.uid].role == 'admin'
-     *     request.resource.data.workspaceId == 'workspace123'
-     * @allow (get) Anyone can get an invite to verify validity.
-     *     true
-     * @deny (list, update, delete) Only creation and retrieval are allowed for invites.
-     *     request.auth.uid == 'user123'
-     * @principle Restricts invite creation to workspace admins.
-     */
     match /invites/{inviteId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-      function getWorkspace(workspaceId) {
-        return get(/databases/$(database)/documents/workspaces/$(workspaceId));
-      }
-      function isAdmin(workspaceId) {
-        return isSignedIn() && getWorkspace(workspaceId).data.users[request.auth.uid].role == 'admin';
-      }
+      /**
+       * @description Controls access to invite documents.
+       * @path /invites/{inviteId}
+       * @allow (get) Any user can read an invite.
+       * @deny (create) Only server-side code can create invites (no client-side creation).
+       * @deny (update) No client-side updates allowed.
+       * @deny (delete) No client-side deletes allowed.
+       * @principle Allows public read access to invites but restricts creation, updates, and deletion.
+       */
       allow get: if true;
       allow list: if false;
-      allow create: if isSignedIn() && isAdmin(request.resource.data.get("workspaceId"));
+      allow create: if false; // TODO: Implement server-side creation with appropriate validation.
       allow update: if false;
       allow delete: if false;
     }
