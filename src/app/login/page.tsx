@@ -10,7 +10,7 @@ import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/comp
 import { Input } from '@/components/ui/input';
 import { Rocket } from 'lucide-react';
 import { useAuth } from '@/firebase';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
@@ -26,6 +26,7 @@ type FormValues = z.infer<typeof formSchema>;
 export default function LoginPage() {
   const auth = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -44,9 +45,10 @@ export default function LoginPage() {
     setAuthError(null);
     try {
       let userCredential;
+      const redirectUrl = searchParams.get('redirect');
+
       if (action === 'signUp') {
         userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
-        // Update the user's profile with their name
         if (userCredential.user && data.name) {
           await updateProfile(userCredential.user, { displayName: data.name });
         }
@@ -55,7 +57,8 @@ export default function LoginPage() {
         userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
         toast({ title: 'Signed In', description: "You've been successfully signed in." });
       }
-      router.push('/dashboard');
+      
+      router.push(redirectUrl || '/dashboard');
     } catch (error) {
       const firebaseError = error as FirebaseError;
       let friendlyMessage = 'An unexpected error occurred. Please try again.';
