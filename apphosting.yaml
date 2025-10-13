@@ -1,7 +1,34 @@
 # Settings to manage and configure a Firebase App Hosting backend.
 # https://firebase.google.com/docs/app-hosting/configure
 
+# The name of the backend service.
+# This is used to identify the backend in the Firebase console.
+serviceId: default
+
+# The region to deploy the backend to.
+# This should be a region that supports App Hosting.
+region: us-central1
+
+# The build command for the Next.js app.
+# This is used to build the production version of the app.
+buildCommand: npm run build
+
+# The command to run the Next.js app.
+# This is used to start the server in production.
+startCommand: npm start
+
+# The runtime configuration for the Cloud Run instance.
 runConfig:
   # Increase this value if you'd like to automatically spin up
   # more instances in response to increased traffic.
   maxInstances: 1
+  # The amount of memory to allocate to the Cloud Run instance.
+  memoryMiB: 1024
+  # The number of CPU cores to allocate to the Cloud Run instance.
+  cpu: 1
+
+# Environment variables to pass to the backend.
+# You can add your Firebase project's environment variables here.
+env:
+  - variable: 'NODE_ENV'
+    value: 'production'
