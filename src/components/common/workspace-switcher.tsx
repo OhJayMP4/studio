@@ -72,7 +72,7 @@ function useUserWorkspaces() {
       console.log('Workspace IDs loaded:', workspaceIds);
       setError(null);
 
-      // Remove workspaces that are no longer in the user's list
+      // Reconcile local state with Firestore state
       setWorkspaces(prev => prev.filter(ws => workspaceIds.includes(ws.id)));
       
       if (workspaceIds.length === 0) {
@@ -92,7 +92,6 @@ function useUserWorkspaces() {
                  if(wsData.memberIds?.includes(user.uid)) {
                    wsMap.set(wsId, { id: wsId, ...wsData });
                  } else {
-                   // This case should be rare if arrayRemove works, but good for safety
                    wsMap.delete(wsId);
                  }
               } else {
