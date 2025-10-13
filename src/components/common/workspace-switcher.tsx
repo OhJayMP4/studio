@@ -54,43 +54,34 @@ function useUserWorkspaces() {
       }
       
       const { workspaceIds = [] } = userSnap.data() as UserProfile;
-      setWorkspaces([]); // Reset on new workspace list
       
       if (workspaceIds.length === 0) {
+        setWorkspaces([]);
         setIsLoading(false);
         return;
       }
 
       setIsLoading(true);
       const unsubs: (() => void)[] = [];
+      const workspaceRefs = workspaceIds.map(wsId => doc(firestore, 'workspaces', wsId));
 
-      workspaceIds.forEach(wsId => {
-        const wsRef = doc(firestore, 'workspaces', wsId);
-        const wsUnsub = onSnapshot(wsRef, (wsSnap) => {
-          if (wsSnap.exists()) {
-            const wsData = wsSnap.data() as Omit<Workspace, 'id'>;
-            // Add or update workspace in the local state
-            setWorkspaces(prev => {
-              const existing = prev.find(w => w.id === wsId);
-              if (existing) {
-                return prev.map(w => w.id === wsId ? { id: wsId, ...wsData } : w);
-              }
-              return [...prev, { id: wsId, ...wsData }];
-            });
-          } else {
-             // If a workspace is deleted, remove it from local state
-             setWorkspaces(prev => prev.filter(w => w.id !== wsId));
-          }
-        }, (err) => {
-          console.error(`Error fetching workspace ${wsId}:`, err);
-        });
-        unsubs.push(wsUnsub);
+      const unsubAll = onSnapshot(query(collection(firestore, 'workspaces')), (snapshot) => {
+         const userWorkspaces: Workspace[] = [];
+         snapshot.docs.forEach(doc => {
+             if (workspaceIds.includes(doc.id)) {
+                 userWorkspaces.push({ id: doc.id, ...(doc.data() as Omit<Workspace, 'id'>) });
+             }
+         });
+         setWorkspaces(userWorkspaces);
+         setIsLoading(false);
+      }, (err) => {
+          console.error("Error fetching workspaces:", err);
+          setError(err.message);
+          setIsLoading(false);
       });
 
-      setIsLoading(false);
-
       // Cleanup listeners for workspaces when workspaceIds array changes
-      return () => unsubs.forEach(u => u());
+      return () => unsubAll();
     }, (err) => {
       console.error("Error fetching user profile:", err);
       setError(err.message);
