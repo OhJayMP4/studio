@@ -39,8 +39,8 @@ function useUserWorkspaces() {
 
   useEffect(() => {
     if (!user) {
-      setIsLoading(false);
       setWorkspaces([]);
+      setIsLoading(false);
       setError(null);
       return;
     }
@@ -52,25 +52,21 @@ function useUserWorkspaces() {
       if (!userSnap.exists()) {
         setError('User document not found—creating...');
         setDoc(userRef, { email: user.email, name: user.displayName || '', workspaceIds: [] }, { merge: true })
-          .then(() => {
-            setError(null);
-            setIsLoading(false);
-            setWorkspaces([]);
-          })
+          .then(() => setError(null))
           .catch(err => {
             console.error("Error creating user doc:", err);
             setError("Failed to create user profile.");
-            setIsLoading(false);
-          });
+          })
+          .finally(() => setIsLoading(false));
         return;
       }
       
       const { workspaceIds = [] } = userSnap.data() as UserProfile;
       setError(null);
       
-      // Reconcile local state with Firestore state: remove workspaces that are no longer in the user's list
+      // Reconcile local state with Firestore state
       setWorkspaces(prev => prev.filter(ws => workspaceIds.includes(ws.id)));
-      
+
       if (workspaceIds.length === 0) {
           setWorkspaces([]);
           setIsLoading(false);
@@ -78,7 +74,7 @@ function useUserWorkspaces() {
       }
 
       const unsubs: (() => void)[] = [];
-      workspaceIds.forEach(wsId => {
+      workspaceIds.forEach((wsId: string) => {
         const workspaceRef = doc(firestore, 'workspaces', wsId);
         const unsubWorkspace = onSnapshot(workspaceRef, (wsSnap) => {
             setWorkspaces(prev => {
@@ -88,7 +84,6 @@ function useUserWorkspaces() {
                  if(wsData.memberIds?.includes(user.uid)) {
                    wsMap.set(wsId, { id: wsId, ...wsData });
                  } else {
-                   // This case should be handled by the permission-denied error, but is here as a safeguard.
                    wsMap.delete(wsId);
                  }
               } else {
@@ -99,7 +94,6 @@ function useUserWorkspaces() {
         }, (wsErr: any) => {
             if (wsErr.code === 'permission-denied') {
                 console.warn(`Permission denied for workspace ${wsId}. Removing from user's list.`);
-                // Self-healing: remove the invalid ID from the user's document
                 updateDoc(userRef, {
                     workspaceIds: arrayRemove(wsId)
                 });
@@ -136,7 +130,6 @@ export function WorkspaceSwitcher() {
   const { workspaces, isLoading, error } = useUserWorkspaces();
 
   useEffect(() => {
-    // When workspaces load, if no workspace is selected, or the selected one is no longer available, select the first one.
     if (!isLoading && workspaces) {
       if (!selectedWorkspace || !workspaces.find(w => w.id === selectedWorkspace.id)) {
         setSelectedWorkspace(workspaces[0] || null);
@@ -237,8 +230,10 @@ export function WorkspaceSwitcher() {
             <CommandGroup>
                 <AddWorkspaceDialog>
                     <CommandItem
-                        onSelect={(e) => {
-                          e.preventDefault();
+                        onSelect={() => {
+                          // This onSelect is for the CommandItem which triggers the dialog.
+                          // The actual dialog opening is handled by the AddWorkspaceDialog's trigger.
+                          // We just need to close the popover here.
                           setPopoverOpen(false);
                         }}
                     >
