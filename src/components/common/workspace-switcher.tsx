@@ -64,9 +64,6 @@ function useUserWorkspaces() {
       const { workspaceIds = [] } = userSnap.data() as UserProfile;
       setError(null);
       
-      // Reconcile local state with Firestore state
-      setWorkspaces(prev => prev.filter(ws => workspaceIds.includes(ws.id)));
-
       if (workspaceIds.length === 0) {
           setWorkspaces([]);
           setIsLoading(false);
@@ -201,8 +198,11 @@ export function WorkspaceSwitcher() {
               {workspaces?.map((workspace) => (
                 <CommandItem
                   key={workspace.id}
-                  onSelect={() => {
-                    setSelectedWorkspace(workspace);
+                  onSelect={(currentValue) => {
+                    const selected = workspaces.find(ws => ws.name.toLowerCase() === currentValue);
+                    if (selected) {
+                      setSelectedWorkspace(selected);
+                    }
                     setPopoverOpen(false);
                   }}
                   className="text-sm"
@@ -231,9 +231,6 @@ export function WorkspaceSwitcher() {
                 <AddWorkspaceDialog>
                     <CommandItem
                         onSelect={() => {
-                          // This onSelect is for the CommandItem which triggers the dialog.
-                          // The actual dialog opening is handled by the AddWorkspaceDialog's trigger.
-                          // We just need to close the popover here.
                           setPopoverOpen(false);
                         }}
                     >
