@@ -3,13 +3,13 @@ import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  experimental: {
-    serverComponentsExternalPackages: ['firebase-admin'],
-  },
+  serverExternalPackages: ['firebase-admin'],
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = { ...config.resolve.fallback, fs: false };
     }
+    // Disabling minification as a workaround for potential build issues.
+    config.optimization.minimize = false; 
     return config;
   },
   typescript: {
