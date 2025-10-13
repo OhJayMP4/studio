@@ -11,7 +11,7 @@ import {
   writeBatch,
   doc,
   arrayUnion,
-  serverTimestamp,
+  deleteDoc,
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 type Invite = {
   id: string;
@@ -35,10 +36,13 @@ function JoinProcessor() {
     
     const firestore = useFirestore();
     const { user, isUserLoading } = useUser();
+    const { toast } = useToast();
     
     const [status, setStatus] = useState<'loading' | 'error' | 'success' | 'joining'>('loading');
     const [error, setError] = useState<string | null>(null);
     const [invite, setInvite] = useState<Invite | null>(null);
+    const [workspaceName, setWorkspaceName] = useState<string>('');
+
 
     useEffect(() => {
         if (isUserLoading) {
@@ -63,27 +67,55 @@ function JoinProcessor() {
             
             const invitesRef = collection(firestore, 'invites');
             const q = query(invitesRef, where('token', '==', token));
-            const inviteSnapshot = await getDocs(q);
+            
+            try {
+                const inviteSnapshot = await getDocs(q);
 
-            if (inviteSnapshot.empty) {
+                if (inviteSnapshot.empty) {
+                    setStatus('error');
+                    setError('This invitation is invalid or has already been used.');
+                    return;
+                }
+
+                const foundInvite = { id: inviteSnapshot.docs[0].id, ...inviteSnapshot.docs[0].data() } as Invite;
+
+                if (foundInvite.expires < Date.now()) {
+                    setStatus('error');
+                    setError('This invitation has expired.');
+                    // Optional: Clean up expired invite
+                    await deleteDoc(doc(firestore, 'invites', foundInvite.id));
+                    return;
+                }
+                
+                if (foundInvite.email.toLowerCase() !== user.email?.toLowerCase()) {
+                    setStatus('error');
+                    setError(`This invite is for ${foundInvite.email}, but you are logged in as ${user.email}. Please log in with the correct account.`);
+                    return;
+                }
+
+                // At this point, the token is valid, not expired, and for the correct user.
+                setInvite(foundInvite);
+                
+                // Fetch workspace name to display
+                const workspaceRef = doc(firestore, 'workspaces', foundInvite.workspaceId);
+                const workspaceSnap = await getDocs(query(collection(firestore, 'workspaces'), where('__name__', '==', workspaceRef.path.split('/').pop())));
+                const workspaceDoc = await getDoc(workspaceRef);
+
+                if (workspaceDoc.exists()) {
+                    setWorkspaceName(workspaceDoc.data().name);
+                    setStatus('success'); // Ready to show the join button
+                } else {
+                    setStatus('error');
+                    setError('The workspace you were invited to no longer exists.');
+                    // Clean up the invite since it's invalid
+                    await deleteDoc(doc(firestore, 'invites', foundInvite.id));
+                }
+
+            } catch (e: any) {
+                console.error("Error processing invite: ", e);
                 setStatus('error');
-                setError('This invitation is invalid or has already been used.');
-                return;
+                setError(e.message || "An error occurred while verifying the invitation.");
             }
-
-            const foundInvite = { id: inviteSnapshot.docs[0].id, ...inviteSnapshot.docs[0].data() } as Invite;
-
-            if (foundInvite.expires < Date.now()) {
-                setStatus('error');
-                setError('This invitation has expired.');
-                // Optional: Clean up expired invite
-                await deleteDoc(doc(firestore, 'invites', foundInvite.id));
-                return;
-            }
-
-            // At this point, the token is valid, not expired, and the user is logged in.
-            setInvite(foundInvite);
-            setStatus('success'); // Ready to show the join button
         };
 
         processInvite();
@@ -120,10 +152,16 @@ function JoinProcessor() {
 
             await batch.commit();
 
+            toast({
+                title: "Welcome!",
+                description: `You have successfully joined the ${workspaceName} workspace.`
+            });
+
             // Redirect to the newly joined workspace
             router.push(`/dashboard?ws=${invite.workspaceId}`);
 
         } catch (e: any) {
+            console.error("Error joining workspace: ", e);
             setStatus('error');
             setError(`Failed to join workspace: ${e.message}`);
         }
@@ -167,13 +205,13 @@ function JoinProcessor() {
         return (
              <Card className="w-full max-w-lg mx-auto text-center">
                 <CardHeader>
-                    <CardTitle>You're Invited!</CardTitle>
+                    <CardTitle>Join {workspaceName}</CardTitle>
                     <CardDescription>
-                        You have been invited to join a new workspace.
+                        You have been invited to join the <strong>{workspaceName}</strong> workspace.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <p className="mb-4">Click the button below to accept the invitation and join.</p>
+                    <p className="mb-4">Click the button below to accept the invitation and become a member.</p>
                     <Button onClick={handleJoinWorkspace} disabled={status === 'joining'}>
                         {status === 'joining' ? 'Joining...' : 'Join Workspace'}
                     </Button>
@@ -188,7 +226,7 @@ function JoinProcessor() {
 export default function JoinPage() {
     return (
         <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-muted/40">
-            <Suspense fallback={<div>Loading...</div>}>
+            <Suspense fallback={<Card className="w-full max-w-lg mx-auto"><CardHeader><CardTitle>Loading Invitation...</CardTitle></CardHeader></Card>}>
                 <JoinProcessor />
             </Suspense>
         </div>

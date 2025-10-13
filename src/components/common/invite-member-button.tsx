@@ -63,9 +63,9 @@ export function InviteMemberButton() {
         const invitesCollection = collection(firestore, 'invites');
 
         try {
-            const inviteDoc = await addDoc(invitesCollection, inviteData);
+            await addDoc(invitesCollection, inviteData);
 
-            const appUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+            const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
             const joinUrl = `${appUrl}/join?token=${token}`;
 
             // Call the Genkit flow to send the email
