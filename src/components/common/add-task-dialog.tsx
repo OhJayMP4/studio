@@ -71,6 +71,13 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
+    defaultValues: {
+      title: '',
+      description: '',
+      priority: undefined,
+      assigneeId: undefined,
+      dueDate: undefined,
+    },
   });
   
   const workspaceUsers = getWorkspaceUsers(selectedWorkspace);
