@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useUser, useFirestore } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { doc, onSnapshot, setDoc, updateDoc, arrayRemove } from 'firebase/firestore';
@@ -47,13 +47,10 @@ function useUserWorkspaces() {
 
     setIsLoading(true);
     const userRef = doc(firestore, 'users', user.uid);
-    console.log('Starting snapshot for user', user.uid);
     
     const unsubUser = onSnapshot(userRef, (userSnap) => {
-      console.log('User snap received:', userSnap.exists(), userSnap.data()?.workspaceIds);
       if (!userSnap.exists()) {
         setError('User document not found—creating...');
-        // Auto-create user doc
         setDoc(userRef, { email: user.email, name: user.displayName || '', workspaceIds: [] }, { merge: true })
           .then(() => {
             setError(null);
@@ -69,10 +66,9 @@ function useUserWorkspaces() {
       }
       
       const { workspaceIds = [] } = userSnap.data() as UserProfile;
-      console.log('Workspace IDs loaded:', workspaceIds);
       setError(null);
-
-      // Reconcile local state with Firestore state
+      
+      // Reconcile local state with Firestore state: remove workspaces that are no longer in the user's list
       setWorkspaces(prev => prev.filter(ws => workspaceIds.includes(ws.id)));
       
       if (workspaceIds.length === 0) {
@@ -92,12 +88,12 @@ function useUserWorkspaces() {
                  if(wsData.memberIds?.includes(user.uid)) {
                    wsMap.set(wsId, { id: wsId, ...wsData });
                  } else {
+                   // This case should be handled by the permission-denied error, but is here as a safeguard.
                    wsMap.delete(wsId);
                  }
               } else {
                  wsMap.delete(wsId);
               }
-              console.log('Updated workspaces:', Array.from(wsMap.values()).map(w => w.name));
               return Array.from(wsMap.values());
             });
         }, (wsErr: any) => {
@@ -241,8 +237,9 @@ export function WorkspaceSwitcher() {
             <CommandGroup>
                 <AddWorkspaceDialog>
                     <CommandItem
-                        onSelect={() => {
-                            setPopoverOpen(false);
+                        onSelect={(e) => {
+                          e.preventDefault();
+                          setPopoverOpen(false);
                         }}
                     >
                         <PlusCircle className="mr-2 h-5 w-5" />
