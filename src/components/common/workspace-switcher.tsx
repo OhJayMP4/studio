@@ -209,8 +209,9 @@ export function WorkspaceSwitcher() {
               {workspaces?.map((workspace) => (
                 <CommandItem
                   key={workspace.id}
+                  value={workspace.id}
                   onSelect={(currentValue) => {
-                    const selected = workspaces.find(ws => ws.name.toLowerCase() === currentValue);
+                    const selected = workspaces.find(ws => ws.id === currentValue);
                     if (selected) {
                       setSelectedWorkspace(selected);
                     }
