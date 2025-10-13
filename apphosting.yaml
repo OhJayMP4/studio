@@ -11,7 +11,7 @@ region: us-central1
 
 # The build command for the Next.js app.
 # This is used to build the production version of the app.
-buildCommand: npm run build
+buildCommand: npm ci && npm run build
 
 # The command to run the Next.js app.
 # This is used to start the server in production.
