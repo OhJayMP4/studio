@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
+import { useUser, useFirestore } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { collection, query, where, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import type { Workspace, UserProfile } from '@/lib/types';
@@ -28,8 +28,6 @@ import {
 import { cn } from '@/lib/utils';
 import { AddWorkspaceDialog } from './add-workspace-dialog';
 import { Skeleton } from '../ui/skeleton';
-import { useDocs } from '@/firebase/firestore/use-docs';
-
 
 function useUserWorkspaces() {
   const { user } = useUser();
@@ -63,32 +61,36 @@ function useUserWorkspaces() {
 
       setIsLoading(true);
       const unsubs: (() => void)[] = [];
-      const workspaceRefs = workspaceIds.map(wsId => doc(firestore, 'workspaces', wsId));
+      
+      const newWorkspaces = new Map<string, Workspace>();
 
-      const unsubAll = onSnapshot(query(collection(firestore, 'workspaces')), (snapshot) => {
-         const userWorkspaces: Workspace[] = [];
-         snapshot.docs.forEach(doc => {
-             if (workspaceIds.includes(doc.id)) {
-                 userWorkspaces.push({ id: doc.id, ...(doc.data() as Omit<Workspace, 'id'>) });
-             }
-         });
-         setWorkspaces(userWorkspaces);
-         setIsLoading(false);
-      }, (err) => {
-          console.error("Error fetching workspaces:", err);
-          setError(err.message);
-          setIsLoading(false);
+      workspaceIds.forEach(wsId => {
+        const workspaceRef = doc(firestore, 'workspaces', wsId);
+        const unsubWorkspace = onSnapshot(workspaceRef, (wsSnap) => {
+          if (wsSnap.exists()) {
+            newWorkspaces.set(wsId, { id: wsId, ...(wsSnap.data() as Omit<Workspace, 'id'>) });
+            // Only update state when all listeners have fired at least once
+            if (newWorkspaces.size === workspaceIds.length) {
+              setWorkspaces(Array.from(newWorkspaces.values()));
+              setIsLoading(false);
+            }
+          }
+        }, (err) => {
+          console.error(`Error fetching workspace ${wsId}:`, err);
+          // Potentially handle removing a workspace the user lost access to
+        });
+        unsubs.push(unsubWorkspace);
       });
 
       // Cleanup listeners for workspaces when workspaceIds array changes
-      return () => unsubAll();
+      return () => unsubs.forEach(unsub => unsub());
     }, (err) => {
       console.error("Error fetching user profile:", err);
       setError(err.message);
       setIsLoading(false);
     });
 
-    return unsubUser; // Cleanup user profile listener
+    return () => unsubUser(); // Cleanup user profile listener
   }, [user, firestore]);
   
   return { workspaces, isLoading, error };

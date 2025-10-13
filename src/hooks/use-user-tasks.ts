@@ -3,7 +3,7 @@
 
 import { useMemo } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, query } from "firebase/firestore";
+import { collection, query, where } from "firebase/firestore";
 import type { UserTask } from "@/lib/types";
 
 export function useUserTasks() {
@@ -23,12 +23,12 @@ export function useUserTasks() {
         if (!data) return { active: [], completed: [] };
 
         const active = data
-            .filter(t => !t.task.completed)
-            .sort((a, b) => new Date(a.task.dueDate).getTime() - new Date(b.task.dueDate).getTime());
+            .filter(t => !t.completed)
+            .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
         
         const completed = data
-            .filter(t => t.task.completed)
-            .sort((a, b) => new Date(b.task.dueDate).getTime() - new Date(a.task.dueDate).getTime());
+            .filter(t => t.completed)
+            .sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime());
 
         return { active, completed };
     }, [data]);

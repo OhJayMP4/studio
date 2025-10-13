@@ -57,7 +57,7 @@ export function AddWorkspaceDialog({ children }: { children?: React.ReactNode })
       const workspaceRef = await addDoc(collection(firestore, 'workspaces'), {
         name: data.name,
         ownerId: user.uid,
-        memberIds: [user.uid], // FIXED: use memberIds for array-contains queries
+        memberIds: [user.uid],
         users: {
           [user.uid]: {
             role: 'admin',
