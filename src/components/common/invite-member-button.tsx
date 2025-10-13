@@ -6,6 +6,8 @@ import { useFirestore } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { UserPlus } from "lucide-react";
+import { errorEmitter } from "@/firebase/error-emitter";
+import { FirestorePermissionError } from "@/firebase/errors";
 
 // Basic email validation
 const validateEmail = (email: string) => {
@@ -47,35 +49,45 @@ export function InviteMemberButton() {
             return;
         }
 
-        try {
-            const token = generateToken();
-            const expires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours from now
+        const token = generateToken();
+        const expires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours from now
 
-            await addDoc(collection(firestore, 'invites'), {
-                workspaceId: selectedWorkspace.id,
-                email,
-                token,
-                expires,
-            });
-            
-            toast({
-                title: "Invitation Sent!",
-                description: `An invitation has been generated for ${email}. You need to manually send them the link. NOTE: Email sending is not yet implemented.`,
-            });
-            
-            // In a real app, an email would be sent here via a backend function.
-            // For now, we can log the link to the console for testing.
-            const joinUrl = `${window.location.origin}/join?token=${token}`;
-            console.log(`Generated invite link for ${email}: ${joinUrl}`);
+        const inviteData = {
+            workspaceId: selectedWorkspace.id,
+            email,
+            token,
+            expires,
+        };
 
+        const invitesCollection = collection(firestore, 'invites');
 
-        } catch (error: any) {
-             toast({
-                variant: 'destructive',
-                title: "Failed to Send Invite",
-                description: error.message,
+        addDoc(invitesCollection, inviteData)
+            .then(() => {
+                toast({
+                    title: "Invitation Sent!",
+                    description: `An invitation has been generated for ${email}. You need to manually send them the link. NOTE: Email sending is not yet implemented.`,
+                });
+                
+                // In a real app, an email would be sent here via a backend function.
+                // For now, we can log the link to the console for testing.
+                const joinUrl = `${window.location.origin}/join?token=${token}`;
+                console.log(`Generated invite link for ${email}: ${joinUrl}`);
+            })
+            .catch((serverError) => {
+                const permissionError = new FirestorePermissionError({
+                  path: invitesCollection.path,
+                  operation: 'create',
+                  requestResourceData: inviteData,
+                });
+        
+                errorEmitter.emit('permission-error', permissionError);
+
+                 toast({
+                    variant: 'destructive',
+                    title: "Failed to Send Invite",
+                    description: "Missing or insufficient permissions.",
+                });
             });
-        }
     };
 
     return (
