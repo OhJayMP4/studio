@@ -9,6 +9,37 @@ serviceId: default
 # This should be a region that supports App Hosting.
 region: us-central1
 
+# Environment variables to pass to the backend.
+# You can add your Firebase project's environment variables here.
+env:
+  - variable: 'NODE_ENV'
+    value: 'production'
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: "AIzaSyABDTJq_xSOUGLwVlR_deeIpi5rFZ4ZPUE"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: "studio-1397195000-3cb07.firebaseapp.com"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: "studio-1397195000-3cb07"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "659800845261"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:659800845261:web:23ddaeafe5711c8b65f284"
+    availability:
+      - BUILD
+      - RUNTIME
+
 # The build command for the Next.js app.
 # This is used to build the production version of the app.
 buildCommand: npm ci && npm run build
@@ -26,9 +57,3 @@ runConfig:
   memoryMiB: 1024
   # The number of CPU cores to allocate to the Cloud Run instance.
   cpu: 1
-
-# Environment variables to pass to the backend.
-# You can add your Firebase project's environment variables here.
-env:
-  - variable: 'NODE_ENV'
-    value: 'production'
