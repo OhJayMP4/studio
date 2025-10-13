@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useUser, useFirestore } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { collection, query, where, doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, updateDoc, arrayRemove } from 'firebase/firestore';
 import type { Workspace, UserProfile } from '@/lib/types';
 import {
   ChevronsUpDown,
@@ -40,14 +40,15 @@ function useUserWorkspaces() {
   useEffect(() => {
     if (!user) {
       setIsLoading(false);
-      setError(null);
       setWorkspaces([]);
+      setError(null);
       return;
     }
 
     setIsLoading(true);
     const userRef = doc(firestore, 'users', user.uid);
     console.log('Starting snapshot for user', user.uid);
+    
     const unsubUser = onSnapshot(userRef, (userSnap) => {
       console.log('User snap received:', userSnap.exists(), userSnap.data()?.workspaceIds);
       if (!userSnap.exists()) {
@@ -70,6 +71,9 @@ function useUserWorkspaces() {
       const { workspaceIds = [] } = userSnap.data() as UserProfile;
       console.log('Workspace IDs loaded:', workspaceIds);
       setError(null);
+
+      // Remove workspaces that are no longer in the user's list
+      setWorkspaces(prev => prev.filter(ws => workspaceIds.includes(ws.id)));
       
       if (workspaceIds.length === 0) {
           setWorkspaces([]);
@@ -78,41 +82,41 @@ function useUserWorkspaces() {
       }
 
       const unsubs: (() => void)[] = [];
-      const workspacePromises = workspaceIds.map(wsId => {
-        return new Promise<void>((resolve) => {
-          console.log('Subscribing to ws', wsId);
-          const workspaceRef = doc(firestore, 'workspaces', wsId);
-          const unsubWorkspace = onSnapshot(workspaceRef, (wsSnap) => {
-            console.log('Ws snap for', wsId, wsSnap.exists());
+      workspaceIds.forEach(wsId => {
+        const workspaceRef = doc(firestore, 'workspaces', wsId);
+        const unsubWorkspace = onSnapshot(workspaceRef, (wsSnap) => {
             setWorkspaces(prev => {
               const wsMap = new Map(prev.map(w => [w.id, w]));
               if (wsSnap.exists()) {
                 const wsData = wsSnap.data() as Omit<Workspace, 'id'>;
-                 // Double-check membership before adding
-                if(wsData.memberIds?.includes(user.uid)) {
+                 if(wsData.memberIds?.includes(user.uid)) {
                    wsMap.set(wsId, { id: wsId, ...wsData });
-                } else {
+                 } else {
+                   // This case should be rare if arrayRemove works, but good for safety
                    wsMap.delete(wsId);
-                }
+                 }
               } else {
                  wsMap.delete(wsId);
               }
-               console.log('Updated workspaces:', Array.from(wsMap.values()).map(w => w.name));
+              console.log('Updated workspaces:', Array.from(wsMap.values()).map(w => w.name));
               return Array.from(wsMap.values());
             });
-            resolve();
-          }, (wsErr) => {
-             console.error('Ws snapshot error:', wsErr);
-             setError(`Workspace ${wsId} error: ${wsErr.message}`);
-             resolve(); // Resolve even on error to not block Promise.all
-          });
-          unsubs.push(unsubWorkspace);
+        }, (wsErr: any) => {
+            if (wsErr.code === 'permission-denied') {
+                console.warn(`Permission denied for workspace ${wsId}. Removing from user's list.`);
+                // Self-healing: remove the invalid ID from the user's document
+                updateDoc(userRef, {
+                    workspaceIds: arrayRemove(wsId)
+                });
+            } else {
+                console.error('Ws snapshot error:', wsErr);
+                setError(`Workspace ${wsId} error: ${wsErr.message}`);
+            }
         });
+        unsubs.push(unsubWorkspace);
       });
 
-      Promise.all(workspacePromises).then(() => {
-         setIsLoading(false);
-      });
+      setIsLoading(false);
 
       return () => {
         unsubs.forEach(u => u());
@@ -200,6 +204,9 @@ export function WorkspaceSwitcher() {
             <CommandEmpty>
                 <div className='p-4 text-sm text-center'>
                     <p>No workspace found.</p>
+                     <AddWorkspaceDialog>
+                        <Button variant="link" className='mt-2'>Create your first workspace</Button>
+                    </AddWorkspaceDialog>
                 </div>
             </CommandEmpty>
             <CommandGroup heading="Workspaces">
