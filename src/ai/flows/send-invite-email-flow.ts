@@ -1,16 +1,10 @@
 'use server';
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
 import { Resend } from 'resend';
+import { SendInviteEmailInputSchema, type SendInviteEmailInput } from './send-invite-email-flow.types';
+import { z } from 'genkit';
 
-export const SendInviteEmailInputSchema = z.object({
-  email: z.string().email(),
-  workspaceName: z.string(),
-  joinUrl: z.string().url(),
-});
-
-export type SendInviteEmailInput = z.infer<typeof SendInviteEmailInputSchema>;
 
 export async function sendInviteEmail(input: SendInviteEmailInput): Promise<{ success: boolean }> {
   return sendInviteEmailFlow(input);

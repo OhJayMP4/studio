@@ -68,29 +68,33 @@ export function InviteMemberButton() {
             const joinUrl = `${window.location.origin}/join?token=${token}`;
 
             // Call the Genkit flow to send the email
-            await sendInviteEmail({
+            const result = await sendInviteEmail({
                 email: email,
                 workspaceName: selectedWorkspace.name,
                 joinUrl: joinUrl
             });
+
+            if (result.success) {
+                toast({
+                    title: "Invitation Sent!",
+                    description: `An invitation email has been sent to ${email}.`,
+                });
+            } else {
+                 toast({
+                    variant: 'destructive',
+                    title: "Email Failed to Send",
+                    description: "The invite was created, but the email could not be sent. Please check your Resend configuration.",
+                });
+            }
             
-            toast({
-                title: "Invitation Sent!",
-                description: `An invitation email has been sent to ${email}.`,
-            });
         } catch(error: any) {
-             if (error instanceof FirestorePermissionError || error.name === 'FirebaseError') {
+             if (error instanceof FirestorePermissionError || (error.name === 'FirebaseError' && error.code === 'permission-denied')) {
                  const permissionError = new FirestorePermissionError({
                     path: invitesCollection.path,
                     operation: 'create',
                     requestResourceData: inviteData,
                 });
                 errorEmitter.emit('permission-error', permissionError);
-                toast({
-                    variant: 'destructive',
-                    title: "Failed to Send Invite",
-                    description: "Missing or insufficient permissions.",
-                });
              } else {
                  toast({
                     variant: 'destructive',
