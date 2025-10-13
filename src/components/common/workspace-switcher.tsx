@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useUser, useFirestore } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { collection, query, where, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
 import type { Workspace, UserProfile } from '@/lib/types';
 import {
   ChevronsUpDown,
@@ -40,57 +40,91 @@ function useUserWorkspaces() {
   useEffect(() => {
     if (!user) {
       setIsLoading(false);
+      setError(null);
+      setWorkspaces([]);
       return;
     }
 
+    setIsLoading(true);
     const userRef = doc(firestore, 'users', user.uid);
+    console.log('Starting snapshot for user', user.uid);
     const unsubUser = onSnapshot(userRef, (userSnap) => {
+      console.log('User snap received:', userSnap.exists(), userSnap.data()?.workspaceIds);
       if (!userSnap.exists()) {
-        setError("User document not found.");
-        setIsLoading(false);
+        setError('User document not found—creating...');
+        // Auto-create user doc
+        setDoc(userRef, { email: user.email, name: user.displayName || '', workspaceIds: [] }, { merge: true })
+          .then(() => {
+            setError(null);
+            setIsLoading(false);
+            setWorkspaces([]);
+          })
+          .catch(err => {
+            console.error("Error creating user doc:", err);
+            setError("Failed to create user profile.");
+            setIsLoading(false);
+          });
         return;
       }
       
       const { workspaceIds = [] } = userSnap.data() as UserProfile;
+      console.log('Workspace IDs loaded:', workspaceIds);
+      setError(null);
       
       if (workspaceIds.length === 0) {
-        setWorkspaces([]);
-        setIsLoading(false);
-        return;
+          setWorkspaces([]);
+          setIsLoading(false);
+          return;
       }
 
-      setIsLoading(true);
       const unsubs: (() => void)[] = [];
-      
-      const newWorkspaces = new Map<string, Workspace>();
-
-      workspaceIds.forEach(wsId => {
-        const workspaceRef = doc(firestore, 'workspaces', wsId);
-        const unsubWorkspace = onSnapshot(workspaceRef, (wsSnap) => {
-          if (wsSnap.exists()) {
-            newWorkspaces.set(wsId, { id: wsId, ...(wsSnap.data() as Omit<Workspace, 'id'>) });
-            // Only update state when all listeners have fired at least once
-            if (newWorkspaces.size === workspaceIds.length) {
-              setWorkspaces(Array.from(newWorkspaces.values()));
-              setIsLoading(false);
-            }
-          }
-        }, (err) => {
-          console.error(`Error fetching workspace ${wsId}:`, err);
-          // Potentially handle removing a workspace the user lost access to
+      const workspacePromises = workspaceIds.map(wsId => {
+        return new Promise<void>((resolve) => {
+          console.log('Subscribing to ws', wsId);
+          const workspaceRef = doc(firestore, 'workspaces', wsId);
+          const unsubWorkspace = onSnapshot(workspaceRef, (wsSnap) => {
+            console.log('Ws snap for', wsId, wsSnap.exists());
+            setWorkspaces(prev => {
+              const wsMap = new Map(prev.map(w => [w.id, w]));
+              if (wsSnap.exists()) {
+                const wsData = wsSnap.data() as Omit<Workspace, 'id'>;
+                 // Double-check membership before adding
+                if(wsData.memberIds?.includes(user.uid)) {
+                   wsMap.set(wsId, { id: wsId, ...wsData });
+                } else {
+                   wsMap.delete(wsId);
+                }
+              } else {
+                 wsMap.delete(wsId);
+              }
+               console.log('Updated workspaces:', Array.from(wsMap.values()).map(w => w.name));
+              return Array.from(wsMap.values());
+            });
+            resolve();
+          }, (wsErr) => {
+             console.error('Ws snapshot error:', wsErr);
+             setError(`Workspace ${wsId} error: ${wsErr.message}`);
+             resolve(); // Resolve even on error to not block Promise.all
+          });
+          unsubs.push(unsubWorkspace);
         });
-        unsubs.push(unsubWorkspace);
       });
 
-      // Cleanup listeners for workspaces when workspaceIds array changes
-      return () => unsubs.forEach(unsub => unsub());
-    }, (err) => {
-      console.error("Error fetching user profile:", err);
-      setError(err.message);
+      Promise.all(workspacePromises).then(() => {
+         setIsLoading(false);
+      });
+
+      return () => {
+        unsubs.forEach(u => u());
+      }
+
+    }, (userErr) => {
+      console.error('User snapshot error:', userErr);
+      setError(`User doc error: ${userErr.message}`);
       setIsLoading(false);
     });
 
-    return () => unsubUser(); // Cleanup user profile listener
+    return () => unsubUser();
   }, [user, firestore]);
   
   return { workspaces, isLoading, error };
@@ -100,7 +134,7 @@ function useUserWorkspaces() {
 export function WorkspaceSwitcher() {
   const [popoverOpen, setPopoverOpen] = useState(false);
   const { selectedWorkspace, setSelectedWorkspace } = useSelectedWorkspace();
-  const { workspaces, isLoading } = useUserWorkspaces();
+  const { workspaces, isLoading, error } = useUserWorkspaces();
 
   useEffect(() => {
     // When workspaces load, if no workspace is selected, or the selected one is no longer available, select the first one.
@@ -114,11 +148,21 @@ export function WorkspaceSwitcher() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2">
-         <Skeleton className="h-10 w-10 rounded-lg" />
-         <Skeleton className="h-6 w-32" />
+      <div className="flex items-center gap-2 px-2">
+         <Skeleton className="h-6 w-6 rounded-md" />
+         <Skeleton className="h-5 w-32" />
+         <ChevronsUpDown className="ml-auto h-4 w-4 shrink-0 opacity-50" />
       </div>
     )
+  }
+
+  if (error) {
+     return (
+        <div className="p-2 text-xs text-destructive-foreground bg-destructive rounded-md">
+            <p>Error: {error}</p>
+            <Button variant="link" size="sm" className="p-0 h-auto text-destructive-foreground" onClick={() => window.location.reload()}>Retry</Button>
+        </div>
+     );
   }
 
   return (
@@ -156,7 +200,6 @@ export function WorkspaceSwitcher() {
             <CommandEmpty>
                 <div className='p-4 text-sm text-center'>
                     <p>No workspace found.</p>
-                    <p className='text-muted-foreground'>Create one to get started.</p>
                 </div>
             </CommandEmpty>
             <CommandGroup heading="Workspaces">
