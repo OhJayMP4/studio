@@ -4,10 +4,11 @@ import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Button } from "@/components/ui/button";
 import { useFirestore } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection } from "firebase/firestore";
 import { UserPlus } from "lucide-react";
 import { errorEmitter } from "@/firebase/error-emitter";
 import { FirestorePermissionError } from "@/firebase/errors";
+import { sendInviteEmail } from "@/ai/flows/send-invite-email-flow";
 
 // Basic email validation
 const validateEmail = (email: string) => {
@@ -61,33 +62,43 @@ export function InviteMemberButton() {
 
         const invitesCollection = collection(firestore, 'invites');
 
-        addDoc(invitesCollection, inviteData)
-            .then(() => {
-                toast({
-                    title: "Invitation Sent!",
-                    description: `An invitation has been generated for ${email}. You need to manually send them the link. NOTE: Email sending is not yet implemented.`,
-                });
-                
-                // In a real app, an email would be sent here via a backend function.
-                // For now, we can log the link to the console for testing.
-                const joinUrl = `${window.location.origin}/join?token=${token}`;
-                console.log(`Generated invite link for ${email}: ${joinUrl}`);
-            })
-            .catch((serverError) => {
-                const permissionError = new FirestorePermissionError({
-                  path: invitesCollection.path,
-                  operation: 'create',
-                  requestResourceData: inviteData,
-                });
-        
-                errorEmitter.emit('permission-error', permissionError);
+        try {
+            await addDoc(invitesCollection, inviteData);
 
-                 toast({
+            const joinUrl = `${window.location.origin}/join?token=${token}`;
+
+            // Call the Genkit flow to send the email
+            await sendInviteEmail({
+                email: email,
+                workspaceName: selectedWorkspace.name,
+                joinUrl: joinUrl
+            });
+            
+            toast({
+                title: "Invitation Sent!",
+                description: `An invitation email has been sent to ${email}.`,
+            });
+        } catch(error: any) {
+             if (error instanceof FirestorePermissionError || error.name === 'FirebaseError') {
+                 const permissionError = new FirestorePermissionError({
+                    path: invitesCollection.path,
+                    operation: 'create',
+                    requestResourceData: inviteData,
+                });
+                errorEmitter.emit('permission-error', permissionError);
+                toast({
                     variant: 'destructive',
                     title: "Failed to Send Invite",
                     description: "Missing or insufficient permissions.",
                 });
-            });
+             } else {
+                 toast({
+                    variant: 'destructive',
+                    title: "Failed to Send Invite",
+                    description: error.message || "An unknown error occurred.",
+                });
+             }
+        }
     };
 
     return (
