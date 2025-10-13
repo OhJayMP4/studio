@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useUser, useFirestore } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { doc, onSnapshot, setDoc, updateDoc, arrayRemove } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, arrayRemove } from 'firebase/firestore';
 import type { Workspace, UserProfile } from '@/lib/types';
 import {
   ChevronsUpDown,
@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils';
 import { AddWorkspaceDialog } from './add-workspace-dialog';
 import { Skeleton } from '../ui/skeleton';
 
+
 function useUserWorkspaces() {
   const { user } = useUser();
   const firestore = useFirestore();
@@ -50,14 +51,14 @@ function useUserWorkspaces() {
     
     const unsubUser = onSnapshot(userRef, (userSnap) => {
       if (!userSnap.exists()) {
-        setError('User document not found—creating...');
-        setDoc(userRef, { email: user.email, name: user.displayName || '', workspaceIds: [] }, { merge: true })
-          .then(() => setError(null))
+        console.log("User doc doesn't exist, creating...");
+        // This will trigger a re-render and the hook will run again
+        updateDoc(userRef, { email: user.email, name: user.displayName || '', workspaceIds: [] }, { merge: true })
           .catch(err => {
             console.error("Error creating user doc:", err);
             setError("Failed to create user profile.");
-          })
-          .finally(() => setIsLoading(false));
+            setIsLoading(false);
+          });
         return;
       }
       
@@ -81,9 +82,11 @@ function useUserWorkspaces() {
                  if(wsData.memberIds?.includes(user.uid)) {
                    wsMap.set(wsId, { id: wsId, ...wsData });
                  } else {
+                   // User is no longer a member, remove from local state
                    wsMap.delete(wsId);
                  }
               } else {
+                 // Workspace doc deleted, remove from local state
                  wsMap.delete(wsId);
               }
               return Array.from(wsMap.values());
@@ -101,6 +104,9 @@ function useUserWorkspaces() {
         });
         unsubs.push(unsubWorkspace);
       });
+      
+      // Check if any of the user's workspaceIds were not found and remove them from the UI
+      setWorkspaces(prev => prev.filter(ws => workspaceIds.includes(ws.id)));
 
       setIsLoading(false);
 
@@ -123,11 +129,13 @@ function useUserWorkspaces() {
 
 export function WorkspaceSwitcher() {
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const { selectedWorkspace, setSelectedWorkspace } = useSelectedWorkspace();
   const { workspaces, isLoading, error } = useUserWorkspaces();
 
   useEffect(() => {
     if (!isLoading && workspaces) {
+      // If there's no selected workspace OR the selected one is no longer in the list
       if (!selectedWorkspace || !workspaces.find(w => w.id === selectedWorkspace.id)) {
         setSelectedWorkspace(workspaces[0] || null);
       }
@@ -155,6 +163,7 @@ export function WorkspaceSwitcher() {
   }
 
   return (
+    <>
     <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
       <PopoverTrigger asChild>
         <Button
@@ -189,9 +198,11 @@ export function WorkspaceSwitcher() {
             <CommandEmpty>
                 <div className='p-4 text-sm text-center'>
                     <p>No workspace found.</p>
-                     <AddWorkspaceDialog>
-                        <Button variant="link" className='mt-2'>Create your first workspace</Button>
-                    </AddWorkspaceDialog>
+                     <Button variant="link" className='mt-2' onClick={() => {
+                        console.log('BUTTON CLICKED TO OPEN DIALOG', new Date().toISOString());
+                        setDialogOpen(true);
+                        setPopoverOpen(false);
+                     }}>Create your first workspace</Button>
                 </div>
             </CommandEmpty>
             <CommandGroup heading="Workspaces">
@@ -228,20 +239,22 @@ export function WorkspaceSwitcher() {
           <CommandSeparator />
           <CommandList>
             <CommandGroup>
-                <AddWorkspaceDialog>
-                    <CommandItem
-                        onSelect={() => {
-                          setPopoverOpen(false);
-                        }}
-                    >
-                        <PlusCircle className="mr-2 h-5 w-5" />
-                        Create Workspace
-                    </CommandItem>
-                </AddWorkspaceDialog>
+                <CommandItem
+                    onSelect={() => {
+                      console.log('COMMANDITEM CLICKED TO OPEN DIALOG', new Date().toISOString());
+                      setDialogOpen(true);
+                      setPopoverOpen(false);
+                    }}
+                >
+                    <PlusCircle className="mr-2 h-5 w-5" />
+                    Create Workspace
+                </CommandItem>
             </CommandGroup>
           </CommandList>
         </Command>
       </PopoverContent>
     </Popover>
+    <AddWorkspaceDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+    </>
   );
 }
