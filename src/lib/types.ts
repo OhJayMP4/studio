@@ -3,6 +3,7 @@ export type UserProfile = {
   name: string | null;
   email: string | null;
   avatarUrl: string | null;
+  workspaceIds?: string[];
 };
 
 export type Workspace = {
@@ -81,4 +82,11 @@ export type Sale = {
     projectId: string;
 }
 
+export type Invite = {
+    id: string;
+    workspaceId: string;
+    email: string;
+    token: string;
+    expires: number; // Unix timestamp
+}
     

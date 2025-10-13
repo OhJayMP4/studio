@@ -329,6 +329,36 @@
         "value",
         "projectId"
       ]
+    },
+    "Invite": {
+      "title": "Invite",
+      "type": "object",
+      "description": "An invitation for a user to join a workspace.",
+      "properties": {
+        "workspaceId": {
+          "type": "string",
+          "description": "The ID of the workspace the user is invited to."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The email of the user being invited."
+        },
+        "token": {
+          "type": "string",
+          "description": "The unique, secret invite token."
+        },
+        "expires": {
+          "type": "number",
+          "description": "A Unix timestamp indicating when the invite expires."
+        }
+      },
+      "required": [
+        "workspaceId",
+        "email",
+        "token",
+        "expires"
+      ]
     }
   },
   "auth": {
@@ -384,6 +414,12 @@
         "$ref": "#/entities/Sale"
       },
       "description": "Stores the individual sales logged for a project."
+    },
+    "/invites/{inviteId}": {
+      "schema": {
+        "$ref": "#/entities/Invite"
+      },
+      "description": "Stores pending invitations for users to join workspaces."
     }
   }
 }
