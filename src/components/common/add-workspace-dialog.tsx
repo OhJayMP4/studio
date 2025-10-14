@@ -51,14 +51,8 @@ export function AddWorkspaceDialog({ open, onOpenChange }: AddWorkspaceDialogPro
       const workspaceRef = await addDoc(collection(firestore, 'workspaces'), {
         name: name,
         ownerId: user.uid,
-        memberIds: [user.uid],
-        users: {
-          [user.uid]: {
-            role: 'admin',
-            name: user.displayName,
-            avatarUrl: user.photoURL,
-          },
-        },
+        // Use single 'members' map for consistency with rules/switcher
+        members: { [user.uid]: 'admin' }, // { uid: 'admin' } – role as string
       });
 
       // Also update the user's document with the new workspace ID
