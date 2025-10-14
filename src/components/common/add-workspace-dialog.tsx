@@ -30,7 +30,6 @@ export function AddWorkspaceDialog({ open, onOpenChange }: AddWorkspaceDialogPro
 
   const handleCreateWorkspace = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('DIALOG SUBMIT CLICKED', new Date().toISOString(), 'Name:', name);
     if (!user) {
       toast({
         variant: 'destructive',
@@ -63,14 +62,12 @@ export function AddWorkspaceDialog({ open, onOpenChange }: AddWorkspaceDialogPro
           },
         },
       });
-      console.log('addDoc done, wsRef.id:', workspaceRef.id);
 
       // Also update the user's document with the new workspace ID
       const userRef = doc(firestore, 'users', user.uid);
       await updateDoc(userRef, {
         workspaceIds: arrayUnion(workspaceRef.id),
       });
-       console.log('updateDoc done for user:', user.uid);
       
       toast({
         title: 'Workspace Created',
@@ -79,7 +76,7 @@ export function AddWorkspaceDialog({ open, onOpenChange }: AddWorkspaceDialogPro
       setName('');
       onOpenChange(false);
     } catch (error: any) {
-      console.error('CREATE DIALOG ERROR:', error);
+      console.error('Error creating workspace:', error);
       toast({
         variant: 'destructive',
         title: 'Creation Failed',
