@@ -1,5 +1,3 @@
-'use client';
-
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -67,7 +65,7 @@ export function AddWorkspaceDialog({ open, onOpenChange }: AddWorkspaceDialogPro
       const userRef = doc(firestore, 'users', user.uid);
       await updateDoc(userRef, {
         workspaceIds: arrayUnion(workspaceRef.id),
-      });
+      }, { merge: true });
       
       toast({
         title: 'Workspace Created',
