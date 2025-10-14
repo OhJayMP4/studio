@@ -1,5 +1,6 @@
 
 import type {NextConfig} from 'next';
+import path from 'path';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
@@ -9,7 +10,11 @@ const nextConfig: NextConfig = {
       config.resolve.fallback = { ...config.resolve.fallback, fs: false };
     }
     // Disabling minification as a workaround for potential build issues.
-    config.optimization.minimize = false; 
+    config.optimization.minimize = false;
+    config.resolve.alias = {
+        ...config.resolve.alias,
+        '@': path.resolve(__dirname, 'src'),
+    };
     return config;
   },
   typescript: {
