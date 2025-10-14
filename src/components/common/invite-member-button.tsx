@@ -66,6 +66,8 @@ export function InviteMemberButton() {
             await addDoc(invitesCollection, inviteData);
 
             const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+            console.log('APP_URL from env:', appUrl); // Log for debug
+            
             if (!appUrl) {
                 console.error('FATAL: NEXT_PUBLIC_APP_URL is not defined in the environment. Cannot send invitation email.');
                 toast({
@@ -76,6 +78,7 @@ export function InviteMemberButton() {
                 return;
             }
             const joinUrl = `${appUrl}/join?token=${token}`;
+            console.log('Generated join URL:', joinUrl);
 
             // Call the Genkit flow to send the email
             const result = await sendInviteEmail({
