@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -23,7 +23,8 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
-export default function LoginPage() {
+
+function LoginCard() {
   const auth = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -46,8 +47,12 @@ export default function LoginPage() {
     try {
       let userCredential;
       if (action === 'signUp') {
+        if (!data.name) {
+            setAuthError('Name is required for new accounts.');
+            setIsSubmitting(false);
+            return;
+        }
         userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
-        // Update the user's profile with their name
         if (userCredential.user && data.name) {
           await updateProfile(userCredential.user, { displayName: data.name });
         }
@@ -57,13 +62,8 @@ export default function LoginPage() {
         toast({ title: 'Signed In', description: "You've been successfully signed in." });
       }
 
-      // Handle redirection after successful auth
       const redirectUrl = searchParams.get('redirect');
-      if (redirectUrl) {
-        router.push(redirectUrl);
-      } else {
-        router.push('/dashboard');
-      }
+      router.push(redirectUrl || '/dashboard');
 
     } catch (error) {
       const firebaseError = error as FirebaseError;
@@ -92,8 +92,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-4">
-      <Card className="w-full max-w-md shadow-2xl">
+    <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary">
             <Rocket className="h-8 w-8 text-primary-foreground" />
@@ -169,6 +168,15 @@ export default function LoginPage() {
           </form>
         </FormProvider>
       </Card>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center p-4">
+      <Suspense fallback={<div>Loading...</div>}>
+        <LoginCard />
+      </Suspense>
     </div>
   );
 }
