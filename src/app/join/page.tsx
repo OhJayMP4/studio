@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
@@ -12,6 +13,7 @@ import {
   doc,
   arrayUnion,
   deleteDoc,
+  getDoc,
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -98,7 +100,6 @@ function JoinProcessor() {
                 
                 // Fetch workspace name to display
                 const workspaceRef = doc(firestore, 'workspaces', foundInvite.workspaceId);
-                const workspaceSnap = await getDocs(query(collection(firestore, 'workspaces'), where('__name__', '==', workspaceRef.path.split('/').pop())));
                 const workspaceDoc = await getDoc(workspaceRef);
 
                 if (workspaceDoc.exists()) {
