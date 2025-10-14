@@ -12,7 +12,6 @@ import {
   writeBatch,
   doc,
   arrayUnion,
-  deleteDoc,
   getDoc,
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
@@ -22,14 +21,7 @@ import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-
-type Invite = {
-  id: string;
-  workspaceId: string;
-  email: string;
-  expires: number;
-  token: string;
-};
+import type { Invite, Workspace } from '@/lib/types';
 
 function JoinProcessor() {
     const router = useRouter();
@@ -82,10 +74,10 @@ function JoinProcessor() {
                 const foundInvite = { id: inviteSnapshot.docs[0].id, ...inviteSnapshot.docs[0].data() } as Invite;
 
                 if (foundInvite.expires < Date.now()) {
+                    // Clean up expired invite
+                    await writeBatch(firestore).delete(doc(firestore, 'invites', foundInvite.id)).commit();
                     setStatus('error');
                     setError('This invitation has expired.');
-                    // Optional: Clean up expired invite
-                    await deleteDoc(doc(firestore, 'invites', foundInvite.id));
                     return;
                 }
                 
@@ -103,13 +95,27 @@ function JoinProcessor() {
                 const workspaceDoc = await getDoc(workspaceRef);
 
                 if (workspaceDoc.exists()) {
-                    setWorkspaceName(workspaceDoc.data().name);
+                    const workspaceData = workspaceDoc.data() as Workspace;
+                    
+                    // Check if user is already a member
+                    if(workspaceData.memberIds.includes(user.uid)) {
+                       toast({
+                           title: "Already a Member",
+                           description: `You are already a member of the ${workspaceData.name} workspace.`
+                       });
+                       // Clean up the (now redundant) invite
+                       await writeBatch(firestore).delete(doc(firestore, 'invites', foundInvite.id)).commit();
+                       router.push(`/dashboard?ws=${foundInvite.workspaceId}`);
+                       return;
+                    }
+
+                    setWorkspaceName(workspaceData.name);
                     setStatus('success'); // Ready to show the join button
                 } else {
                     setStatus('error');
-                    setError('The workspace you were invited to no longer exists.');
+setError('The workspace you were invited to no longer exists.');
                     // Clean up the invite since it's invalid
-                    await deleteDoc(doc(firestore, 'invites', foundInvite.id));
+                    await writeBatch(firestore).delete(doc(firestore, 'invites', foundInvite.id)).commit();
                 }
 
             } catch (e: any) {
@@ -120,7 +126,7 @@ function JoinProcessor() {
         };
 
         processInvite();
-    }, [token, user, isUserLoading, firestore, router]);
+    }, [token, user, isUserLoading, firestore, router, toast]);
 
 
     const handleJoinWorkspace = async () => {
@@ -135,7 +141,7 @@ function JoinProcessor() {
             batch.update(workspaceRef, {
                 memberIds: arrayUnion(user.uid),
                 [`users.${user.uid}`]: {
-                    role: 'contributor', // Or another default role
+                    role: 'contributor', // All invited users start as contributors
                     name: user.displayName,
                     avatarUrl: user.photoURL,
                 }
@@ -158,13 +164,18 @@ function JoinProcessor() {
                 description: `You have successfully joined the ${workspaceName} workspace.`
             });
 
-            // Redirect to the newly joined workspace
+            // Redirect to the newly joined workspace, which will now appear in the switcher
             router.push(`/dashboard?ws=${invite.workspaceId}`);
 
         } catch (e: any) {
             console.error("Error joining workspace: ", e);
             setStatus('error');
-            setError(`Failed to join workspace: ${e.message}`);
+            setError(`Failed to join workspace: ${e.message}. Please check permissions and try again.`);
+            toast({
+                variant: 'destructive',
+                title: 'Join Failed',
+                description: `Could not join the workspace. Please try again or contact the administrator.`,
+            });
         }
     };
 
