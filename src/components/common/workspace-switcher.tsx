@@ -92,7 +92,7 @@ function useUserWorkspaces() {
                 } else {
                    console.log(`User ${user.uid} is not a member of workspace ${wsId}. Skipping add.`);
                    // If user is no longer a member, remove from local state
-                   setWorkspaces(prev => prev.filter(w => w.id !== wsId));
+                   // setWorkspaces(prev => prev.filter(w => w.id !== wsId));
                 }
             } else {
                  console.log(`Workspace ${wsId} not found. Removing from list.`);
