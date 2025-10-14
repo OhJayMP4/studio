@@ -89,7 +89,7 @@ function useUserWorkspaces() {
                       return [...prev, { id: wsId, ...wsData }];
                    });
                 } else {
-                   console.log(`User ${user.uid} is not a member of workspace ${wsId}. Removing from list.`);
+                   console.log(`User ${user.uid} is not a member of workspace ${wsId}. Skipping add.`);
                    // If user is no longer a member, remove from local state
                    setWorkspaces(prev => prev.filter(w => w.id !== wsId));
                 }
@@ -101,7 +101,7 @@ function useUserWorkspaces() {
         }, (wsErr: any) => {
             if (wsErr.code === 'permission-denied') {
                 console.warn(`Permission denied for workspace ${wsId}. This can be normal during initial load. The workspace will not be added to the list unless permissions are granted.`);
-                // Do not remove the workspaceId from the user's profile here.
+                // DO NOT remove the workspaceId from the user's profile here.
                 // It might be a temporary state before rules are fully propagated.
             } else {
                 console.error('Ws snapshot error:', wsErr);
