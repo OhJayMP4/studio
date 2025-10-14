@@ -10,21 +10,12 @@ import ProjectStatusChart from "@/components/reporting/project-status-chart";
 import TaskPriorityChart from "@/components/reporting/task-priority-chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState } from "react";
-<<<<<<< HEAD
 import { InviteMemberButton } from "@/components/common/invite-member-button";
-
-
-function DashboardView() {
-  const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
-=======
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { useUser } from "@/firebase";
+
 
 function DashboardView() {
   const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
-  const { user } = useUser();
->>>>>>> 97ce03319f9c5976a021c28263997092f2c08cca
   const firestore = useFirestore();
   const { toast } = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
@@ -78,17 +69,6 @@ function DashboardView() {
     
     fetchWorkspaceData();
   }, [selectedWorkspace, firestore]);
-
-  const handleCopyInviteLink = () => {
-    if (!selectedWorkspace || !user) return;
-    const inviteLink = `${window.location.origin}/invite?ws=${selectedWorkspace.id}&owner=${user.uid}`;
-    navigator.clipboard.writeText(inviteLink).then(() => {
-        toast({
-            title: "Invite Link Copied",
-            description: "The invite link has been copied to your clipboard.",
-        });
-    });
-  };
   
   const completedProjects = projects?.filter(p => p.progress === 100).length || 0;
   const overdueTasks = tasks?.filter(t => !t.completed && new Date(t.dueDate) < new Date()).length || 0;
@@ -97,11 +77,7 @@ function DashboardView() {
     <div>
       <div className="flex justify-between items-center mb-6">
          <h1 className="text-3xl font-headline">Dashboard for {selectedWorkspace?.name}</h1>
-<<<<<<< HEAD
          {isUserAdmin && <InviteMemberButton />}
-=======
-         {isUserAdmin && <Button size="sm" onClick={handleCopyInviteLink}>Invite Member</Button>}
->>>>>>> 97ce03319f9c5976a021c28263997092f2c08cca
       </div>
        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
         <Card className="flex flex-col">

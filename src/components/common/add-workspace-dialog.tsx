@@ -57,11 +57,7 @@ export function AddWorkspaceDialog({ open, onOpenChange }: AddWorkspaceDialogPro
       const userRef = doc(firestore, 'users', user.uid);
       await updateDoc(userRef, {
         workspaceIds: arrayUnion(workspaceRef.id),
-<<<<<<< HEAD
       }, { merge: true });
-=======
-      });
->>>>>>> 97ce03319f9c5976a021c28263997092f2c08cca
       
       console.log('ArrayUnion success for wsId:', workspaceRef.id, 'user doc updated');
 

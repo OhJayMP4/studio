@@ -65,15 +65,9 @@ function LoginCard() {
         userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
         toast({ title: 'Signed In', description: "You've been successfully signed in." });
       }
-<<<<<<< HEAD
-
-      const redirectUrl = searchParams.get('redirect');
-      router.push(redirectUrl || '/dashboard');
-
-=======
       
       router.push(redirectUrl || '/dashboard');
->>>>>>> 97ce03319f9c5976a021c28263997092f2c08cca
+
     } catch (error) {
       const firebaseError = error as FirebaseError;
       let friendlyMessage = 'An unexpected error occurred. Please try again.';
