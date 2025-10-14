@@ -80,7 +80,7 @@ function useUserWorkspaces() {
             if (wsSnap.exists()) {
                 const wsData = wsSnap.data() as Omit<Workspace, 'id'>;
                 // Client-side membership check
-                if(wsData.users?.[user.uid]) {
+                if(wsData.members?.[user.uid]) {
                    setWorkspaces(prev => {
                       const existing = prev.find(w => w.id === wsId);
                       if (existing) {
