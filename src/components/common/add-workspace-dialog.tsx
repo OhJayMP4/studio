@@ -67,6 +67,8 @@ export function AddWorkspaceDialog({ open, onOpenChange }: AddWorkspaceDialogPro
         workspaceIds: arrayUnion(workspaceRef.id),
       }, { merge: true });
       
+      console.log('ArrayUnion success for wsId:', workspaceRef.id, 'user doc updated');
+
       toast({
         title: 'Workspace Created',
         description: `The "${name}" workspace has been successfully created.`,

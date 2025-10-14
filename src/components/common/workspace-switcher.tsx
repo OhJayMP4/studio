@@ -64,6 +64,7 @@ function useUserWorkspaces() {
       }
       
       const { workspaceIds = [] } = userSnap.data() as UserProfile;
+      console.log('User snap array length:', workspaceIds.length, 'IDs:', workspaceIds);
       setError(null);
       
       if (workspaceIds.length === 0) {
@@ -79,7 +80,7 @@ function useUserWorkspaces() {
             if (wsSnap.exists()) {
                 const wsData = wsSnap.data() as Omit<Workspace, 'id'>;
                 // Client-side membership check
-                if(wsData.members?.[user.uid]) {
+                if(wsData.users?.[user.uid]) {
                    setWorkspaces(prev => {
                       const existing = prev.find(w => w.id === wsId);
                       if (existing) {
