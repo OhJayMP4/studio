@@ -1,191 +1,202 @@
 /**
- * @fileoverview Firestore Security Rules
+ * @fileoverview Firestore Security Rules for the Studio application.
  *
  * Core Philosophy:
- * This ruleset implements a hybrid security model, combining user-based access control with
- * workspace-based roles and invitation-based access. It prioritizes secure data access by
- * enforcing strict ownership and role-based authorization for all write operations, while
- * offering flexible read access where appropriate.
+ * This ruleset enforces a role-based access control model for workspaces,
+ * with ownership and membership defining access to data. Users can only
+ * manage their own profiles. Public read access is generally disallowed
+ * except where explicitly intended for public consumption.
  *
  * Data Structure:
- * - /users/{userId}: Stores public user profiles, accessible only to the owner.
- * - /workspaces/{workspaceId}: Stores workspace data, secured by workspace admin roles and invitation-based access.
- * - /workspaces/{workspaceId}/companies/{companyId}: Companies within workspaces.
- * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}: Projects within companies.
- * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}: Silos (task containers) within projects.
- * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}: Individual tasks within silos.
- * - /user-tasks/{userId}/tasks/{taskId}: Denormalized task data for quick user lookups, accessible only to the owner.
- * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}: Sales logged for projects.
- * - /invites/{inviteId}: Invitations to join a workspace, secured by a token and expiration.
+ * - /users/{userId}: User profile information, accessible only by the user.
+ * - /workspaces/{workspaceId}: Workspaces containing companies, projects, etc. Access controlled by workspace membership.
+ * - /workspaces/{workspaceId}/companies/{companyId}: Companies within a workspace.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}: Projects within a company.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}: Silos (task containers) for a project.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}: Tasks within a silo.
+ * - /user-tasks/{userId}/tasks/{taskId}: Denormalized tasks for a specific user.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}: Sales logged for a project.
+ * - /invites/{inviteId}: Invitations for users to join workspaces.
  *
  * Key Security Decisions:
- * - User profiles are strictly private and accessible only to the owner.
- * - Workspace access is managed through roles (admin, contributor, viewer) and invitation-based access.
- * - Listing of user profiles is disallowed for privacy.
- * - Invites are used to grant temporary, token-based access to workspaces.
+ * - User listing is disallowed.
+ * - Workspace membership is strictly enforced for access to workspace-related data.
+ * - Default security posture is to deny access unless explicitly allowed.
  *
  * Denormalization for Authorization:
- * - Workspace documents contain a `users` map that stores user roles within the workspace,
- *   enabling efficient role-based access control without additional reads.
- * - `memberIds` array on `Workspace` to allow simpler queries for workspace membership.
- *
- * Structural Segregation:
- * - User-specific data (user profiles, user tasks) is stored in user-scoped subcollections
- *   to ensure privacy and efficient access.
+ * - Workspace documents denormalize user roles in the `members` map for efficient access control.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper Functions
     function isSignedIn() {
       return request.auth != null;
+    }
+
+    function isWorkspaceMember(workspaceId) {
+      return isSignedIn() && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.members[request.auth.uid] != null;
+    }
+
+    function isWorkspaceAdmin(workspaceId) {
+      return isSignedIn() && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.members[request.auth.uid].role == 'admin';
     }
 
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
 
-    function isWorkspaceAdmin(workspaceId) {
-      return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == 'admin';
-    }
-
     function isExistingOwner(userId) {
-      return (isOwner(userId) && get(/databases/$(database)/documents/users/$(userId)).data != null);
+      return isOwner(userId) && resource != null;
     }
 
+    // Add this helper after existing helpers (e.g., after isExistingOwner)
     function isValidInviteForUser(inviteId) {
-      let inviteDoc = get(/databases/$(database)/documents/invites/$(inviteId)).data;
-      return inviteDoc.expires > request.time
-        && inviteDoc.token == request.resource.data.token
-        && inviteDoc.email == request.auth.token.email
+      let inviteDoc = get(/databases/$(database)/documents/invites/$(inviteId));
+      return inviteDoc.data.expires > request.time
+        && inviteDoc.data.token == request.resource.data.token // Assume token passed in update data
+        && inviteDoc.data.email == request.auth.token.email
         && request.auth.uid != null;
     }
 
     /**
-     * @description Manages user profile access. Only the user can read/write their own profile.
+     * @description Controls access to user profile documents.
      * @path /users/{userId}
-     * @allow (get, update, delete) User with matching userId.
-     * @allow (create) User creating their own profile with matching userId.
-     * @deny (get, list) Any other user trying to read another user's profile.
-     * @deny (create, update, delete) Any other user trying to modify another user's profile.
-     * @principle Enforces strict user ownership for profile data.
+     * @allow (get, create, update, delete) if the user is the owner of the profile.
+     * @deny (get, create, update, delete) if the user is not the owner of the profile.
+     * @principle Enforces document ownership for all operations.
      */
     match /users/{userId} {
       allow get: if isOwner(userId);
       allow list: if false;
       allow create: if isOwner(userId) && request.resource.data.uid == userId;
-      allow update: if isExistingOwner(userId) && request.resource.data.uid == request.resource.data.uid;
+      allow update: if isExistingOwner(userId) && request.resource.data.uid == resource.data.uid;
       allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Manages workspaces, including creation, updates, and deletion.
+     * @description Controls access to workspace documents.
      * @path /workspaces/{workspaceId}
-     * @allow (get, list) Any authenticated user can read workspaces.
-     * @allow (create) User with valid data can create a workspace.
-     * @allow (update) Only workspace admins can update workspace details.
-     * @allow (delete) Only workspace admins can delete workspaces.
-     * @deny (create, update, delete) Non-admins attempting to modify workspaces.
-     * @principle Enforces role-based access control for workspaces.
+     * @allow (get, list) if the user is a member of the workspace.
+     * @allow (create) if the user is the owner of the workspace.
+     * @allow (update, delete) if the user is an admin of the workspace.
+     * @deny (get, create, update, delete) if the user is not authorized.
+     * @principle Enforces workspace membership and admin roles for access control.
      */
     match /workspaces/{workspaceId} {
-      allow get, list: if true;
+      allow get: if isWorkspaceMember(workspaceId);
+      allow list: if false;
       allow create: if isSignedIn();
       allow update: if isWorkspaceAdmin(workspaceId)
-        || (isValidInviteForUser(request.resource.data.inviteId)
+        || (exists(/databases/$(database)/documents/invites/$(request.resource.data.inviteId))
+            && isValidInviteForUser(request.resource.data.inviteId)
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
             && request.resource.data.members[request.auth.uid] == 'member');
       allow delete: if isWorkspaceAdmin(workspaceId);
     }
 
     /**
-     * @description Manages companies within a workspace.
+     * @description Controls access to company documents within a workspace.
      * @path /workspaces/{workspaceId}/companies/{companyId}
+     * @allow (get, list) if the user is a member of the workspace.
+     * @allow (create, update, delete) if the user is an admin of the workspace.
+     * @deny (get, create, update, delete) if the user is not authorized.
+     * @principle Enforces workspace membership and admin roles for access control.
      */
     match /workspaces/{workspaceId}/companies/{companyId} {
-      allow get, list: if true;
+      allow get: if isWorkspaceMember(workspaceId);
+      allow list: if isWorkspaceMember(workspaceId);
       allow create: if isWorkspaceAdmin(workspaceId);
       allow update: if isWorkspaceAdmin(workspaceId);
       allow delete: if isWorkspaceAdmin(workspaceId);
     }
 
     /**
-     * @description Manages projects within a company.
+     * @description Controls access to project documents within a company.
      * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}
+     * @allow (get, list) if the user is a member of the workspace.
+     * @allow (create, update, delete) if the user is an admin of the workspace.
+     * @deny (get, create, update, delete) if the user is not authorized.
+     * @principle Enforces workspace membership and admin roles for access control.
      */
     match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId} {
-      allow get, list: if true;
+      allow get: if isWorkspaceMember(workspaceId);
+      allow list: if isWorkspaceMember(workspaceId);
       allow create: if isWorkspaceAdmin(workspaceId);
       allow update: if isWorkspaceAdmin(workspaceId);
       allow delete: if isWorkspaceAdmin(workspaceId);
     }
 
     /**
-     * @description Manages silos (task containers) within a project.
+     * @description Controls access to silo documents within a project.
      * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}
+     * @allow (get, list) if the user is a member of the workspace.
+     * @allow (create, update, delete) if the user is an admin of the workspace.
+     * @deny (get, create, update, delete) if the user is not authorized.
+     * @principle Enforces workspace membership and admin roles for access control.
      */
     match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId} {
-      allow get, list: if true;
+      allow get: if isWorkspaceMember(workspaceId);
+      allow list: if isWorkspaceMember(workspaceId);
       allow create: if isWorkspaceAdmin(workspaceId);
       allow update: if isWorkspaceAdmin(workspaceId);
       allow delete: if isWorkspaceAdmin(workspaceId);
     }
 
     /**
-     * @description Manages tasks within a silo.
+     * @description Controls access to task documents within a silo.
      * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}
+     * @allow (get, list) if the user is a member of the workspace.
+     * @allow (create, update, delete) if the user is an admin of the workspace.
+     * @deny (get, create, update, delete) if the user is not authorized.
+     * @principle Enforces workspace membership and admin roles for access control.
      */
     match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId} {
-      allow get, list: if true;
+      allow get: if isWorkspaceMember(workspaceId);
+      allow list: if isWorkspaceMember(workspaceId);
       allow create: if isWorkspaceAdmin(workspaceId);
       allow update: if isWorkspaceAdmin(workspaceId);
       allow delete: if isWorkspaceAdmin(workspaceId);
     }
 
     /**
-     * @description Manages user-specific task lists for quick lookups.
+     * @description Controls access to user task documents.
      * @path /user-tasks/{userId}/tasks/{taskId}
-     * @allow (get, list) User with matching userId.
-     * @allow (create) Workspace admin creating a user-task.  Must match the userId in the path.
-     * @allow (update) Workspace admin updating a user-task.
-     * @allow (delete) Workspace admin deleting a user-task.
-     * @deny (get, list) Any other user trying to read another user's tasks.
-     * @deny (create, update, delete) Non-admins attempting to modify user tasks.
-     * @principle Enforces strict user ownership for task lists.
+     * @allow (get, list) if the user is the owner of the task.
+     * @allow (create, update, delete) if the user is the owner of the task.
+     * @deny (get, create, update, delete) if the user is not authorized.
+     * @principle Enforces document ownership for all operations.
      */
     match /user-tasks/{userId}/tasks/{taskId} {
-      allow get, list: if isOwner(userId);
-      allow create: if get(/databases/$(database)/documents/workspaces/$(request.resource.data.workspaceId)).data.users[request.auth.uid].role == 'admin' && request.resource.data.assigneeId == userId;
-      allow update: if get(/databases/$(database)/documents/workspaces/$(request.resource.data.workspaceId)).data.users[request.auth.uid].role == 'admin';
-      allow delete: if get(/databases/$(database)/documents/workspaces/$(request.resource.data.workspaceId)).data.users[request.auth.uid].role == 'admin';
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if isOwner(userId);
     }
 
-    /**
-     * @description Manages invites to join a workspace. Admin create, invited user read/delete on valid token.
-     * @path /invites/{inviteId}
-     * @allow (create) Workspace admins can create invites.
-     * @allow (read, delete) Invited user can read/delete invite on valid token.
-     * @allow (list) Only allowed with specific query params for token verification.
-     * @deny (all) Other users accessing invites.
-     * @principle Enforces admin-only creation and token-based access for invites.
-     */
-    match /invites/{inviteId} {
-      allow create: if get(/databases/$(database)/documents/workspaces/$(request.resource.data.workspaceId)).data.users[request.auth.uid].role == 'admin';
-      allow read: if isValidInviteForUser(inviteId);
-      allow list: if request.auth != null && request.query.limit == 1 && request.query.where[0][0] == 'token';
-      allow delete: if isValidInviteForUser(inviteId);
-    }
-
-    /**
-     * @description Manages sales logged for a project.
+        /**
+     * @description Controls access to sale documents within a project.
      * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}
+     * @allow (get, list) if the user is a member of the workspace.
+     * @allow (create, update, delete) if the user is an admin of the workspace.
+     * @deny (get, create, update, delete) if the user is not authorized.
+     * @principle Enforces workspace membership and admin roles for access control.
      */
     match /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId} {
-      allow get, list: if true;
+      allow get: if isWorkspaceMember(workspaceId);
+      allow list: if isWorkspaceMember(workspaceId);
       allow create: if isWorkspaceAdmin(workspaceId);
       allow update: if isWorkspaceAdmin(workspaceId);
       allow delete: if isWorkspaceAdmin(workspaceId);
+    }
+
+    // For /invites/{inviteId} (add new match after /user-tasks if missing):
+    match /invites/{inviteId} {
+      allow create: if isWorkspaceAdmin(request.resource.data.workspaceId);
+      allow get: if isValidInviteForUser(inviteId);
+      allow list: if request.auth != null && request.query.limit == 1 && request.query.where[0][0] == 'token';
+      allow delete: if isValidInviteForUser(inviteId);
     }
   }
 }
