@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -29,7 +28,6 @@ import {
 import { cn } from '@/lib/utils';
 import { AddWorkspaceDialog } from './add-workspace-dialog';
 import { Skeleton } from '../ui/skeleton';
-
 
 function useUserWorkspaces() {
   const { user } = useUser();
@@ -76,41 +74,44 @@ function useUserWorkspaces() {
       const unsubs: (() => void)[] = [];
       workspaceIds.forEach((wsId: string) => {
         const workspaceRef = doc(firestore, 'workspaces', wsId);
-        const unsubWorkspace = onSnapshot(workspaceRef, (wsSnap) => {
+        
+        const attachListener = () => {
+          const unsubWorkspace = onSnapshot(workspaceRef, (wsSnap) => {
+            console.log('Ws snapshot for', wsId, 'exists:', wsSnap.exists());
             if (wsSnap.exists()) {
-                const wsData = wsSnap.data() as Omit<Workspace, 'id'>;
-                // Client-side membership check
-                if(wsData.members?.[user.uid]) {
-                   setWorkspaces(prev => {
-                      const existing = prev.find(w => w.id === wsId);
-                      if (existing) {
-                          // Update existing workspace data
-                          return prev.map(w => w.id === wsId ? { ...existing, ...wsData, id: wsId } : w);
-                      }
-                      // Add new workspace
-                      return [...prev, { id: wsId, ...wsData }];
-                   });
-                } else {
-                   console.log(`User ${user.uid} is not a member of workspace ${wsId}. Skipping add.`);
-                   // If user is no longer a member, remove from local state
-                   // setWorkspaces(prev => prev.filter(w => w.id !== wsId));
-                }
+              const wsData = wsSnap.data() as Omit<Workspace, 'id'>;
+              console.log('Membership check for', user.uid, 'in ws', wsId, ':', wsData.users?.[user.uid]);
+              if (wsData.users?.[user.uid]) {
+                setWorkspaces(prev => {
+                  const existing = prev.find(w => w.id === wsId);
+                  if (existing) {
+                    return prev.map(w => w.id === wsId ? { ...existing, ...wsData, id: wsId } : w);
+                  }
+                  return [...prev, { id: wsId, ...wsData }];
+                });
+              } else {
+                console.log(`User ${user.uid} is not a member of workspace ${wsId}. Skipping add.`);
+                // If user is no longer a member, remove from local state
+                // setWorkspaces(prev => prev.filter(w => w.id !== wsId));
+              }
             } else {
-                 console.log(`Workspace ${wsId} not found. Removing from list.`);
-                 // Workspace doc deleted, remove from local state
-                 setWorkspaces(prev => prev.filter(w => w.id !== wsId));
+              console.log(`Workspace ${wsId} not found. Removing from list.`);
+              // Workspace doc deleted, remove from local state
+              setWorkspaces(prev => prev.filter(w => w.id !== wsId));
             }
-        }, (wsErr: any) => {
+          }, (wsErr: any) => {
             if (wsErr.code === 'permission-denied') {
-                console.warn(`Permission denied for workspace ${wsId}. This can be normal during initial load. The workspace will not be added to the list unless permissions are granted.`);
-                // DO NOT remove the workspaceId from the user's profile here.
-                // It might be a temporary state before rules are fully propagated.
+                console.warn(`Permission denied for workspace ${wsId}. Retrying in 1s.`);
+                setTimeout(attachListener, 1000); // Retry after 1 second
             } else {
-                console.error('Ws snapshot error:', wsErr);
-                setError(`Workspace ${wsId} error: ${wsErr.message}`);
+              console.error('Ws snapshot error:', wsErr);
+              setError(`Workspace ${wsId} error: ${wsErr.message}`);
             }
-        });
-        unsubs.push(unsubWorkspace);
+          });
+          unsubs.push(unsubWorkspace);
+        };
+        
+        attachListener();
       });
       
       setIsLoading(false);
