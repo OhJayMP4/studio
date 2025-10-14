@@ -15,6 +15,8 @@ import { useToast } from '@/hooks/use-toast';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
 
+export const dynamic = 'force-dynamic';
+
 const formSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid email address.' }),
   password: z.string().min(6, { message: 'Password must be at least 6 characters.' }),
@@ -46,6 +48,8 @@ function LoginCard() {
     setAuthError(null);
     try {
       let userCredential;
+      const redirectUrl = searchParams.get('redirect');
+
       if (action === 'signUp') {
         if (!data.name) {
             setAuthError('Name is required for new accounts.');
@@ -61,10 +65,15 @@ function LoginCard() {
         userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
         toast({ title: 'Signed In', description: "You've been successfully signed in." });
       }
+<<<<<<< HEAD
 
       const redirectUrl = searchParams.get('redirect');
       router.push(redirectUrl || '/dashboard');
 
+=======
+      
+      router.push(redirectUrl || '/dashboard');
+>>>>>>> 97ce03319f9c5976a021c28263997092f2c08cca
     } catch (error) {
       const firebaseError = error as FirebaseError;
       let friendlyMessage = 'An unexpected error occurred. Please try again.';

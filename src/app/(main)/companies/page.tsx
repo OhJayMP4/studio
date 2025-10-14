@@ -146,7 +146,7 @@ export default function CompaniesPage() {
             <CardDescription>Select a workspace from the sidebar to get started, or create a new one.</CardDescription>
           </CardHeader>
           <CardContent>
-             <AddWorkspaceDialog />
+             <AddWorkspaceDialog open={false} onOpenChange={() => {}} />
           </CardContent>
         </Card>
       </div>
