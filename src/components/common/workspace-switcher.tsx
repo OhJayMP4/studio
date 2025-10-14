@@ -75,28 +75,34 @@ function useUserWorkspaces() {
       workspaceIds.forEach((wsId: string) => {
         const workspaceRef = doc(firestore, 'workspaces', wsId);
         const unsubWorkspace = onSnapshot(workspaceRef, (wsSnap) => {
-            setWorkspaces(prev => {
-              const wsMap = new Map(prev.map(w => [w.id, w]));
-              if (wsSnap.exists()) {
+            if (wsSnap.exists()) {
                 const wsData = wsSnap.data() as Omit<Workspace, 'id'>;
-                 if(wsData.memberIds?.includes(user.uid)) {
-                   wsMap.set(wsId, { id: wsId, ...wsData });
-                 } else {
-                   // User is no longer a member, remove from local state
-                   wsMap.delete(wsId);
-                 }
-              } else {
+                // Client-side membership check
+                if(wsData.users?.[user.uid]) {
+                   setWorkspaces(prev => {
+                      const existing = prev.find(w => w.id === wsId);
+                      if (existing) {
+                          // Update existing workspace data
+                          return prev.map(w => w.id === wsId ? { ...existing, ...wsData, id: wsId } : w);
+                      }
+                      // Add new workspace
+                      return [...prev, { id: wsId, ...wsData }];
+                   });
+                } else {
+                   console.log(`User ${user.uid} is not a member of workspace ${wsId}. Removing from list.`);
+                   // If user is no longer a member, remove from local state
+                   setWorkspaces(prev => prev.filter(w => w.id !== wsId));
+                }
+            } else {
+                 console.log(`Workspace ${wsId} not found. Removing from list.`);
                  // Workspace doc deleted, remove from local state
-                 wsMap.delete(wsId);
-              }
-              return Array.from(wsMap.values());
-            });
+                 setWorkspaces(prev => prev.filter(w => w.id !== wsId));
+            }
         }, (wsErr: any) => {
             if (wsErr.code === 'permission-denied') {
-                console.warn(`Permission denied for workspace ${wsId}. Removing from user's list.`);
-                updateDoc(userRef, {
-                    workspaceIds: arrayRemove(wsId)
-                });
+                console.warn(`Permission denied for workspace ${wsId}. This can be normal during initial load. The workspace will not be added to the list unless permissions are granted.`);
+                // Do not remove the workspaceId from the user's profile here.
+                // It might be a temporary state before rules are fully propagated.
             } else {
                 console.error('Ws snapshot error:', wsErr);
                 setError(`Workspace ${wsId} error: ${wsErr.message}`);
@@ -105,9 +111,6 @@ function useUserWorkspaces() {
         unsubs.push(unsubWorkspace);
       });
       
-      // Check if any of the user's workspaceIds were not found and remove them from the UI
-      setWorkspaces(prev => prev.filter(ws => workspaceIds.includes(ws.id)));
-
       setIsLoading(false);
 
       return () => {
@@ -199,7 +202,6 @@ export function WorkspaceSwitcher() {
                 <div className='p-4 text-sm text-center'>
                     <p>No workspace found.</p>
                      <Button variant="link" className='mt-2' onClick={() => {
-                        console.log('BUTTON CLICKED TO OPEN DIALOG', new Date().toISOString());
                         setDialogOpen(true);
                         setPopoverOpen(false);
                      }}>Create your first workspace</Button>
@@ -242,7 +244,6 @@ export function WorkspaceSwitcher() {
             <CommandGroup>
                 <CommandItem
                     onSelect={() => {
-                      console.log('COMMANDITEM CLICKED TO OPEN DIALOG', new Date().toISOString());
                       setDialogOpen(true);
                       setPopoverOpen(false);
                     }}
