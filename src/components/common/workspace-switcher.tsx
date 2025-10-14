@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useUser, useFirestore } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { doc, onSnapshot, updateDoc, arrayRemove } from 'firebase/firestore';
@@ -36,6 +36,7 @@ function useUserWorkspaces() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const unsubsRef = useRef<(() => void)[]>([]);
 
   useEffect(() => {
     if (!user) {
@@ -65,13 +66,17 @@ function useUserWorkspaces() {
       console.log('User snap array length:', workspaceIds.length, 'IDs:', workspaceIds);
       setError(null);
       
+      // Cleanup old workspace listeners before creating new ones
+      unsubsRef.current.forEach(u => u());
+      unsubsRef.current = [];
+
       if (workspaceIds.length === 0) {
           setWorkspaces([]);
           setIsLoading(false);
           return;
       }
 
-      const unsubs: (() => void)[] = [];
+      const newUnsubs: (() => void)[] = [];
       workspaceIds.forEach((wsId: string) => {
         const workspaceRef = doc(firestore, 'workspaces', wsId);
         
@@ -80,8 +85,8 @@ function useUserWorkspaces() {
             console.log('Ws snapshot for', wsId, 'exists:', wsSnap.exists());
             if (wsSnap.exists()) {
               const wsData = wsSnap.data() as Omit<Workspace, 'id'>;
-              console.log('Membership check for', user.uid, 'in ws', wsId, ':', wsData.users?.[user.uid]);
-              if (wsData.users?.[user.uid]) {
+              console.log('Membership check for', user.uid, 'in ws', wsId, ':', wsData.members?.[user.uid]);
+              if (wsData.members?.[user.uid]) {
                 setWorkspaces(prev => {
                   const existing = prev.find(w => w.id === wsId);
                   if (existing) {
@@ -102,23 +107,21 @@ function useUserWorkspaces() {
           }, (wsErr: any) => {
             if (wsErr.code === 'permission-denied') {
                 console.warn(`Permission denied for workspace ${wsId}. Retrying in 1s.`);
-                setTimeout(attachListener, 1000); // Retry after 1 second
+                // We don't need a complex retry mechanism if the snapshot listener itself retries.
+                // The main thing is to NOT remove the workspace from the user's list.
             } else {
               console.error('Ws snapshot error:', wsErr);
               setError(`Workspace ${wsId} error: ${wsErr.message}`);
             }
           });
-          unsubs.push(unsubWorkspace);
+          newUnsubs.push(unsubWorkspace);
         };
         
         attachListener();
       });
       
+      unsubsRef.current = newUnsubs;
       setIsLoading(false);
-
-      return () => {
-        unsubs.forEach(u => u());
-      }
 
     }, (userErr) => {
       console.error('User snapshot error:', userErr);
@@ -126,7 +129,10 @@ function useUserWorkspaces() {
       setIsLoading(false);
     });
 
-    return () => unsubUser();
+    return () => {
+      unsubUser();
+      unsubsRef.current.forEach(u => u());
+    };
   }, [user, firestore]);
   
   return { workspaces, isLoading, error };
