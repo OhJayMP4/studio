@@ -4,6 +4,7 @@ import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore'
+import { getStorage } from 'firebase/storage';
 
 // These will be initialized on the client
 let app: FirebaseApp | undefined;
@@ -25,10 +26,12 @@ export function initializeFirebase() {
       }
       auth = getAuth(app);
       firestore = getFirestore(app);
+      getStorage(app);
     } else {
       app = getApp();
       auth = getAuth(app);
       firestore = getFirestore(app);
+      getStorage(app);
     }
   }
   // On the server, we return undefined. ClientProvider will handle this.

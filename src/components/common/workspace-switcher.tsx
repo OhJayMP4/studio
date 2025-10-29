@@ -28,6 +28,7 @@ import {
 import { cn } from '@/lib/utils';
 import { AddWorkspaceDialog } from './add-workspace-dialog';
 import { Skeleton } from '../ui/skeleton';
+import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar';
 
 function useUserWorkspaces() {
   const { user } = useUser();
@@ -160,6 +161,24 @@ export function WorkspaceSwitcher() {
      );
   }
 
+  const renderWorkspaceAvatar = (workspace: Workspace | null) => {
+    if (!workspace) {
+        return (
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs font-bold">
+                -
+            </div>
+        );
+    }
+
+    const fallback = workspace.name.charAt(0).toUpperCase();
+    return (
+        <Avatar className="h-6 w-6 text-xs">
+            <AvatarImage src={workspace.logoUrl ?? undefined} alt={workspace.name} />
+            <AvatarFallback className="font-bold bg-muted text-muted-foreground">{fallback}</AvatarFallback>
+        </Avatar>
+    );
+  };
+
   return (
     <>
     <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
@@ -171,15 +190,7 @@ export function WorkspaceSwitcher() {
           className="w-full justify-between"
         >
           <div className="flex items-center gap-2 overflow-hidden">
-             {selectedWorkspace ? (
-                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs font-bold">
-                    {selectedWorkspace.name.charAt(0).toUpperCase()}
-                </div>
-            ) : (
-                 <div className="flex h-6 w-6 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs font-bold">
-                    -
-                 </div>
-            )}
+            {renderWorkspaceAvatar(selectedWorkspace)}
             <span className="truncate">
               {selectedWorkspace
                 ? selectedWorkspace.name
@@ -217,9 +228,7 @@ export function WorkspaceSwitcher() {
                   className="text-sm"
                 >
                   <div className="flex items-center gap-2">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs font-bold">
-                      {workspace.name.charAt(0).toUpperCase()}
-                    </div>
+                    {renderWorkspaceAvatar(workspace)}
                     <span className="truncate">{workspace.name}</span>
                   </div>
                   <Check

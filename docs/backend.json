@@ -48,6 +48,10 @@
           "type": "string",
           "description": "The UID of the user who owns the workspace."
         },
+        "logoUrl": {
+          "type": "string",
+          "description": "URL of the workspace logo"
+        },
         "memberIds": {
           "type": "array",
           "description": "An array of UIDs for all members of the workspace, for querying.",

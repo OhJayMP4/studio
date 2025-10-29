@@ -7,19 +7,24 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Button } from '../ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore } from '@/firebase';
+import { useFirestore, useFirebase } from '@/firebase';
 import { doc, updateDoc, writeBatch, getDoc } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { TeamMemberTable } from './team-member-table';
 import { DeleteDialog } from '../common/delete-dialog';
 import { useRouter } from 'next/navigation';
+import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
+import { Pencil } from 'lucide-react';
 
 export function WorkspaceManager() {
     const { selectedWorkspace, setSelectedWorkspace } = useSelectedWorkspace();
     const [workspaceName, setWorkspaceName] = useState(selectedWorkspace?.name || '');
     const [isSubmittingName, setIsSubmittingName] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
     const { toast } = useToast();
     const firestore = useFirestore();
+    const { firebaseApp } = useFirebase();
     const router = useRouter();
 
     const handleSaveWorkspaceName = async () => {
@@ -87,11 +92,44 @@ export function WorkspaceManager() {
             setIsDeleting(false);
         }
     }
+    
+    const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        if (!event.target.files || event.target.files.length === 0 || !selectedWorkspace || !firebaseApp) {
+            return;
+        }
 
+        const file = event.target.files[0];
+        const storage = getStorage(firebaseApp);
+        const storageRef = ref(storage, `workspaces/${selectedWorkspace.id}/logo`);
+
+        setIsUploading(true);
+        toast({ title: "Uploading Image..." });
+
+        try {
+            const snapshot = await uploadBytes(storageRef, file);
+            const downloadURL = await getDownloadURL(snapshot.ref);
+
+            const workspaceRef = doc(firestore, 'workspaces', selectedWorkspace.id);
+            await updateDoc(workspaceRef, { logoUrl: downloadURL });
+
+            toast({ title: "Workspace image updated successfully!" });
+        } catch (error: any) {
+             toast({
+                variant: 'destructive',
+                title: 'Upload Failed',
+                description: error.message || 'An error occurred while uploading the image.',
+            });
+        } finally {
+            setIsUploading(false);
+        }
+
+    };
 
     if (!selectedWorkspace) {
         return null;
     }
+
+    const fallback = selectedWorkspace.name.charAt(0).toUpperCase();
 
     return (
         <div className="space-y-6">
@@ -100,14 +138,26 @@ export function WorkspaceManager() {
                     <CardTitle>Workspace Settings</CardTitle>
                     <CardDescription>Manage general settings for the "{selectedWorkspace.name}" workspace.</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <div className="space-y-2">
-                        <Label htmlFor="workspaceName">Workspace Name</Label>
-                        <Input
-                            id="workspaceName"
-                            value={workspaceName}
-                            onChange={(e) => setWorkspaceName(e.target.value)}
-                        />
+                <CardContent className="space-y-6">
+                    <div className="flex items-center gap-6">
+                        <div className="relative group">
+                            <Avatar className="h-24 w-24 text-4xl">
+                                <AvatarImage src={selectedWorkspace.logoUrl ?? undefined} />
+                                <AvatarFallback className='font-bold bg-muted text-muted-foreground'>{fallback}</AvatarFallback>
+                            </Avatar>
+                             <label htmlFor="workspace-logo-upload" className="absolute inset-0 bg-black/50 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-full">
+                                <Pencil className="h-8 w-8" />
+                                <input type="file" id="workspace-logo-upload" className="hidden" onChange={handleImageUpload} accept="image/*" disabled={isUploading} />
+                            </label>
+                        </div>
+                        <div className="space-y-2 flex-1">
+                            <Label htmlFor="workspaceName">Workspace Name</Label>
+                            <Input
+                                id="workspaceName"
+                                value={workspaceName}
+                                onChange={(e) => setWorkspaceName(e.target.value)}
+                            />
+                        </div>
                     </div>
                 </CardContent>
                 <CardFooter>

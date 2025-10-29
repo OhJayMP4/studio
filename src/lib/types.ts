@@ -10,6 +10,7 @@ export type Workspace = {
   id: string;
   name: string;
   ownerId: string;
+  logoUrl?: string | null;
   memberIds: string[];
   users: {
     [uid: string]: {
