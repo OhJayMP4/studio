@@ -50,7 +50,7 @@ export function AddWorkspaceDialog({ open, onOpenChange }: AddWorkspaceDialogPro
       const workspaceRef = await addDoc(collection(firestore, 'workspaces'), {
         name: name,
         ownerId: user.uid,
-        memberIds: [user.uid],
+        memberIds: [user.uid], // This is the crucial fix
         users: { 
           [user.uid]: {
             role: 'admin',
