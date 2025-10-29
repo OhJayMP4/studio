@@ -94,6 +94,7 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
         deadline: data.deadline.toISOString(),
         hasMonetaryValue: data.hasMonetaryValue,
         monetaryValue: data.hasMonetaryValue ? data.monetaryValue : null,
+        workspaceId: selectedWorkspace.id, // Add workspaceId to satisfy security rules
       });
       
       toast({

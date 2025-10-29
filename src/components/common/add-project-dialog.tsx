@@ -93,7 +93,8 @@ export function AddProjectDialog({ companyId, children }: AddProjectDialogProps)
         monetaryValue: data.hasMonetaryValue ? data.monetaryValue : null,
         totalSalesValue: 0,
         progress: 0,
-        companyId: companyId
+        companyId: companyId,
+        workspaceId: selectedWorkspace.id, // Add workspaceId to satisfy security rules
       });
       
       toast({

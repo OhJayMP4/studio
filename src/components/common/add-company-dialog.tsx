@@ -67,6 +67,7 @@ export function AddCompanyDialog({ children }: { children?: React.ReactNode }) {
         description: data.description,
         logoUrl: data.logoUrl || null,
         yearlyTurnoverTarget: data.yearlyTurnoverTarget || null,
+        workspaceId: selectedWorkspace.id, // Add workspaceId to satisfy security rules
       });
       
       toast({
@@ -75,7 +76,7 @@ export function AddCompanyDialog({ children }: { children?: React.ReactNode }) {
       });
       reset();
       setIsOpen(false);
-    } catch (error: any) {
+    } catch (error: any) => {
       console.error('Error creating company:', error);
       toast({
         variant: 'destructive',

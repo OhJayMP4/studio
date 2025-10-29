@@ -26,6 +26,7 @@ export type Company = {
   description: string;
   logoUrl?: string;
   yearlyTurnoverTarget?: number;
+  workspaceId: string;
 };
 
 export type Project = {
@@ -36,6 +37,7 @@ export type Project = {
   monetaryValue?: number;
   progress: number;
   companyId: string;
+  workspaceId: string;
   totalSalesValue: number;
 };
 
