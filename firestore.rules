@@ -4,79 +4,81 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper function to check if a user is a member of a specific workspace
+    // Helper Functions
     function isWorkspaceMember(workspaceId) {
+      // Check if the user is a member of the workspace
       return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds.has(request.auth.uid);
     }
-    
-    // Helper function to check if a user is an admin of a specific workspace
-    function isWorkspaceAdmin(workspaceId) {
-        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == 'admin';
-    }
 
-    // Users can only write to their own profile. Any authenticated user can read public profile info.
+    // USER PROFILES
     match /users/{userId} {
       allow read: if request.auth != null;
       allow write: if request.auth.uid == userId;
     }
 
-    // Rules for workspaces and all subcollections
+    // USER TASKS (Denormalized)
+    match /user-tasks/{userId} {
+      // Allow a user to list tasks from their own collection.
+      allow list: if request.auth.uid == userId;
+      
+      // Allow read/write on a specific task if they are the owner.
+      match /tasks/{taskId} {
+         allow read, write: if request.auth.uid == userId;
+      }
+      
+      // Allow another user to CREATE a task in this list IFF they are a member
+      // of the workspace the task belongs to.
+      allow create: if isWorkspaceMember(request.resource.data.workspaceId);
+    }
+
+    // WORKSPACES & NESTED COLLECTIONS
     match /workspaces/{workspaceId} {
-      allow read: if isWorkspaceMember(workspaceId);
-      allow create: if request.auth.uid == request.resource.data.ownerId;
-      allow update: if isWorkspaceAdmin(workspaceId);
+      // Allow read of a workspace and all its subcollections if the user is a member.
+      allow get, list: if isWorkspaceMember(workspaceId);
 
-      // Companies
+      // Admins can update a workspace.
+      allow update: if get(path(workspaceId)).data.users[request.auth.uid].role == 'admin';
+      
+      // Any workspace member can create companies and projects.
       match /companies/{companyId} {
-        allow read: if isWorkspaceMember(workspaceId);
-        allow create, update, delete: if isWorkspaceAdmin(workspaceId);
+        allow get, list, create, update: if isWorkspaceMember(workspaceId);
 
-        // Projects
         match /projects/{projectId} {
-          allow read: if isWorkspaceMember(workspaceId);
-          allow create, update, delete: if isWorkspaceAdmin(workspaceId);
+          allow get, list, create, update: if isWorkspaceMember(workspaceId);
 
-          // Sales
-          match /sales/{saleId} {
-            allow read: if isWorkspaceMember(workspaceId);
-            allow create, update, delete: if isWorkspaceAdmin(workspaceId);
-          }
-
-          // Silos
           match /silos/{siloId} {
-            allow read: if isWorkspaceMember(workspaceId);
-            allow create, update, delete: if isWorkspaceAdmin(workspaceId);
+             allow get, list, create, update: if isWorkspaceMember(workspaceId);
 
-            // Tasks
-            match /tasks/{taskId} {
-              allow read: if isWorkspaceMember(workspaceId);
-              // Anyone in the workspace can create a task
-              allow create: if isWorkspaceMember(workspaceId);
-              // Only admins or the assignee can update/delete a task
-              allow update, delete: if isWorkspaceAdmin(workspaceId) || request.auth.uid == resource.data.assigneeId;
-            }
+             match /tasks/{taskId} {
+                // Any workspace member can create tasks
+                allow create: if isWorkspaceMember(workspaceId);
+                
+                // Only admins or the assignee can update/delete a task
+                allow get, list, update, delete: if isWorkspaceMember(workspaceId) 
+                            && (get(path(workspaceId)).data.users[request.auth.uid].role == 'admin' 
+                                || resource.data.assigneeId == request.auth.uid);
+             }
+          }
+           match /sales/{saleId} {
+            allow get, list, create, update, delete: if isWorkspaceMember(workspaceId);
           }
         }
       }
     }
     
-    // Rules for denormalized user tasks
-    match /user-tasks/{userId} {
-        // A user can only access their own task list
-        allow read, list: if request.auth.uid == userId;
-
-        // Allow a task to be created if the user creating it is a member of the workspace the task belongs to.
-        // This securely enables the backend function to denormalize tasks for other users.
-        allow create: if isWorkspaceMember(request.resource.data.workspaceId);
-        
-        // Allow a task to be updated/deleted only by the user it is assigned to.
-        allow update, delete: if request.auth.uid == userId;
-    }
-
-    // Invites can be read/created by anyone (token is secret). Can only be deleted by the function.
+    // INVITES
     match /invites/{inviteId} {
-        allow read, create: if request.auth != null;
-        allow update, delete: return false; // Only backend can delete
+      // Anyone can read an invite document (needed for the join page)
+      // The security is in the secret token, not in who can read the doc.
+      allow read: if true;
+      
+      // Only workspace admins can create invites.
+      allow create: if isWorkspaceMember(request.resource.data.workspaceId) 
+                      && get(/databases/$(database)/documents/workspaces/$(request.resource.data.workspaceId)).data.users[request.auth.uid].role == 'admin';
+
+      // This rule is for the callable function, which uses admin privileges.
+      // But we keep a client-side block for safety.
+      allow update, delete: if false; 
     }
   }
 }
