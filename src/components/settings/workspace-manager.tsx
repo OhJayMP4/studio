@@ -7,9 +7,10 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Button } from '../ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { useFirestore, useFirebase } from '@/firebase';
+import { useFirestore, useFirebase, useUser } from '@/firebase';
 import { doc, updateDoc, writeBatch, getDoc } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getStorage, ref, uploadBytes } from 'firebase/storage';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { TeamMemberTable } from './team-member-table';
 import { DeleteDialog } from '../common/delete-dialog';
 import { useRouter } from 'next/navigation';
@@ -24,6 +25,7 @@ export function WorkspaceManager() {
     const [isUploading, setIsUploading] = useState(false);
     const { toast } = useToast();
     const firestore = useFirestore();
+    const { user } = useUser();
     const { firebaseApp } = useFirebase();
     const router = useRouter();
 
@@ -94,25 +96,42 @@ export function WorkspaceManager() {
     }
     
     const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        if (!event.target.files || event.target.files.length === 0 || !selectedWorkspace || !firebaseApp) {
+        if (!event.target.files || event.target.files.length === 0 || !selectedWorkspace || !firebaseApp || !user) {
             return;
         }
 
         const file = event.target.files[0];
         const storage = getStorage(firebaseApp);
-        const storageRef = ref(storage, `workspaces/${selectedWorkspace.id}/logo`);
+        // Define a temporary path that is unique to the user
+        const tempFilePath = `user-uploads/${user.uid}/new-logo`;
+        const storageRef = ref(storage, tempFilePath);
 
         setIsUploading(true);
         toast({ title: "Uploading Image..." });
 
         try {
-            const snapshot = await uploadBytes(storageRef, file);
-            const downloadURL = await getDownloadURL(snapshot.ref);
+            // Step 1: Upload the file to the temporary location
+            await uploadBytes(storageRef, file);
+            toast({ title: "Upload complete, processing image..." });
 
-            const workspaceRef = doc(firestore, 'workspaces', selectedWorkspace.id);
-            await updateDoc(workspaceRef, { logoUrl: downloadURL });
+            // Step 2: Call the Cloud Function to finalize the process
+            const functions = getFunctions(firebaseApp);
+            const finalizeWorkspaceLogo = httpsCallable(functions, 'finalizeWorkspaceLogo');
+            
+            const result = await finalizeWorkspaceLogo({
+                workspaceId: selectedWorkspace.id,
+                tempFilePath: tempFilePath
+            });
 
-            toast({ title: "Workspace image updated successfully!" });
+            const data = result.data as { success: boolean, logoUrl: string };
+
+            if (data.success) {
+                toast({ title: "Workspace image updated successfully!" });
+                // The workspace document will be updated by the listener, refreshing the UI
+            } else {
+                throw new Error("Cloud function failed to process the image.");
+            }
+
         } catch (error: any) {
              toast({
                 variant: 'destructive',
@@ -122,7 +141,6 @@ export function WorkspaceManager() {
         } finally {
             setIsUploading(false);
         }
-
     };
 
     if (!selectedWorkspace) {
