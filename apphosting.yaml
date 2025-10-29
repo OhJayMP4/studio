@@ -39,6 +39,11 @@ env:
     availability:
       - BUILD
       - RUNTIME
+  - variable: NEXT_PUBLIC_APP_URL
+    value: "https://studio-1397195000-3cb07--default-9k55l4je.web.app"
+    availability:
+      - BUILD
+      - RUNTIME
 
 # The build command for the Next.js app.
 # This is used to build the production version of the app.

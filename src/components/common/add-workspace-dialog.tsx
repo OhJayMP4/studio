@@ -50,16 +50,20 @@ export function AddWorkspaceDialog({ open, onOpenChange }: AddWorkspaceDialogPro
       const workspaceRef = await addDoc(collection(firestore, 'workspaces'), {
         name: name,
         ownerId: user.uid,
-        // Use single 'members' map for consistency with rules/switcher
-        members: { [user.uid]: 'admin' }, // { uid: 'admin' } – role as string
+        memberIds: [user.uid],
+        users: { 
+          [user.uid]: {
+            role: 'admin',
+            name: user.displayName,
+            avatarUrl: user.photoURL,
+          }
+        }, 
       });
 
       const userRef = doc(firestore, 'users', user.uid);
       await updateDoc(userRef, {
         workspaceIds: arrayUnion(workspaceRef.id),
       }, { merge: true });
-      
-      console.log('ArrayUnion success for wsId:', workspaceRef.id, 'user doc updated');
 
       toast({
         title: 'Workspace Created',

@@ -9,10 +9,11 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Rocket } from 'lucide-react';
-import { useAuth } from '@/firebase';
+import { useAuth, useFirestore } from '@/firebase';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 import { FirebaseError } from 'firebase/app';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +29,7 @@ type FormValues = z.infer<typeof formSchema>;
 
 function LoginCard() {
   const auth = useAuth();
+  const firestore = useFirestore();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
@@ -57,8 +59,20 @@ function LoginCard() {
             return;
         }
         userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
-        if (userCredential.user && data.name) {
-          await updateProfile(userCredential.user, { displayName: data.name });
+        const user = userCredential.user;
+
+        if (user && data.name) {
+          await updateProfile(user, { displayName: data.name });
+
+          // Create user profile document in Firestore
+          const userRef = doc(firestore, "users", user.uid);
+          await setDoc(userRef, {
+              uid: user.uid,
+              email: user.email,
+              name: data.name,
+              avatarUrl: user.photoURL,
+              workspaceIds: []
+          }, { merge: true });
         }
         toast({ title: 'Account Created', description: "You've been successfully signed up." });
       } else {
