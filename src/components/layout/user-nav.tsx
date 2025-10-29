@@ -39,7 +39,7 @@ export function UserNav() {
   const fallback = name.charAt(0).toUpperCase();
 
   const role = selectedWorkspace?.users?.[user.uid]?.role;
-  const capitalizedRole = role ? role.charAt(0).toUpperCase() + role.slice(1) : 'No Role';
+  const capitalizedRole = role ? role.charAt(0).toUpperCase() + role.slice(1) : 'Member';
 
 
   return (
@@ -52,8 +52,7 @@ export function UserNav() {
           </Avatar>
           <div className="hidden flex-col items-start group-data-[collapsible=icon]:hidden">
              <span className="text-sm font-medium">{name}</span>
-             <span className="text-xs text-muted-foreground">{email}</span>
-             <span className="text-xs font-semibold text-primary">{capitalizedRole}</span>
+             <span className="text-xs text-muted-foreground">{capitalizedRole}</span>
           </div>
           <ChevronsUpDown className="ml-auto h-4 w-4 shrink-0 opacity-50 group-data-[collapsible=icon]:hidden"/>
         </Button>
