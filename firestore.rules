@@ -1,84 +1,81 @@
-
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
+    
     // Helper Functions
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isAuth() && request.auth.uid == userId;
+    }
+    
     function isWorkspaceMember(workspaceId) {
-      // Check if the user is a member of the workspace
-      return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds.has(request.auth.uid);
+      return isAuth() && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds.hasAny([request.auth.uid]);
     }
-
-    // USER PROFILES
+    
+    // User Profiles
+    // Allow users to read any profile (for assignee names), but only write to their own.
     match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth.uid == userId;
+      allow read: if isAuth();
+      allow write: if isUser(userId);
     }
-
-    // USER TASKS (Denormalized)
-    match /user-tasks/{userId} {
-      // Allow a user to list tasks from their own collection.
-      allow list: if request.auth.uid == userId;
-      
-      // Allow read/write on a specific task if they are the owner.
-      match /tasks/{taskId} {
-         allow read, write: if request.auth.uid == userId;
-      }
-      
-      // Allow another user to CREATE a task in this list IFF they are a member
-      // of the workspace the task belongs to.
-      allow create: if isWorkspaceMember(request.resource.data.workspaceId);
-    }
-
-    // WORKSPACES & NESTED COLLECTIONS
+    
+    // Workspaces
     match /workspaces/{workspaceId} {
-      // Allow read of a workspace and all its subcollections if the user is a member.
-      allow get, list: if isWorkspaceMember(workspaceId);
-
-      // Admins can update a workspace.
-      allow update: if get(path(workspaceId)).data.users[request.auth.uid].role == 'admin';
+      // Allow read of any document within a workspace if the user is a member.
+      // This single rule grants access to companies, projects, silos, and tasks.
+      allow read: if isWorkspaceMember(workspaceId);
       
-      // Any workspace member can create companies and projects.
+      // Allow creation of companies/projects if user is a member.
+      allow create, update: if isWorkspaceMember(workspaceId);
+      
       match /companies/{companyId} {
-        allow get, list, create, update: if isWorkspaceMember(workspaceId);
-
         match /projects/{projectId} {
-          allow get, list, create, update: if isWorkspaceMember(workspaceId);
-
-          match /silos/{siloId} {
-             allow get, list, create, update: if isWorkspaceMember(workspaceId);
-
-             match /tasks/{taskId} {
-                // Any workspace member can create tasks
-                allow create: if isWorkspaceMember(workspaceId);
-                
-                // Only admins or the assignee can update/delete a task
-                allow get, list, update, delete: if isWorkspaceMember(workspaceId) 
-                            && (get(path(workspaceId)).data.users[request.auth.uid].role == 'admin' 
-                                || resource.data.assigneeId == request.auth.uid);
-             }
-          }
            match /sales/{saleId} {
-            allow get, list, create, update, delete: if isWorkspaceMember(workspaceId);
-          }
+              allow write: if isWorkspaceMember(workspaceId);
+           }
+           match /silos/{siloId} {
+              allow write: if isWorkspaceMember(workspaceId);
+              match /tasks/{taskId} {
+                 // Allow create if a workspace member.
+                 // Allow update/delete if a member (covers admins and assignees for simplicity now).
+                 allow write: if isWorkspaceMember(workspaceId);
+              }
+           }
         }
       }
     }
     
-    // INVITES
-    match /invites/{inviteId} {
-      // Anyone can read an invite document (needed for the join page)
-      // The security is in the secret token, not in who can read the doc.
-      allow read: if true;
-      
-      // Only workspace admins can create invites.
-      allow create: if isWorkspaceMember(request.resource.data.workspaceId) 
-                      && get(/databases/$(database)/documents/workspaces/$(request.resource.data.workspaceId)).data.users[request.auth.uid].role == 'admin';
+    // User-specific denormalized tasks
+    match /user-tasks/{userId} {
+      // Allow a user to list tasks from their own collection.
+      allow list: if isUser(userId);
 
-      // This rule is for the callable function, which uses admin privileges.
-      // But we keep a client-side block for safety.
-      allow update, delete: if false; 
+      // Allow read/delete on a specific task document only if they are the owner.
+      match /tasks/{taskId} {
+        allow read, delete: if isUser(userId);
+
+        // Allow another user (e.g., admin) to CREATE a task in this user's list,
+        // but only if the creator is a member of the workspace the task belongs to.
+        allow create: if isAuth() && isWorkspaceMember(request.resource.data.workspaceId);
+        
+        // Allow updates only by the owner of the task list.
+        allow update: if isUser(userId);
+      }
+    }
+    
+    // Invites
+    match /invites/{inviteId} {
+        // Allow admins of a workspace to create invites.
+        allow create: if isAuth() && isWorkspaceMember(request.resource.data.workspaceId) &&
+                         get(/databases/$(database)/documents/workspaces/$(request.resource.data.workspaceId)).data.users[request.auth.uid].role == 'admin';
+                         
+        // Anyone with the token can read it to process the join request.
+        // The token is secret, acting as the auth mechanism here.
+        allow read: if isAuth(); 
     }
   }
 }

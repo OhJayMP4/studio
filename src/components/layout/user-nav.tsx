@@ -16,11 +16,13 @@ import { ChevronsUpDown } from "lucide-react";
 import { useUser, useAuth } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
+import { useSelectedWorkspace } from "@/app/(main)/layout";
 
 export function UserNav() {
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
   const router = useRouter();
+  const { selectedWorkspace } = useSelectedWorkspace();
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -36,10 +38,14 @@ export function UserNav() {
   const avatarUrl = user.photoURL || '';
   const fallback = name.charAt(0).toUpperCase();
 
+  const role = selectedWorkspace?.users?.[user.uid]?.role;
+  const capitalizedRole = role ? role.charAt(0).toUpperCase() + role.slice(1) : 'No Role';
+
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-12 w-full justify-start gap-2 px-2 group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:justify-center">
+        <Button variant="ghost" className="relative h-auto w-full justify-start gap-2 px-2 py-1.5 group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:justify-center">
           <Avatar className="h-8 w-8">
             <AvatarImage src={avatarUrl} alt={name} />
             <AvatarFallback>{fallback}</AvatarFallback>
@@ -47,6 +53,7 @@ export function UserNav() {
           <div className="hidden flex-col items-start group-data-[collapsible=icon]:hidden">
              <span className="text-sm font-medium">{name}</span>
              <span className="text-xs text-muted-foreground">{email}</span>
+             <span className="text-xs font-semibold text-primary">{capitalizedRole}</span>
           </div>
           <ChevronsUpDown className="ml-auto h-4 w-4 shrink-0 opacity-50 group-data-[collapsible=icon]:hidden"/>
         </Button>
