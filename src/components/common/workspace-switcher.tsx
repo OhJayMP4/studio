@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useUser, useFirestore } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { doc, onSnapshot, updateDoc, arrayRemove } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import type { Workspace, UserProfile } from '@/lib/types';
 import {
   ChevronsUpDown,
@@ -36,10 +36,16 @@ function useUserWorkspaces() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const unsubsRef = useRef<(() => void)[]>([]);
+
+  // Use a ref to store unsubscribe functions for individual workspace listeners
+  const workspaceListenersRef = useRef<Map<string, () => void>>(new Map());
 
   useEffect(() => {
+    // If no user, reset everything and do nothing.
     if (!user) {
+      // Clean up any existing listeners
+      workspaceListenersRef.current.forEach(unsub => unsub());
+      workspaceListenersRef.current.clear();
       setWorkspaces([]);
       setIsLoading(false);
       setError(null);
@@ -48,90 +54,81 @@ function useUserWorkspaces() {
 
     setIsLoading(true);
     const userRef = doc(firestore, 'users', user.uid);
-    
+
+    // Main listener for the user document to get the list of workspace IDs
     const unsubUser = onSnapshot(userRef, (userSnap) => {
       if (!userSnap.exists()) {
-        console.log("User doc doesn't exist, creating...");
-        // This will trigger a re-render and the hook will run again
-        updateDoc(userRef, { email: user.email, name: user.displayName || '', workspaceIds: [] }, { merge: true })
-          .catch(err => {
-            console.error("Error creating user doc:", err);
-            setError("Failed to create user profile.");
-            setIsLoading(false);
-          });
+        setError("User profile does not exist.");
+        setIsLoading(false);
+        setWorkspaces([]);
         return;
       }
       
-      const { workspaceIds = [] } = userSnap.data() as UserProfile;
-      console.log('User snap array length:', workspaceIds.length, 'IDs:', workspaceIds);
-      setError(null);
+      const userData = userSnap.data() as UserProfile;
+      const workspaceIds = new Set(userData.workspaceIds || []);
       
-      // Cleanup old workspace listeners before creating new ones
-      unsubsRef.current.forEach(u => u());
-      unsubsRef.current = [];
+      // --- Sync workspace listeners with the new list of IDs ---
 
-      if (workspaceIds.length === 0) {
-          setWorkspaces([]);
-          setIsLoading(false);
-          return;
-      }
+      // 1. Unsubscribe from workspaces the user is no longer a part of
+      workspaceListenersRef.current.forEach((unsub, wsId) => {
+        if (!workspaceIds.has(wsId)) {
+          unsub();
+          workspaceListenersRef.current.delete(wsId);
+        }
+      });
 
-      const newUnsubs: (() => void)[] = [];
-      workspaceIds.forEach((wsId: string) => {
-        const workspaceRef = doc(firestore, 'workspaces', wsId);
-        
-        const attachListener = () => {
+      // 2. Remove workspaces from local state that are no longer in the user's list
+      setWorkspaces(prev => prev.filter(ws => workspaceIds.has(ws.id)));
+
+      // 3. Subscribe to new workspaces
+      workspaceIds.forEach(wsId => {
+        if (!workspaceListenersRef.current.has(wsId)) {
+          const workspaceRef = doc(firestore, 'workspaces', wsId);
           const unsubWorkspace = onSnapshot(workspaceRef, (wsSnap) => {
-            console.log('Ws snapshot for', wsId, 'exists:', wsSnap.exists());
             if (wsSnap.exists()) {
-              const wsData = wsSnap.data() as Omit<Workspace, 'id'>;
-              console.log('Membership check for', user.uid, 'in ws', wsId, ':', wsData.members?.[user.uid]);
-              if (wsData.members?.[user.uid]) {
-                setWorkspaces(prev => {
-                  const existing = prev.find(w => w.id === wsId);
-                  if (existing) {
-                    return prev.map(w => w.id === wsId ? { ...existing, ...wsData, id: wsId } : w);
-                  }
-                  return [...prev, { id: wsId, ...wsData }];
-                });
-              } else {
-                console.log(`User ${user.uid} is not a member of workspace ${wsId}. Skipping add.`);
-                // If user is no longer a member, remove from local state
-                // setWorkspaces(prev => prev.filter(w => w.id !== wsId));
-              }
+              const wsData = { id: wsSnap.id, ...wsSnap.data() } as Workspace;
+              setWorkspaces(prev => {
+                const existingIndex = prev.findIndex(w => w.id === wsId);
+                if (existingIndex > -1) {
+                  // Update existing workspace
+                  const newWs = [...prev];
+                  newWs[existingIndex] = wsData;
+                  return newWs;
+                } else {
+                  // Add new workspace
+                  return [...prev, wsData];
+                }
+              });
             } else {
-              console.log(`Workspace ${wsId} not found. Removing from list.`);
-              // Workspace doc deleted, remove from local state
+              // Workspace was deleted, remove it from local state
               setWorkspaces(prev => prev.filter(w => w.id !== wsId));
             }
-          }, (wsErr: any) => {
-            if (wsErr.code === 'permission-denied') {
-                console.warn(`Permission denied for workspace ${wsId}. Retrying in 1s.`);
-                // We don't need a complex retry mechanism if the snapshot listener itself retries.
-                // The main thing is to NOT remove the workspace from the user's list.
-            } else {
-              console.error('Ws snapshot error:', wsErr);
-              setError(`Workspace ${wsId} error: ${wsErr.message}`);
-            }
+          }, (wsErr) => {
+            console.error(`Error listening to workspace ${wsId}:`, wsErr);
+            setError(`Permission denied for workspace ${wsId}. It might have been deleted.`);
+            // Remove from local state on error
+            setWorkspaces(prev => prev.filter(w => w.id !== wsId));
           });
-          newUnsubs.push(unsubWorkspace);
-        };
-        
-        attachListener();
-      });
-      
-      unsubsRef.current = newUnsubs;
-      setIsLoading(false);
 
+          // Store the new unsubscribe function
+          workspaceListenersRef.current.set(wsId, unsubWorkspace);
+        }
+      });
+
+      setIsLoading(false);
+      setError(null);
     }, (userErr) => {
-      console.error('User snapshot error:', userErr);
-      setError(`User doc error: ${userErr.message}`);
+      console.error("Error listening to user document:", userErr);
+      setError("Could not fetch user profile. " + userErr.message);
       setIsLoading(false);
     });
 
+    // Cleanup function for the main user document listener
     return () => {
       unsubUser();
-      unsubsRef.current.forEach(u => u());
+      // Cleanup all workspace listeners when the component unmounts or user changes
+      workspaceListenersRef.current.forEach(unsub => unsub());
+      workspaceListenersRef.current.clear();
     };
   }, [user, firestore]);
   
