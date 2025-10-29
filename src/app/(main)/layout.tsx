@@ -3,7 +3,7 @@
 import MainSidebar from "@/components/layout/main-sidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import Header from "@/components/layout/header";
-import { useUser, useFirestore } from "@/firebase";
+import { useUser, useFirestore, FirebaseClientProvider } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, createContext, useContext } from "react";
 import { doc, setDoc, getDoc } from "firebase/firestore";
@@ -25,28 +25,22 @@ export const useSelectedWorkspace = () => {
   return context;
 };
 
-export default function MainLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+
+function MainLayoutContent({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser();
   const router = useRouter();
   const firestore = useFirestore();
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
 
   useEffect(() => {
-    // If auth state is not loading and there's no user, redirect to login.
     if (!isUserLoading && !user) {
       router.push('/login');
     }
   }, [user, isUserLoading, router]);
 
   useEffect(() => {
-    // When user logs in, create their user profile document if it doesn't exist
     if (user && firestore) {
       const userRef = doc(firestore, "users", user.uid);
-      
       const initializeUser = async () => {
         const userSnap = await getDoc(userRef);
         if (!userSnap.exists()) {
@@ -55,7 +49,7 @@ export default function MainLayout({
             email: user.email,
             name: user.displayName,
             avatarUrl: user.photoURL,
-            workspaceIds: [] // Initialize with an empty array
+            workspaceIds: []
           }, { merge: true });
         }
       }
@@ -65,7 +59,6 @@ export default function MainLayout({
 
   const isUserAdmin = selectedWorkspace?.users?.[user?.uid || '']?.role === 'admin';
 
-  // While checking for user, show a loading state.
   if (isUserLoading || !user) {
     return (
       <div className="flex h-screen w-screen items-center justify-center">
@@ -73,8 +66,7 @@ export default function MainLayout({
       </div>
     );
   }
-  
-  // If user is logged in, render the main app layout.
+
   return (
     <SelectedWorkspaceContext.Provider value={{ selectedWorkspace, setSelectedWorkspace, isUserAdmin }}>
       <SidebarProvider>
@@ -86,4 +78,17 @@ export default function MainLayout({
       </SidebarProvider>
     </SelectedWorkspaceContext.Provider>
   );
+}
+
+
+export default function MainLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <FirebaseClientProvider>
+      <MainLayoutContent>{children}</MainLayoutContent>
+    </FirebaseClientProvider>
+  )
 }
