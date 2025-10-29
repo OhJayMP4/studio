@@ -55,10 +55,10 @@ interface EditTaskDialogProps {
 }
 
 const getWorkspaceUsers = (workspace: Workspace | null) => {
-    if (!workspace) return [];
+    if (!workspace || !workspace.users) return [];
     return Object.entries(workspace.users).map(([uid, userData]) => ({
         id: uid,
-        ...userData
+        name: userData.name || 'Unnamed User',
     }));
 }
 
@@ -116,7 +116,7 @@ export function EditTaskDialog({ task, path, children }: EditTaskDialogProps) {
   
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogTrigger asChild onClick={() => setIsOpen(true)}>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <FormProvider {...form}>
           <form onSubmit={form.handleSubmit(handleUpdateTask)}>

@@ -56,10 +56,10 @@ interface AddTaskDialogProps {
 }
 
 const getWorkspaceUsers = (workspace: Workspace | null) => {
-    if (!workspace) return [];
+    if (!workspace || !workspace.users) return [];
     return Object.entries(workspace.users).map(([uid, userData]) => ({
         id: uid,
-        ...userData
+        name: userData.name || 'Unnamed User',
     }));
 }
 
@@ -126,9 +126,9 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
   };
   
   const trigger = children ? (
-    <DialogTrigger asChild>{children}</DialogTrigger>
+    <DialogTrigger asChild onClick={() => setIsOpen(true)}>{children}</DialogTrigger>
   ) : (
-    <DialogTrigger asChild>
+    <DialogTrigger asChild onClick={() => setIsOpen(true)}>
       <Button variant="ghost" size="sm">
         <PlusCircle className="mr-2" />
         Add Task
@@ -269,5 +269,3 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
     </Dialog>
   );
 }
-
-    
