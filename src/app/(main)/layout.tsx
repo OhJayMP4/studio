@@ -63,7 +63,7 @@ export default function MainLayout({
     }
   }, [user, firestore]);
 
-  const isUserAdmin = selectedWorkspace?.users[user?.uid || '']?.role === 'admin';
+  const isUserAdmin = selectedWorkspace?.users?.[user?.uid || '']?.role === 'admin';
 
   // While checking for user, show a loading state.
   if (isUserLoading || !user) {
