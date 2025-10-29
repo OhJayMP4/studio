@@ -59,7 +59,7 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
 
   const isUserAdmin = selectedWorkspace?.users?.[user?.uid || '']?.role === 'admin';
 
-  if (isUserLoading || !user) {
+  if (isUserLoading || (!user && !isUserLoading)) {
     return (
       <div className="flex h-screen w-screen items-center justify-center">
         Loading...

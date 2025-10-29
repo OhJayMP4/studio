@@ -29,7 +29,7 @@ export default function SettingsPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
   const user = auth.currentUser;
-  const { isUserAdmin } = useSelectedWorkspace();
+  const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
 
   const userProfileRef = useMemoFirebase(() => {
     if (!user) return null;
@@ -67,7 +67,9 @@ export default function SettingsPage() {
 
     try {
       // Update Firebase Auth display name
-      await updateProfile(user, { displayName: data.name });
+      if (user.displayName !== data.name) {
+        await updateProfile(user, { displayName: data.name });
+      }
 
       // Update Firestore document
       await updateDoc(userProfileRef, {
@@ -98,7 +100,7 @@ export default function SettingsPage() {
         </div>
         <Card>
           <CardHeader>
-            <CardTitle>Profile</CardTitle>
+            <CardTitle>My Profile</CardTitle>
             <CardDescription>This is how others will see you on the site.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -106,8 +108,10 @@ export default function SettingsPage() {
              <Skeleton className="h-10 w-full" />
              <Skeleton className="h-8 w-1/3" />
              <Skeleton className="h-10 w-full" />
-             <Skeleton className="h-10 w-24" />
           </CardContent>
+           <CardFooter>
+                <Skeleton className="h-10 w-24" />
+           </CardFooter>
         </Card>
       </div>
     )
@@ -167,8 +171,7 @@ export default function SettingsPage() {
         </FormProvider>
       </Card>
       
-      {isUserAdmin && <WorkspaceManager />}
-
+      {selectedWorkspace && isUserAdmin && <WorkspaceManager />}
     </div>
   );
 }
