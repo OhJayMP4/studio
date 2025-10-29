@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useFirestore, useUser, FirebaseClientProvider } from '@/firebase';
+import { useUser, FirebaseClientProvider } from '@/firebase';
 import {
   getFunctions,
   httpsCallable,
@@ -55,24 +55,10 @@ function JoinProcessor() {
 
         setStatus('joining');
         try {
-             const idToken = await user.getIdToken();
-             const functionUrl = `https://us-central1-studio-1397195000-3cb07.cloudfunctions.net/joinWorkspace`;
-             
-             const response = await fetch(functionUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`,
-                },
-                body: JSON.stringify({ token }),
-            });
+            const functions = getFunctions();
+            const joinWorkspace = httpsCallable(functions, 'joinWorkspace');
 
-            const result = await response.json();
-
-            if (!response.ok) {
-                 throw new Error(result.error?.message || `Request failed with status ${response.status}`);
-            }
-
+            const result = await joinWorkspace({ token });
             const data = result.data as { success: boolean, workspaceId: string };
 
             if (data.success) {
@@ -90,9 +76,14 @@ function JoinProcessor() {
         } catch (e: any) {
             console.error("Error calling joinWorkspace function: ", e);
             let friendlyMessage = e.message || 'An unknown error occurred.';
-            if (e instanceof TypeError && e.message.includes('Failed to fetch')) {
-                friendlyMessage = "Could not connect to the join service. Please check your network connection or contact support if the problem persists.";
+            
+            // The Firebase Functions client SDK throws an error with a 'code' property
+            if (e.code) {
+              friendlyMessage = e.message;
+            } else if (e instanceof TypeError && e.message.includes('Failed to fetch')) {
+                 friendlyMessage = "Could not connect to the join service. Please check your network connection or contact support if the problem persists.";
             }
+
             setStatus('error');
             setError(`Failed to join workspace: ${friendlyMessage}`);
         }
