@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { FirebaseClientProvider } from '@/firebase';
 
 const LoginCard = dynamic(
   () => import('@/components/common/login-card').then((mod) => mod.LoginCard),
@@ -26,7 +27,9 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-4">
       <Suspense fallback={<div>Loading...</div>}>
-        <LoginCard />
+        <FirebaseClientProvider>
+          <LoginCard />
+        </FirebaseClientProvider>
       </Suspense>
     </div>
   );
