@@ -67,12 +67,12 @@ function JoinProcessor() {
                 body: JSON.stringify({ token }),
             });
 
+            const result = await response.json();
+
             if (!response.ok) {
-                 const result = await response.json();
-                 throw new Error(result.error?.message || 'An unknown error occurred during the join process.');
+                 throw new Error(result.error?.message || `Request failed with status ${response.status}`);
             }
 
-            const result = await response.json();
             const data = result.data as { success: boolean, workspaceId: string };
 
             if (data.success) {
@@ -80,26 +80,21 @@ function JoinProcessor() {
                     title: "Welcome!",
                     description: `You have successfully joined the workspace.`
                 });
-                router.push(`/dashboard?ws=${data.workspaceId}`);
+                // A small delay to allow state to propagate before redirecting
+                setTimeout(() => {
+                    router.push(`/dashboard?ws=${data.workspaceId}`);
+                }, 500);
             } else {
                  throw new Error("The join operation failed unexpectedly.");
             }
         } catch (e: any) {
             console.error("Error calling joinWorkspace function: ", e);
             let friendlyMessage = e.message || 'An unknown error occurred.';
-            // The browser will often throw a generic "Failed to fetch" for CORS errors.
             if (e instanceof TypeError && e.message.includes('Failed to fetch')) {
                 friendlyMessage = "Could not connect to the join service. Please check your network connection or contact support if the problem persists.";
-            } else if (e instanceof FunctionsError) {
-                friendlyMessage = e.message;
             }
             setStatus('error');
             setError(`Failed to join workspace: ${friendlyMessage}`);
-            toast({
-                variant: 'destructive',
-                title: 'Join Failed',
-                description: friendlyMessage,
-            });
         }
     };
 
