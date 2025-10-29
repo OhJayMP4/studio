@@ -55,9 +55,23 @@ function JoinProcessor() {
 
         setStatus('joining');
         try {
-            const functions = getFunctions();
-            const joinWorkspace = httpsCallable(functions, 'joinWorkspace');
-            const result = await joinWorkspace({ token });
+             const idToken = await user.getIdToken();
+             const functionUrl = `https://us-central1-studio-1397195000-3cb07.cloudfunctions.net/joinWorkspace`;
+             
+             const response = await fetch(functionUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({ data: { token } }),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                 throw new Error(result.error?.message || 'An unknown error occurred during the join process.');
+            }
 
             const data = result.data as { success: boolean, workspaceId: string };
 
