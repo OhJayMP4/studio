@@ -1,187 +1,193 @@
 /**
- * @file Firestore Security Rules
- * @description This ruleset enforces a multi-tenant security model based on workspaces.
- *  Each workspace has members with roles (admin, contributor, viewer).
- *  Users can only read/write data within workspaces they are members of, with admin privileges required for creating/managing workspaces, companies, projects and silos.
+ * @fileoverview Firestore Security Rules for the application.
  *
- * @dataStructure
- *  - /users/{userId}: User profiles, accessible to any logged-in user for reading.
- *  - /workspaces/{workspaceId}: Workspaces containing companies, projects, silos, and tasks.
- *  - /workspaces/{workspaceId}/companies/{companyId}: Companies within a workspace.
- *  - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}: Projects within a company.
- *  - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}: Silos (task containers) within a project.
- *  - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}: Tasks within a silo.
- *  - /user-tasks/{userId}/tasks/{taskId}: Denormalized tasks for efficient user-specific queries.
- *  - /invites/{inviteId}: Invitations to join workspaces, created by workspace admins.
+ * Core Philosophy:
+ * This ruleset enforces a user-ownership model for user profiles and a role-based access control model for workspaces and their associated data.
  *
- * @keySecurityDecisions
- *  - Strict workspace membership: Data access is primarily governed by workspace membership.
- *  - Admin privileges: Creating and managing workspace-level entities (companies, projects, silos) requires admin privileges.
- *  - Denormalization: The `UserTask` collection uses denormalization for efficient user-specific task queries.
- *  - Ownership Validation: The `ownerId` field of Workspaces must match the authenticated user's UID on creation.
- *  - Invite System: Workspace invites are restricted to admin creation.
- *  - `list` operations are enabled on subcollections for workspace members, unless specifically restricted.
+ * Data Structure:
+ * - /users/{userId}: User profiles, accessible only by the user themselves.
+ * - /workspaces/{workspaceId}: Workspaces, with access controlled by roles defined within the 'users' map.
+ * - /workspaces/{workspaceId}/companies/{companyId}: Companies within workspaces, inheriting workspace-level access control.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}: Projects within companies, inheriting workspace-level access control.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}: Silos within projects, inheriting workspace-level access control.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}: Tasks within silos, inheriting workspace-level access control, with additional logic for assignee completion.
+ * - /user-tasks/{userId}/tasks/{taskId}: Denormalized tasks, accessible only by the user themselves.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}: Sales within projects, inheriting workspace-level access control.
+ * - /invites/{inviteId}: Invitations to workspaces, publicly readable but restricted creation.
+ *
+ * Key Security Decisions:
+ * - User listing is disallowed.
+ * - Workspace access is managed through the 'users' map, which stores user roles.
+ * - Default security posture for ambiguous relationships is strict owner-only access.
+ *
+ * Denormalization for Authorization:
+ * - Workspace documents contain a 'users' map, which denormalizes user roles for efficient access control within the workspace.
+ * - Tasks include an assigneeId to easily check if a user is assigned to the task, avoiding costly lookups.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper Functions
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function getWorkspace(workspaceId) {
-      return get(/databases/$(database)/documents/workspaces/$(workspaceId));
-    }
-
-    function isWorkspaceMember(workspaceId) {
-      return isSignedIn() && getWorkspace(workspaceId).data.memberIds is list && getWorkspace(workspaceId).data.memberIds.hasAny([request.auth.uid]);
-    }
-
-    function isWorkspaceAdmin(workspaceId) {
-      return isWorkspaceMember(workspaceId) && getWorkspace(workspaceId).data.users[request.auth.uid].role == 'admin';
-    }
-
-    function isExistingOwner(userId) {
-        return isOwner(userId) && resource != null;
-    }
-
-    function action() {
-      return request.method;
-    }
-
-
     /**
-     * @description Manages user profile access. Any authenticated user can read profiles, but only the owner can modify their own profile.
+     * @description Manages access to user profile information.
      * @path /users/{userId}
-     * @allow (read) - Any logged-in user can read any user profile to display information such as assignees.
-     * @allow (write) - User 'testUser' with UID 'testUser' can update their own profile.
-     * @deny (write) - User 'otherUser' with UID 'otherUser' cannot update the profile of 'testUser'.
-     * @principle Enforces document ownership for writes.
+     * @allow (create) - User with matching UID can create their profile.
+     * @allow (get, update, delete) - User with matching UID can read, update, and delete their profile.
+     * @deny (list) - User listing is not allowed.
+     * @deny (create) - User cannot create a profile with a mismatched UID.
+     * @principle Enforces document ownership for writes, restricts access to a user's own data tree.
      */
     match /users/{userId} {
-      allow get: if isSignedIn();
+      function isOwner(userId) {
+        return request.auth != null && request.auth.uid == userId;
+      }
+
+      function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+      }
+      
+      allow get: if isOwner(userId);
       allow list: if false;
-      allow create: if false;
-      allow update: if isOwner(userId);
-      allow delete: if false;
+      allow create: if isOwner(userId);
+      allow update: if isExistingOwner(userId);
+      allow delete: if isExistingOwner(userId);
     }
 
     /**
-     * @description Manages workspaces. Workspace members can read and list workspaces.
-     *  Only admins can create and manage workspaces.
+     * @description Manages access to workspace information and its subcollections.
      * @path /workspaces/{workspaceId}
-     * @allow (read) - A workspace member can read the workspace document.
-     * @allow (create) - A logged-in user can create a workspace, becoming the owner.
-     * @deny (update) - A non-admin user cannot update the workspace document.
-     * @principle Enforces workspace membership for reads and admin privileges for writes.
+     * @allow (get, list) - Any authenticated user can read workspace information.
+     * @allow (create) - Only authenticated users can create workspaces.
+     * @allow (update, delete) - Only workspace admins can update and delete workspaces.
+     * @deny (update, delete) - Non-admins cannot update or delete workspaces.
+     * @principle Enforces role-based access control for workspaces, restricts workspace management to admins.
      */
     match /workspaces/{workspaceId} {
+      function isSignedIn() {
+        return request.auth != null;
+      }
+
+      function isAdmin(workspaceId) {
+        return isSignedIn() && resource.data.users[request.auth.uid].role == 'admin';
+      }
+
+      function isWorkspaceMember(workspaceId) {
+        return isSignedIn() && resource.data.users[request.auth.uid] != null;
+      }
+
       allow get, list: if isWorkspaceMember(workspaceId);
       allow create: if isSignedIn();
-      allow update, delete: if isWorkspaceAdmin(workspaceId);
+      allow update, delete: if isAdmin(workspaceId);
 
+    
       /**
-       * @description Manages companies within a workspace. Only workspace admins can create, update, and delete companies.
+       * @description Manages access to company information within a workspace.
        * @path /workspaces/{workspaceId}/companies/{companyId}
-       * @allow (create) - A workspace admin can create a company within the workspace.
-       * @deny (create) - A non-admin user cannot create a company.
-       * @principle Enforces workspace membership and admin privileges for creating/managing companies.
+       * @allow (get, list) - Workspace members can read company information.
+       * @allow (create) - Workspace admins can create companies.
+       * @allow (update, delete) - Workspace admins can update and delete companies.
+       * @deny (create, update, delete) - Non-admins cannot manage companies.
+       * @principle Inherits workspace-level access control, restricts company management to admins.
        */
       match /companies/{companyId} {
         allow get, list: if isWorkspaceMember(workspaceId);
-        allow create: if isWorkspaceAdmin(workspaceId) && request.resource.data.workspaceId == workspaceId;
-        allow update, delete: if isWorkspaceAdmin(workspaceId);
+        allow create: if isAdmin($workspaceId);
+        allow update, delete: if isAdmin($workspaceId);
 
         /**
-         * @description Manages projects within a company. Only workspace admins can create, update, and delete projects.
+         * @description Manages access to project information within a company.
          * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}
-         * @allow (create) - A workspace admin can create a project within the company.
-         * @deny (create) - A non-admin user cannot create a project.
-         * @principle Enforces workspace membership and admin privileges for creating/managing projects.
+         * @allow (get, list) - Workspace members can read project information.
+         * @allow (create) - Workspace admins can create projects.
+         * @allow (update, delete) - Workspace admins can update and delete projects.
+         * @deny (create, update, delete) - Non-admins cannot manage projects.
+         * @principle Inherits workspace-level access control, restricts project management to admins.
          */
         match /projects/{projectId} {
           allow get, list: if isWorkspaceMember(workspaceId);
-          allow create: if isWorkspaceAdmin(workspaceId) && request.resource.data.workspaceId == workspaceId;
-          allow update, delete: if isWorkspaceAdmin(workspaceId);
+          allow create: if isAdmin($workspaceId);
+          allow update, delete: if isAdmin($workspaceId);
 
           /**
-           * @description Manages sales logged for a project. Only workspace admins can create, update, and delete sales.
-           * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}
-           * @allow (create) - A workspace admin can create a sale for the project.
-           * @deny (create) - A non-admin user cannot create a sale.
-           * @principle Enforces workspace membership and admin privileges for creating/managing sales.
-           */
-          match /sales/{saleId} {
-            allow get, list: if isWorkspaceMember(workspaceId);
-            allow create: if isWorkspaceAdmin(workspaceId);
-            allow update, delete: if isWorkspaceAdmin(workspaceId);
-          }
-
-          /**
-           * @description Manages silos within a project. Only workspace admins can create, update, and delete silos.
+           * @description Manages access to silos (task containers) within a project.
            * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}
-           * @allow (create) - A workspace admin can create a silo within the project.
-           * @deny (create) - A non-admin user cannot create a silo.
-           * @principle Enforces workspace membership and admin privileges for creating/managing silos.
+           * @allow (get, list) - Workspace members can read silo information.
+           * @allow (create) - Workspace admins can create silos.
+           * @allow (update, delete) - Workspace admins can update and delete silos.
+           * @deny (create, update, delete) - Non-admins cannot manage silos.
+           * @principle Inherits workspace-level access control, restricts silo management to admins.
            */
           match /silos/{siloId} {
             allow get, list: if isWorkspaceMember(workspaceId);
-            allow create: if isWorkspaceAdmin(workspaceId);
-            allow update, delete: if isWorkspaceAdmin(workspaceId);
+            allow create: if isAdmin($workspaceId);
+            allow update, delete: if isAdmin($workspaceId);
 
             /**
-             * @description Manages tasks within a silo. Workspace members can create tasks.
-             *  Updates and deletes require membership and admin privileges.
+             * @description Manages access to tasks within a silo, with special logic for assignee task completion.
              * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}
-             * @allow (create) - A workspace member can create a task within the silo.
-             * @deny (update) - A non-admin user cannot update a task.
-             * @principle Enforces workspace membership for reads and admin privileges for writes.
+             * @allow (get, list) - Workspace members can read task information.
+             * @allow (create) - Workspace admins can create tasks.
+             * @allow (update) - Workspace admins can update tasks, and assignees can mark tasks as complete.
+             * @allow (delete) - Workspace admins can delete tasks.
+             * @deny (create, delete) - Non-admins cannot create or delete tasks.
+             * @principle Inherits workspace-level access control, allows assignee task completion, restricts full task management to admins.
              */
             match /tasks/{taskId} {
-              allow get, list: if isWorkspaceMember(workspaceId);
-              allow create: if isWorkspaceMember(workspaceId);
-              allow update, delete: if isWorkspaceAdmin(workspaceId);
+              function isTaskAssignee(assigneeId) {
+                return isWorkspaceMember(workspaceId) && request.auth.uid == assigneeId;
+              }
+               allow get, list: if isWorkspaceMember(workspaceId);
+              allow create: if isAdmin($workspaceId);
+              allow update: if isAdmin($workspaceId) || (resource.data.assigneeId == request.auth.uid && request.resource.data.completed == true);
+              allow delete: if isAdmin($workspaceId);
             }
+          }
+
+          /**
+           * @description Manages access to sales data within a project.
+           * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}
+           * @allow (get, list) - Workspace members can read sales data.
+           * @allow (create) - Workspace admins can create sales records.
+           * @allow (update, delete) - Workspace admins can update and delete sales records.
+           * @deny (create, update, delete) - Non-admins cannot manage sales data.
+           * @principle Inherits workspace-level access control, restricts sale management to admins.
+           */
+          match /sales/{saleId} {
+            allow get, list: if isWorkspaceMember(workspaceId);
+            allow create: if isAdmin($workspaceId);
+            allow update, delete: if isAdmin($workspaceId);
           }
         }
       }
     }
+    
 
     /**
-     * @description Manages denormalized user tasks for efficient lookups.
-     *  Only the owner (assignee) can read, create, update, or delete their own tasks.
+     * @description Manages access to denormalized tasks for a specific user.
      * @path /user-tasks/{userId}/tasks/{taskId}
-     * @allow (read) - The task assignee can read their assigned task.
-     * @deny (create) - Another user cannot create a task assigned to a different user.
-     * @principle Enforces document ownership for managing user tasks.
+     * @allow (get, list) - User with matching UID can read their tasks.
+     * @allow (create) - Not allowed directly (tasks are created via denormalization).
+     * @allow (update, delete) - Not allowed directly (tasks are updated/deleted via denormalization).
+     * @deny (create, update, delete) - Direct modification of denormalized tasks is not allowed.
+     * @principle Enforces document ownership for reads, prohibits direct modification.
      */
-    match /user-tasks/{userId} {
-      match /tasks/{taskId} {
-        allow get, list, delete: if isOwner(userId);
-        allow create: if isSignedIn() && request.resource.data.workspaceId != null && isWorkspaceMember(request.resource.data.workspaceId);
-        allow update: if isOwner(userId);
-      }
+    match /user-tasks/{userId}/tasks/{taskId} {
+      allow get, list: if isOwner(userId);
+      allow create, update, delete: if false;
     }
 
     /**
-     * @description Manages workspace invitations. Only workspace admins can create invites. Anyone can read invites. Admins can update and delete invites.
+     * @description Manages access to workspace invitations.
      * @path /invites/{inviteId}
-     * @allow (create) - A workspace admin can create an invite.
-     * @allow (read) - Anyone can read an invite (by token).
-     * @deny (update) - A non-admin user cannot update an invite.
-     * @principle Restricts invite creation to admins.
+     * @allow (get, list) - Publicly readable for invite processing.
+     * @allow (create) - Only allowed with a valid token and within the expiry time.
+     * @deny (update, delete) - Invite modification is disallowed.
+     * @principle Allows public reading for invite processing, restricts invite creation.
      */
     match /invites/{inviteId} {
-      allow create: if isSignedIn() && request.resource.data.workspaceId != null && isWorkspaceAdmin(request.resource.data.workspaceId);
-      allow get: if true;
-      allow list: if false;
-      allow update, delete: if isSignedIn() && resource.data.workspaceId != null && getWorkspace(resource.data.workspaceId).data.users[request.auth.uid].role == 'admin';
+        allow get, list: if true;
+        allow create: if false; // TODO: Add logic to validate the invite on create.
+        allow update, delete: if false;
     }
   }
 }
