@@ -1,12 +1,13 @@
 rules_version = '2';
+
 service firebase.storage {
   match /b/{bucket}/o {
-    // Public read for all workspace logos
+    // Allow public read access to finalized workspace logos
     match /workspaces/{workspaceId}/logo {
       allow read;
     }
     
-    // Allow a user to write to a temporary folder under their own UID
+    // Secure user uploads: only the authenticated user can write to their own upload path.
     match /user-uploads/{userId}/{allPaths=**} {
       allow write: if request.auth != null && request.auth.uid == userId;
     }
