@@ -64,15 +64,15 @@ function JoinProcessor() {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${idToken}`,
                 },
-                body: JSON.stringify({ data: { token } }),
+                body: JSON.stringify({ token }),
             });
 
-            const result = await response.json();
-
             if (!response.ok) {
+                 const result = await response.json();
                  throw new Error(result.error?.message || 'An unknown error occurred during the join process.');
             }
 
+            const result = await response.json();
             const data = result.data as { success: boolean, workspaceId: string };
 
             if (data.success) {
@@ -87,7 +87,10 @@ function JoinProcessor() {
         } catch (e: any) {
             console.error("Error calling joinWorkspace function: ", e);
             let friendlyMessage = e.message || 'An unknown error occurred.';
-            if (e instanceof FunctionsError) {
+            // The browser will often throw a generic "Failed to fetch" for CORS errors.
+            if (e instanceof TypeError && e.message.includes('Failed to fetch')) {
+                friendlyMessage = "Could not connect to the join service. Please check your network connection or contact support if the problem persists.";
+            } else if (e instanceof FunctionsError) {
                 friendlyMessage = e.message;
             }
             setStatus('error');
