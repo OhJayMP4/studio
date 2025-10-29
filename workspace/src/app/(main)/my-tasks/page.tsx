@@ -15,7 +15,7 @@ import {
 import { List, Grid } from "lucide-react";
 import { TaskGridItem } from "@/components/common/task-grid-item";
 import { TaskList } from "@/components/common/task-list";
-import { useSelectedWorkspace } from "../layout";
+import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 
 function MyTasksBreadcrumb() {

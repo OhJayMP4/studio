@@ -1,10 +1,11 @@
+
 'use client';
 
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { useAuth, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
@@ -14,7 +15,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import type { UserProfile } from '@/lib/types';
 import { useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useSelectedWorkspace } from '../layout';
+import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { WorkspaceManager } from '@/components/settings/workspace-manager';
 
 const formSchema = z.object({
@@ -29,7 +30,7 @@ export default function SettingsPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
   const user = auth.currentUser;
-  const { isUserAdmin } = useSelectedWorkspace();
+  const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
 
   const userProfileRef = useMemoFirebase(() => {
     if (!user) return null;
@@ -66,11 +67,15 @@ export default function SettingsPage() {
     }
 
     try {
-      await updateProfile(user, { displayName: data.name });
+      // Update Firebase Auth display name
+      if (user.displayName !== data.name) {
+        await updateProfile(user, { displayName: data.name });
+      }
 
+      // Update Firestore document
       await updateDoc(userProfileRef, {
         name: data.name,
-        email: data.email, 
+        email: data.email, // Assuming email is not changed here, but including for completeness
       });
       
       toast({
@@ -96,7 +101,7 @@ export default function SettingsPage() {
         </div>
         <Card>
           <CardHeader>
-            <CardTitle>Profile</CardTitle>
+            <CardTitle>My Profile</CardTitle>
             <CardDescription>This is how others will see you on the site.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -104,8 +109,10 @@ export default function SettingsPage() {
              <Skeleton className="h-10 w-full" />
              <Skeleton className="h-8 w-1/3" />
              <Skeleton className="h-10 w-full" />
-             <Skeleton className="h-10 w-24" />
           </CardContent>
+           <CardFooter>
+                <Skeleton className="h-10 w-24" />
+           </CardFooter>
         </Card>
       </div>
     )
@@ -165,8 +172,7 @@ export default function SettingsPage() {
         </FormProvider>
       </Card>
       
-      {isUserAdmin && <WorkspaceManager />}
-
+      {selectedWorkspace && isUserAdmin && <WorkspaceManager />}
     </div>
   );
 }

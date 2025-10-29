@@ -5,9 +5,9 @@ import { useUser } from "@/firebase";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUserTasks } from "@/hooks/use-user-tasks";
-import { SidebarMenuButton, SidebarMenuItem } from "../ui/sidebar";
+import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 import { ClipboardCheck } from "lucide-react";
-import { Badge } from "../ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 
 export function MyTasksSidebarItem() {

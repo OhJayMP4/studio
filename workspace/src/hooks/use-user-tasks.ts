@@ -11,19 +11,26 @@ export function useUserTasks(workspaceId?: string | null) {
     const firestore = useFirestore();
     
     const tasksQuery = useMemoFirebase(() => {
-        if (!user?.uid || !workspaceId) return null;
-        // Query the user's tasks collection...
+        if (!user?.uid) return null;
+        
         const tasksCollection = collection(firestore, `user-tasks/${user.uid}/tasks`);
-        // ...and filter by the currently selected workspaceId.
-        return query(
-            tasksCollection,
-            where("workspaceId", "==", workspaceId)
-        );
+
+        // If a workspaceId is provided, filter by it.
+        if (workspaceId) {
+            return query(
+                tasksCollection,
+                where("workspaceId", "==", workspaceId)
+            );
+        }
+        
+        // Otherwise, return null to prevent fetching all tasks across all workspaces
+        return null; 
     }, [firestore, user?.uid, workspaceId]);
 
     const { data, isLoading, error } = useCollection<UserTask>(tasksQuery);
     
     const tasks = useMemo(() => {
+        // If there's no data (or no query because workspaceId is missing), return empty arrays.
         if (!data) return { active: [], completed: [] };
 
         const active = data

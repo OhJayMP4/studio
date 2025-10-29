@@ -1,19 +1,20 @@
+
 'use client';
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { useUser, useFirestore } from "@/firebase";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
-import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Button } from "../ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
-import { doc, updateDoc, arrayRemove } from "firebase/firestore";
+import { doc, updateDoc, arrayRemove, getDoc, writeBatch } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { DeleteDialog } from "../common/delete-dialog";
+import { DeleteDialog } from "@/components/common/delete-dialog";
 
 
 export function TeamMemberTable() {
-    const { selectedWorkspace } = useSelectedWorkspace();
+    const { selectedWorkspace, setSelectedWorkspace } = useSelectedWorkspace();
     const { user: currentUser } = useUser();
     const firestore = useFirestore();
     const { toast } = useToast();
@@ -53,23 +54,30 @@ export function TeamMemberTable() {
             const workspaceRef = doc(firestore, 'workspaces', selectedWorkspace.id);
             const userRef = doc(firestore, 'users', targetUid);
 
-            // Firestore does not allow deleting fields from a map in a single command with arrayRemove
-            // A more complex transaction or a cloud function would be needed for atomicity.
-            // For client-side simplicity, we perform two separate updates.
-            
-            // 1. Remove from users map (we need to get the current map and remove the key)
-            const newUsersMap = { ...selectedWorkspace.users };
-            delete newUsersMap[targetUid];
-            
-            await updateDoc(workspaceRef, {
-                users: newUsersMap,
-                memberIds: arrayRemove(targetUid),
-            });
+            const batch = writeBatch(firestore);
 
-            // 2. Remove workspaceId from the user's profile
-            await updateDoc(userRef, {
-                workspaceIds: arrayRemove(selectedWorkspace.id),
-            });
+            const workspaceDoc = await getDoc(workspaceRef);
+            const workspaceData = workspaceDoc.data();
+
+            if (workspaceData) {
+                const newUsersMap = { ...workspaceData.users };
+                delete newUsersMap[targetUid];
+                const newMemberIds = workspaceData.memberIds.filter((id: string) => id !== targetUid);
+
+                batch.update(workspaceRef, {
+                    users: newUsersMap,
+                    memberIds: newMemberIds,
+                });
+
+                const userDoc = await getDoc(userRef);
+                const userData = userDoc.data();
+                if (userData && userData.workspaceIds) {
+                    const newWorkspaceIds = userData.workspaceIds.filter((id: string) => id !== selectedWorkspace.id);
+                    batch.update(userRef, { workspaceIds: newWorkspaceIds });
+                }
+            }
+            
+            await batch.commit();
 
             toast({ title: "User Removed", description: `${targetName || 'The user'} has been removed from the workspace.` });
 
@@ -93,6 +101,7 @@ export function TeamMemberTable() {
                         const fallback = name ? name.charAt(0).toUpperCase() : '?';
                         const isCurrentUser = uid === currentUser.uid;
                         const isLastAdmin = role === 'admin' && members.filter(m => m.role === 'admin').length <= 1;
+                        const isOwner = uid === selectedWorkspace.ownerId;
 
                         return (
                             <TableRow key={uid}>
@@ -102,14 +111,17 @@ export function TeamMemberTable() {
                                             <AvatarImage src={avatarUrl ?? undefined} />
                                             <AvatarFallback>{fallback}</AvatarFallback>
                                         </Avatar>
-                                        <span className="font-medium">{name || 'Unnamed User'}</span>
+                                        <div className="flex flex-col">
+                                            <span className="font-medium">{name || 'Unnamed User'} {isCurrentUser && '(You)'}</span>
+                                            {isOwner && <span className="text-xs text-muted-foreground">Owner</span>}
+                                        </div>
                                     </div>
                                 </TableCell>
                                 <TableCell>
                                     <Select
                                         defaultValue={role}
                                         onValueChange={(value) => handleRoleChange(uid, value as 'admin' | 'contributor' | 'viewer')}
-                                        disabled={isCurrentUser && isLastAdmin}
+                                        disabled={(isCurrentUser && isLastAdmin) || isOwner}
                                     >
                                         <SelectTrigger className="w-[180px]">
                                             <SelectValue />
@@ -129,7 +141,7 @@ export function TeamMemberTable() {
                                         <Button
                                             variant="ghost"
                                             size="icon"
-                                            disabled={isCurrentUser}
+                                            disabled={isCurrentUser || isOwner}
                                             aria-label={`Remove ${name}`}
                                         >
                                             <Trash2 className="h-4 w-4 text-destructive" />
