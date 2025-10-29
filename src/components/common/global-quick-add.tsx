@@ -191,7 +191,7 @@ export function GlobalQuickAdd() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="icon">
+          <Button variant="default" size="icon">
             <Plus className="h-4 w-4" />
             <span className="sr-only">Quick Add</span>
           </Button>
