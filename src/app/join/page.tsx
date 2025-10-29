@@ -1,4 +1,3 @@
-
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
@@ -60,10 +59,10 @@ function JoinProcessor() {
             setStatus('loading');
             
             const invitesRef = collection(firestore, 'invites');
-            // Query must now include the email to satisfy security rules
+            // This query is now compliant with the security rule that requires filtering by the user's email.
             const q = query(
                 invitesRef, 
-                where('token', '==', token), 
+                where('token', '==', token),
                 where('email', '==', user.email)
             );
             
@@ -72,7 +71,7 @@ function JoinProcessor() {
 
                 if (inviteSnapshot.empty) {
                     setStatus('error');
-                    setError('This invitation is invalid, expired, or not for this account.');
+                    setError('This invitation is invalid, expired, or not intended for your account.');
                     return;
                 }
 
@@ -86,7 +85,7 @@ function JoinProcessor() {
                     return;
                 }
                 
-                // Redundant check since query now enforces it, but good for safety
+                // Redundant check since query enforces it, but good for safety
                 if (foundInvite.email.toLowerCase() !== user.email?.toLowerCase()) {
                     setStatus('error');
                     setError(`This invite is for ${foundInvite.email}, but you are logged in as ${user.email}. Please log in with the correct account.`);
@@ -127,7 +126,7 @@ function JoinProcessor() {
             } catch (e: any) {
                 console.error("Error processing invite: ", e);
                 setStatus('error');
-                setError(e.message || "An error occurred while verifying the invitation.");
+                setError(e.message || "An error occurred while verifying the invitation. Please ensure you are logged in with the correct email address.");
             }
         };
 
