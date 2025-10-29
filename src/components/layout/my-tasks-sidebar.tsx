@@ -8,10 +8,12 @@ import { useUserTasks } from "@/hooks/use-user-tasks";
 import { SidebarMenuButton, SidebarMenuItem } from "../ui/sidebar";
 import { ClipboardCheck } from "lucide-react";
 import { Badge } from "../ui/badge";
+import { useSelectedWorkspace } from "@/app/(main)/layout";
 
 export function MyTasksSidebarItem() {
+    const { selectedWorkspace } = useSelectedWorkspace();
     const { user } = useUser();
-    const { tasks, isLoading } = useUserTasks(user?.uid);
+    const { tasks, isLoading } = useUserTasks(selectedWorkspace?.id);
     const pathname = usePathname();
 
     const activeCount = tasks.active.length;

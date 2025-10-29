@@ -15,6 +15,8 @@ import {
 import { List, Grid } from "lucide-react";
 import { TaskGridItem } from "@/components/common/task-grid-item";
 import { TaskList } from "@/components/common/task-list";
+import { useSelectedWorkspace } from "@/app/(main)/layout";
+import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 
 function MyTasksBreadcrumb() {
   return (
@@ -30,9 +32,26 @@ function MyTasksBreadcrumb() {
 
 
 export default function MyTasksPage() {
-    const { tasks, isLoading, error } = useUserTasks();
+    const { selectedWorkspace } = useSelectedWorkspace();
+    const { tasks, isLoading, error } = useUserTasks(selectedWorkspace?.id);
     const [view, setView] = useState<'active' | 'completed'>('active');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+    if (!selectedWorkspace) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <Card className="w-full max-w-md text-center">
+                <CardHeader>
+                    <CardTitle>My Tasks</CardTitle>
+                    <CardDescription>Please select a workspace from the sidebar to view your assigned tasks.</CardDescription>
+                </CardHeader>
+                 <CardContent>
+                    <AddWorkspaceDialog open={false} onOpenChange={() => {}} />
+                </CardContent>
+                </Card>
+            </div>
+        );
+    }
 
     const tasksToShow = view === 'active' ? tasks.active : tasks.completed;
 
@@ -47,8 +66,8 @@ export default function MyTasksPage() {
                 <CardHeader>
                     <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                         <div>
-                            <CardTitle>Your Assigned Tasks</CardTitle>
-                            <CardDescription>All tasks assigned to you across all projects.</CardDescription>
+                            <CardTitle>Your Assigned Tasks for {selectedWorkspace.name}</CardTitle>
+                            <CardDescription>All tasks assigned to you in this workspace.</CardDescription>
                         </div>
                         <div className="flex items-center gap-2">
                              <div className="flex gap-1 bg-muted p-1 rounded-md w-full sm:w-fit">
