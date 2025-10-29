@@ -6,7 +6,6 @@ import { useUser, FirebaseClientProvider } from '@/firebase';
 import {
   getFunctions,
   httpsCallable,
-  FunctionsError,
 } from 'firebase/functions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -68,7 +67,9 @@ function JoinProcessor() {
                 });
                 // A small delay to allow state to propagate before redirecting
                 setTimeout(() => {
-                    router.push(`/dashboard?ws=${data.workspaceId}`);
+                    // Redirect to the dashboard and force a reload to update workspace context
+                    router.push('/dashboard');
+                    router.refresh();
                 }, 500);
             } else {
                  throw new Error("The join operation failed unexpectedly.");
@@ -80,12 +81,15 @@ function JoinProcessor() {
             // The Firebase Functions client SDK throws an error with a 'code' property
             if (e.code) {
               friendlyMessage = e.message;
-            } else if (e instanceof TypeError && e.message.includes('Failed to fetch')) {
-                 friendlyMessage = "Could not connect to the join service. Please check your network connection or contact support if the problem persists.";
             }
 
             setStatus('error');
             setError(`Failed to join workspace: ${friendlyMessage}`);
+            toast({
+                variant: "destructive",
+                title: "Join Failed",
+                description: friendlyMessage,
+            });
         }
     };
 

@@ -57,7 +57,8 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
 
         const workspaceData = workspaceDoc.data();
         if (workspaceData?.memberIds?.includes(uid)) {
-          transaction.delete(inviteDoc.ref); // Clean up invite if already a member
+          // If user is already a member, we can just delete the invite and exit gracefully.
+          transaction.delete(inviteDoc.ref);
           return;
         }
 
