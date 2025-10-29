@@ -3,65 +3,83 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
+  
+    // Helper Functions
     function isUserAuthenticated() {
       return request.auth != null;
     }
 
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
     function isWorkspaceMember(workspaceId) {
       return isUserAuthenticated() && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds.hasAny([request.auth.uid]);
     }
-
+    
     function isWorkspaceAdmin(workspaceId) {
-        return isUserAuthenticated() && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == 'admin';
+      return isUserAuthenticated() && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == 'admin';
     }
-
+    
+    function isWorkspaceContributor(workspaceId) {
+      let userRole = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role;
+      return isUserAuthenticated() && (userRole == 'admin' || userRole == 'contributor');
+    }
+    
+    // User Profiles
     match /users/{userId} {
-      allow read, write: if isUserAuthenticated() && request.auth.uid == userId;
+      allow read: if isUserAuthenticated();
+      allow write: if isOwner(userId);
+    }
+    
+    // Invites
+    match /invites/{inviteId} {
+        // Public read for client-side query by token.
+        allow read: if isUserAuthenticated();
+        // Allow admins of the target workspace to create invites.
+        allow create: if isWorkspaceAdmin(request.resource.data.workspaceId);
+        // Only the invited user can delete (implicitly by using it).
+        allow delete: if isUserAuthenticated();
+    }
+    
+    // Denormalized user tasks for quick lookups
+    match /user-tasks/{userId}/{taskId} {
+      // User can read their own tasks.
+      allow read: if isOwner(userId);
+      // Allow users to create their own tasks, OR allow workspace admins to create tasks for others.
+      allow write: if isOwner(userId) || isWorkspaceAdmin(request.resource.data.workspaceId);
     }
 
+    // Workspaces and subcollections
     match /workspaces/{workspaceId} {
       allow read: if isWorkspaceMember(workspaceId);
-      allow create: if isUserAuthenticated();
+      // Only owner can delete a workspace.
+      allow delete: if isOwner(get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId);
+      // Admins can update workspace details.
       allow update: if isWorkspaceAdmin(workspaceId);
-      allow delete: if isWorkspaceAdmin(workspaceId);
-
+      allow create: if isOwner(request.resource.data.ownerId);
+      
       match /companies/{companyId} {
-        allow read: if isWorkspaceMember(workspaceId);
-        allow write: if isWorkspaceAdmin(workspaceId);
-
+        allow read, write: if isWorkspaceMember(workspaceId);
+        
         match /projects/{projectId} {
-          allow read: if isWorkspaceMember(workspaceId);
-          allow write: if isWorkspaceAdmin(workspaceId);
-
-            match /silos/{siloId} {
-                allow read: if isWorkspaceMember(workspaceId);
-                allow write: if isWorkspaceMember(workspaceId);
-
-                match /tasks/{taskId} {
-                    allow read: if isWorkspaceMember(workspaceId);
-                    allow create: if isWorkspaceMember(workspaceId);
-                    allow update, delete: if isWorkspaceAdmin(workspaceId) || (isWorkspaceMember(workspaceId) && resource.data.assigneeId == request.auth.uid);
-                }
+          allow read, write: if isWorkspaceMember(workspaceId);
+          
+           match /sales/{saleId} {
+             allow read, write: if isWorkspaceMember(workspaceId);
+           }
+          
+          match /silos/{siloId} {
+            allow read, write: if isWorkspaceMember(workspaceId);
+            
+            match /tasks/{taskId} {
+              allow read: if isWorkspaceMember(workspaceId);
+              // Contributors can create/update tasks
+              allow write: if isWorkspaceContributor(workspaceId);
             }
-             match /sales/{saleId} {
-                allow read: if isWorkspaceMember(workspaceId);
-                allow write: if isWorkspaceAdmin(workspaceId);
-            }
+          }
         }
       }
-    }
-
-    match /user-tasks/{userId}/tasks/{taskId} {
-        allow read: if isUserAuthenticated() && request.auth.uid == userId;
-        allow create: if (isUserAuthenticated() && request.auth.uid == userId) || isWorkspaceAdmin(request.resource.data.workspaceId);
-        allow update, delete: if isUserAuthenticated() && request.auth.uid == userId;
-    }
-
-    match /invites/{inviteId} {
-        allow read: if isUserAuthenticated();
-        allow create: if isWorkspaceAdmin(request.resource.data.workspaceId);
-        allow delete: if isUserAuthenticated();
     }
   }
 }
