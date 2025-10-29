@@ -16,6 +16,7 @@ import { DeleteDialog } from '../common/delete-dialog';
 import { useRouter } from 'next/navigation';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Pencil } from 'lucide-react';
+import { InviteMemberButton } from '../common/invite-member-button';
 
 export function WorkspaceManager() {
     const { selectedWorkspace, setSelectedWorkspace } = useSelectedWorkspace();
@@ -58,19 +59,22 @@ export function WorkspaceManager() {
             
             const batch = writeBatch(firestore);
 
-            for (const memberId of selectedWorkspace.memberIds) {
-                const userRef = doc(firestore, 'users', memberId);
-                const userSnap = await getDoc(userRef);
-                if (userSnap.exists()) {
-                    const userData = userSnap.data();
-                    if (userData && userData.workspaceIds) {
-                         batch.update(userRef, {
-                            workspaceIds: userData.workspaceIds.filter((id: string) => id !== selectedWorkspace.id)
-                        });
+            // Fetch user documents to update their workspace arrays
+            if (selectedWorkspace.memberIds) {
+                for (const memberId of selectedWorkspace.memberIds) {
+                    const userRef = doc(firestore, 'users', memberId);
+                    const userSnap = await getDoc(userRef);
+                    if (userSnap.exists()) {
+                        const userData = userSnap.data();
+                        if (userData && userData.workspaceIds) {
+                             batch.update(userRef, {
+                                workspaceIds: userData.workspaceIds.filter((id: string) => id !== selectedWorkspace.id)
+                            });
+                        }
                     }
                 }
             }
-
+            
             batch.delete(workspaceRef);
 
             await batch.commit();
@@ -102,7 +106,6 @@ export function WorkspaceManager() {
 
         const file = event.target.files[0];
         const storage = getStorage(firebaseApp);
-        // Define a temporary path that is unique to the user
         const tempFilePath = `user-uploads/${user.uid}/new-logo`;
         const storageRef = ref(storage, tempFilePath);
 
@@ -110,11 +113,9 @@ export function WorkspaceManager() {
         toast({ title: "Uploading Image..." });
 
         try {
-            // Step 1: Upload the file to the temporary location
             await uploadBytes(storageRef, file);
             toast({ title: "Upload complete, processing image..." });
 
-            // Step 2: Call the Cloud Function to finalize the process
             const functions = getFunctions(firebaseApp);
             const finalizeWorkspaceLogo = httpsCallable(functions, 'finalizeWorkspaceLogo');
             
@@ -127,7 +128,6 @@ export function WorkspaceManager() {
 
             if (data.success) {
                 toast({ title: "Workspace image updated successfully!" });
-                // The workspace document will be updated by the listener, refreshing the UI
             } else {
                 throw new Error("Cloud function failed to process the image.");
             }
@@ -186,9 +186,12 @@ export function WorkspaceManager() {
             </Card>
 
             <Card>
-                <CardHeader>
-                    <CardTitle>Manage Team</CardTitle>
-                    <CardDescription>Manage members and their roles within the workspace.</CardDescription>
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <div className="space-y-1.5">
+                        <CardTitle>Manage Team</CardTitle>
+                        <CardDescription>Manage members and their roles within the workspace.</CardDescription>
+                    </div>
+                    <InviteMemberButton />
                 </CardHeader>
                 <CardContent>
                    <TeamMemberTable />

@@ -10,7 +10,6 @@ import ProjectStatusChart from "@/components/reporting/project-status-chart";
 import TaskPriorityChart from "@/components/reporting/task-priority-chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState } from "react";
-import { InviteMemberButton } from "@/components/common/invite-member-button";
 import { useToast } from "@/hooks/use-toast";
 
 
@@ -77,7 +76,6 @@ function DashboardView() {
     <div>
       <div className="flex justify-between items-center mb-6">
          <h1 className="text-3xl font-headline">Dashboard for {selectedWorkspace?.name}</h1>
-         {isUserAdmin && <InviteMemberButton />}
       </div>
        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
         <Card className="flex flex-col">
