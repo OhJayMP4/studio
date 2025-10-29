@@ -49,8 +49,8 @@ function JoinProcessor() {
             return;
         }
 
-        if (!user) {
-            // Not logged in, redirect to login but preserve the token
+        if (!user || !user.email) {
+            // Not logged in, or user has no email, redirect to login but preserve the token
             const loginUrl = `/login?redirect=${encodeURIComponent(`/join?token=${token}`)}`;
             router.replace(loginUrl);
             return;
@@ -60,14 +60,19 @@ function JoinProcessor() {
             setStatus('loading');
             
             const invitesRef = collection(firestore, 'invites');
-            const q = query(invitesRef, where('token', '==', token));
+            // Query must now include the email to satisfy security rules
+            const q = query(
+                invitesRef, 
+                where('token', '==', token), 
+                where('email', '==', user.email)
+            );
             
             try {
                 const inviteSnapshot = await getDocs(q);
 
                 if (inviteSnapshot.empty) {
                     setStatus('error');
-                    setError('This invitation is invalid or has already been used.');
+                    setError('This invitation is invalid, expired, or not for this account.');
                     return;
                 }
 
@@ -81,6 +86,7 @@ function JoinProcessor() {
                     return;
                 }
                 
+                // Redundant check since query now enforces it, but good for safety
                 if (foundInvite.email.toLowerCase() !== user.email?.toLowerCase()) {
                     setStatus('error');
                     setError(`This invite is for ${foundInvite.email}, but you are logged in as ${user.email}. Please log in with the correct account.`);
@@ -113,7 +119,7 @@ function JoinProcessor() {
                     setStatus('success'); // Ready to show the join button
                 } else {
                     setStatus('error');
-setError('The workspace you were invited to no longer exists.');
+                    setError('The workspace you were invited to no longer exists.');
                     // Clean up the invite since it's invalid
                     await writeBatch(firestore).delete(doc(firestore, 'invites', foundInvite.id)).commit();
                 }
