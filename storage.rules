@@ -2,15 +2,28 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // Rules for workspace logos
-    match /workspaces/{workspaceId}/logo {
-      // Allow anyone to read the logo
-      allow read;
 
-      // Allow only admins of the workspace to upload/update/delete the logo
-      allow write: if request.auth != null && 
-                    exists(/databases/(default)/documents/workspaces/$(workspaceId)) &&
-                    get(/databases/(default)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == 'admin';
+    // Helper function to get workspace data from Firestore
+    function getWorkspace(workspaceId) {
+      return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
     }
+
+    // Helper function to check if a user is an admin of a workspace
+    function isWorkspaceAdmin(workspaceId, userId) {
+      let workspace = getWorkspace(workspaceId);
+      // Check if the user exists in the 'users' map and their role is 'admin'
+      return userId in workspace.users && workspace.users[userId].role == 'admin';
+    }
+
+    // Match the path for workspace logos
+    // The logo file for a workspace should be uploaded to a path like: /workspaces/{workspaceId}/logo
+    match /workspaces/{workspaceId}/logo {
+      // Allow anyone to read the logo, as it's a public asset
+      allow read: if true;
+
+      // Allow write (create, update, delete) only if the user is an admin of that workspace
+      allow write: if request.auth != null && isWorkspaceAdmin(workspaceId, request.auth.uid);
+    }
+
   }
 }
