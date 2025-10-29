@@ -4,7 +4,7 @@ import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { useAuth, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
@@ -14,6 +14,8 @@ import { doc, updateDoc } from 'firebase/firestore';
 import type { UserProfile } from '@/lib/types';
 import { useEffect } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useSelectedWorkspace } from '@/app/(main)/layout';
+import { WorkspaceManager } from '@/components/settings/workspace-manager';
 
 const formSchema = z.object({
   name: z.string().min(1, { message: 'Name is required.' }),
@@ -27,6 +29,7 @@ export default function SettingsPage() {
   const firestore = useFirestore();
   const { toast } = useToast();
   const user = auth.currentUser;
+  const { isUserAdmin } = useSelectedWorkspace();
 
   const userProfileRef = useMemoFirebase(() => {
     if (!user) return null;
@@ -118,11 +121,11 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-headline">Settings</h1>
-        <p className="text-muted-foreground">Manage your account settings.</p>
+        <p className="text-muted-foreground">Manage your account and workspace settings.</p>
       </div>
       <Card>
         <CardHeader>
-          <CardTitle>Profile</CardTitle>
+          <CardTitle>My Profile</CardTitle>
           <CardDescription>This is how others will see you on the site.</CardDescription>
         </CardHeader>
         <FormProvider {...form}>
@@ -154,13 +157,18 @@ export default function SettingsPage() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" disabled={form.formState.isSubmitting}>
+            </CardContent>
+            <CardFooter>
+               <Button type="submit" disabled={form.formState.isSubmitting}>
                 {form.formState.isSubmitting ? 'Saving...' : 'Save Changes'}
               </Button>
-            </CardContent>
+            </CardFooter>
           </form>
         </FormProvider>
       </Card>
+      
+      {isUserAdmin && <WorkspaceManager />}
+
     </div>
   );
 }
