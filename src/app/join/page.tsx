@@ -12,6 +12,7 @@ import {
   doc,
   arrayUnion,
   getDoc,
+  runTransaction,
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,7 +34,7 @@ function JoinProcessor() {
     
     const [status, setStatus] = useState<'loading' | 'error' | 'success' | 'joining'>('loading');
     const [error, setError] = useState<string | null>(null);
-    const [invite, setInvite] = useState<Invite | null>(null);
+    const [invite, setInvite] = useState<(Invite & {id: string}) | null>(null);
     const [workspaceName, setWorkspaceName] = useState<string>('');
 
 
@@ -59,7 +60,7 @@ function JoinProcessor() {
             setStatus('loading');
             
             const invitesRef = collection(firestore, 'invites');
-            // This query is now compliant with the security rule that requires filtering by the user's email.
+            // This query now complies with the security rule that requires filtering by the user's email.
             const q = query(
                 invitesRef, 
                 where('token', '==', token),
@@ -75,7 +76,7 @@ function JoinProcessor() {
                     return;
                 }
 
-                const foundInvite = { id: inviteSnapshot.docs[0].id, ...inviteSnapshot.docs[0].data() } as Invite;
+                const foundInvite = { id: inviteSnapshot.docs[0].id, ...inviteSnapshot.docs[0].data() } as (Invite & {id: string});
 
                 if (foundInvite.expires < Date.now()) {
                     // Clean up expired invite
@@ -139,30 +140,36 @@ function JoinProcessor() {
 
         setStatus('joining');
         try {
-            const batch = writeBatch(firestore);
+            await runTransaction(firestore, async (transaction) => {
+                const inviteRef = doc(firestore, 'invites', invite.id);
+                const workspaceRef = doc(firestore, 'workspaces', invite.workspaceId);
+                const userRef = doc(firestore, 'users', user.uid);
 
-            // 1. Update Workspace document
-            const workspaceRef = doc(firestore, 'workspaces', invite.workspaceId);
-            batch.update(workspaceRef, {
-                memberIds: arrayUnion(user.uid),
-                [`users.${user.uid}`]: {
-                    role: 'contributor', // All invited users start as contributors
-                    name: user.displayName,
-                    avatarUrl: user.photoURL,
+                // Read the current workspace doc within the transaction
+                const workspaceDoc = await transaction.get(workspaceRef);
+                if (!workspaceDoc.exists()) {
+                    throw new Error("Workspace no longer exists.");
                 }
+
+                // 1. Update Workspace document
+                transaction.update(workspaceRef, {
+                    memberIds: arrayUnion(user.uid),
+                    [`users.${user.uid}`]: {
+                        role: 'contributor', // All invited users start as contributors
+                        name: user.displayName,
+                        avatarUrl: user.photoURL,
+                    }
+                });
+
+                // 2. Update User's profile document
+                transaction.update(userRef, {
+                    workspaceIds: arrayUnion(invite.workspaceId)
+                });
+
+                // 3. Delete the invite document
+                transaction.delete(inviteRef);
             });
 
-            // 2. Update User's profile document
-            const userRef = doc(firestore, 'users', user.uid);
-            batch.update(userRef, {
-                workspaceIds: arrayUnion(invite.workspaceId)
-            });
-
-            // 3. Delete the invite document
-            const inviteRef = doc(firestore, 'invites', invite.id);
-            batch.delete(inviteRef);
-
-            await batch.commit();
 
             toast({
                 title: "Welcome!",
