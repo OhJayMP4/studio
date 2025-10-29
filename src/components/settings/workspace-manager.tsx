@@ -8,7 +8,7 @@ import { Label } from '../ui/label';
 import { Button } from '../ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore } from '@/firebase';
-import { doc, updateDoc, writeBatch, collection, getDocs } from 'firebase/firestore';
+import { doc, updateDoc, writeBatch, getDoc } from 'firebase/firestore';
 import { TeamMemberTable } from './team-member-table';
 import { DeleteDialog } from '../common/delete-dialog';
 import { useRouter } from 'next/navigation';
@@ -47,24 +47,23 @@ export function WorkspaceManager() {
         toast({ title: 'Deleting Workspace...', description: 'This may take a few moments.' });
 
         try {
-            // Note: Deleting subcollections client-side is complex and not recommended for large workspaces.
-            // A Cloud Function is the robust way to handle this. This is a best-effort client-side delete.
             const workspaceRef = doc(firestore, 'workspaces', selectedWorkspace.id);
             
             const batch = writeBatch(firestore);
 
-            // 1. Remove workspaceId from all members' user profiles
             for (const memberId of selectedWorkspace.memberIds) {
                 const userRef = doc(firestore, 'users', memberId);
-                batch.update(userRef, {
-                    workspaceIds: (await getDoc(userRef)).data()?.workspaceIds.filter((id: string) => id !== selectedWorkspace.id)
-                });
+                const userSnap = await getDoc(userRef);
+                if (userSnap.exists()) {
+                    const userData = userSnap.data();
+                    if (userData && userData.workspaceIds) {
+                         batch.update(userRef, {
+                            workspaceIds: userData.workspaceIds.filter((id: string) => id !== selectedWorkspace.id)
+                        });
+                    }
+                }
             }
 
-            // In a real-world scenario, you would need a recursive function
-            // to delete all documents in all subcollections (companies, projects, etc.)
-            // For this project, we'll just delete the main workspace doc.
-            // This will leave subcollections orphaned, but they will be inaccessible.
             batch.delete(workspaceRef);
 
             await batch.commit();
@@ -74,8 +73,8 @@ export function WorkspaceManager() {
                 description: `The "${selectedWorkspace.name}" workspace has been permanently deleted.`,
             });
 
-            setSelectedWorkspace(null); // Clear selected workspace
-            router.push('/dashboard'); // Redirect to a safe page
+            setSelectedWorkspace(null); 
+            router.push('/dashboard');
 
         } catch (error: any) {
             console.error("Error deleting workspace: ", error);
