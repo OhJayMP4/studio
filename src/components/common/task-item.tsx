@@ -89,7 +89,6 @@ export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
     });
 
     const firestore = useFirestore();
-    const { isUserAdmin } = useSelectedWorkspace();
 
     const assigneeRef = useMemoFirebase(() => {
         return task.assigneeId ? doc(firestore, 'users', task.assigneeId) : null;
@@ -168,10 +167,8 @@ export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
                         </TooltipContent>
                     </Tooltip>
                 </TooltipProvider>
-                {isUserAdmin && <div className="opacity-0 group-hover:opacity-100 transition-opacity"><TaskActions task={task} path={path} /></div>}
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity"><TaskActions task={task} path={path} /></div>
             </div>
         </div>
     )
 }
-
-    

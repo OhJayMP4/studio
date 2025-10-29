@@ -158,7 +158,7 @@ function NoSilosView({ companyId, projectId }: { companyId: string, projectId: s
         </AddSiloDialog>
       ) : (
         <p className="text-sm text-muted-foreground">
-          You do not have permission to add silos.
+          Only admins can add silos.
         </p>
       )}
     </div>
@@ -226,7 +226,7 @@ const priorityOrder = { high: 3, medium: 2, low: 1 };
 
 function SortableSiloItem({ silo, companyId, projectId }: { silo: Silo; companyId: string; projectId: string }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: silo.id, data: { type: 'Silo' } });
-    const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
+    const { selectedWorkspace } = useSelectedWorkspace();
     const firestore = useFirestore();
     
     const tasksQuery = useMemoFirebase(() => {
@@ -290,7 +290,7 @@ function SortableSiloItem({ silo, companyId, projectId }: { silo: Silo; companyI
                                 </div>
                                 <Progress value={progress} />
                             </div>
-                            {isUserAdmin && <SiloActions silo={silo} companyId={companyId} projectId={projectId} />}
+                            <SiloActions silo={silo} companyId={companyId} projectId={projectId} />
                         </div>
                         <div className="border rounded-md">
                             {rawTasksLoading && <div className="p-4 text-center text-sm">Loading tasks...</div>}
@@ -306,7 +306,7 @@ function SortableSiloItem({ silo, companyId, projectId }: { silo: Silo; companyI
                                 )}
                             </SortableContext>
                         </div>
-                        {isUserAdmin && <AddTaskDialog companyId={companyId} projectId={projectId} siloId={silo.id} />}
+                        <AddTaskDialog companyId={companyId} projectId={projectId} siloId={silo.id} />
                     </CardContent>
                 </AccordionContent>
             </Card>
