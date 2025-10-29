@@ -3,7 +3,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useFirestore, useUser } from '@/firebase';
+import { useFirestore, useUser, FirebaseClientProvider } from '@/firebase';
 import {
   collection,
   query,
@@ -239,7 +239,9 @@ export default function JoinPage() {
     return (
         <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-muted/40">
             <Suspense fallback={<Card className="w-full max-w-lg mx-auto"><CardHeader><CardTitle>Loading Invitation...</CardTitle></CardHeader></Card>}>
-                <JoinProcessor />
+                <FirebaseClientProvider>
+                    <JoinProcessor />
+                </FirebaseClientProvider>
             </Suspense>
         </div>
     )
