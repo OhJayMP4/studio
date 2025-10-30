@@ -34,7 +34,7 @@ const sendInviteEmailFlow = ai.defineFlow(
 
     try {
       await resend.emails.send({
-        from: 'SaturnSync <onboarding@resend.dev>', // Must be a verified domain in Resend
+        from: 'onboarding@saturnsync.com', // Must be a verified domain in Resend
         to: email,
         subject: `You're invited to join the "${workspaceName}" workspace on SaturnSync!`,
         html: `
