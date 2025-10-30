@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { UserPlus } from "lucide-react";
 import { useUser } from "@/firebase";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 // Basic email validation
 const validateEmail = (email: string) => {
@@ -55,43 +56,33 @@ export function InviteMemberButton() {
                 description: `Sending invite to ${email}.`,
             });
             
-            const idToken = await user.getIdToken();
-            const functionsUrl = `https://us-central1-${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}.cloudfunctions.net/createInvite`;
-
-            const response = await fetch(functionsUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`,
-                },
-                body: JSON.stringify({
-                    workspaceId: selectedWorkspace.id,
-                    email: email,
-                }),
+            const functions = getFunctions();
+            const createInvite = httpsCallable(functions, 'createInvite');
+            
+            const result = await createInvite({
+                workspaceId: selectedWorkspace.id,
+                email: email,
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || `Request failed with status ${response.status}`);
-            }
+            const data = result.data as { success: boolean };
 
-            const result = await response.json();
-
-            if (result.success) {
+            if (data.success) {
                  toast({
                     title: "Invitation Sent!",
                     description: `An invitation email has been sent to ${email}.`,
                 });
             } else {
-                throw new Error(result.error || "An unknown error occurred in the createInvite function.");
+                throw new Error("An unknown error occurred in the createInvite function.");
             }
             
         } catch(error: any) {
             console.error("Error creating invite:", error);
+            // The onCall function throws an HttpsError which has a message property
+            const message = error.message || "An unknown error occurred.";
             toast({
                 variant: 'destructive',
                 title: "Failed to Send Invite",
-                description: error.message || "An unknown error occurred.",
+                description: message,
             });
         }
     };
