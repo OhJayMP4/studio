@@ -64,15 +64,15 @@ export function InviteMemberButton() {
                 email: email,
             });
 
-            const data = result.data as { success: boolean };
+            const data = result.data as { success: boolean, message?: string };
 
             if (data.success) {
                  toast({
                     title: "Invitation Sent!",
-                    description: `An invitation email has been sent to ${email}.`,
+                    description: data.message || `An invitation email has been sent to ${email}.`,
                 });
             } else {
-                throw new Error("An unknown error occurred in the createInvite function.");
+                throw new Error(data.message || "An unknown error occurred in the createInvite function.");
             }
             
         } catch(error: any) {

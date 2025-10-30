@@ -138,7 +138,7 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
     const inviteData = inviteDoc.data();
 
     if (inviteData.email !== email) {
-        throw new functions.https.HttpsError('permission-denied', 'This invitation is not intended for your account.');
+        throw new functions.https.https.HttpsError('permission-denied', 'This invitation is not intended for your account.');
     }
 
     if (inviteData.expires < Date.now()) {
