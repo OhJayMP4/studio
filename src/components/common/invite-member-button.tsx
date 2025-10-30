@@ -46,6 +46,11 @@ export function InviteMemberButton() {
             const functions = getFunctions(firebaseApp);
             const createInvite = httpsCallable(functions, 'createInvite');
             
+            toast({
+                title: "Sending Invitation...",
+                description: `Sending invite to ${email}.`,
+            });
+            
             const result = await createInvite({ 
                 workspaceId: selectedWorkspace.id, 
                 email: email 
@@ -60,11 +65,9 @@ export function InviteMemberButton() {
                     toast({
                         variant: 'destructive',
                         title: "Configuration Error",
-                        description: "The application URL is not configured. The invite was created but the email could not be sent.",
+                        description: "The application URL is not configured, so the invite link may be incorrect.",
                     });
-                    return;
-                }
-                 const joinUrl = `${appUrl}/join?token=${data.token}`;
+                 }
 
                 // The email is now sent by the Cloud Function.
                  toast({
