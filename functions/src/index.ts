@@ -65,14 +65,14 @@ exports.createInvite = functions.https.onRequest(async (req, res) => {
         
         // 3. Create Invite in Firestore
         const token = generateToken();
-        const expires = admin.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+        const expires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours in millis
 
         const inviteRef = db.collection('invites').doc();
         await inviteRef.set({
             workspaceId,
             email,
             token,
-            expires,
+            expires, // Store as number
             createdBy: uid,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
@@ -159,7 +159,7 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('permission-denied', 'This invitation is not intended for your account.');
     }
 
-    if (inviteData.expires.toMillis() < Date.now()) {
+    if (inviteData.expires < Date.now()) {
         await inviteDoc.ref.delete();
         throw new functions.https.HttpsError('deadline-exceeded', 'This invitation has expired.');
     }
