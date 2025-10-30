@@ -4,8 +4,7 @@ import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { UserPlus } from "lucide-react";
-import { getFunctions, httpsCallable } from "firebase/functions";
-import { useFirebase } from "@/firebase";
+import { useUser } from "@/firebase";
 
 // Basic email validation
 const validateEmail = (email: string) => {
@@ -14,8 +13,8 @@ const validateEmail = (email: string) => {
 
 export function InviteMemberButton() {
     const { selectedWorkspace } = useSelectedWorkspace();
+    const { user } = useUser();
     const { toast } = useToast();
-    const { firebaseApp } = useFirebase();
 
     const handleInvite = async () => {
         if (!selectedWorkspace) {
@@ -23,6 +22,14 @@ export function InviteMemberButton() {
                 variant: 'destructive',
                 title: "No workspace selected",
                 description: "Please select a workspace before inviting members."
+            });
+            return;
+        }
+        if (!user) {
+             toast({
+                variant: 'destructive',
+                title: "Not authenticated",
+                description: "You must be logged in to send invites."
             });
             return;
         }
@@ -43,40 +50,40 @@ export function InviteMemberButton() {
         }
         
         try {
-            const functions = getFunctions(firebaseApp);
-            const createInvite = httpsCallable(functions, 'createInvite');
-            
             toast({
                 title: "Sending Invitation...",
                 description: `Sending invite to ${email}.`,
             });
             
-            const result = await createInvite({ 
-                workspaceId: selectedWorkspace.id, 
-                email: email 
+            const idToken = await user.getIdToken();
+            const functionsUrl = `https://us-central1-${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID}.cloudfunctions.net/createInvite`;
+
+            const response = await fetch(functionsUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({
+                    workspaceId: selectedWorkspace.id,
+                    email: email,
+                }),
             });
 
-            const data = result.data as { success: boolean, token?: string, error?: string };
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `Request failed with status ${response.status}`);
+            }
 
-            if (data.success && data.token) {
-                 const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-                 if (!appUrl) {
-                    console.error('FATAL: NEXT_PUBLIC_APP_URL is not defined.');
-                    toast({
-                        variant: 'destructive',
-                        title: "Configuration Error",
-                        description: "The application URL is not configured, so the invite link may be incorrect.",
-                    });
-                 }
+            const result = await response.json();
 
-                // The email is now sent by the Cloud Function.
+            if (result.success) {
                  toast({
                     title: "Invitation Sent!",
                     description: `An invitation email has been sent to ${email}.`,
                 });
-
             } else {
-                throw new Error(data.error || "An unknown error occurred in the createInvite function.");
+                throw new Error(result.error || "An unknown error occurred in the createInvite function.");
             }
             
         } catch(error: any) {

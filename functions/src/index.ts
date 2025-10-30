@@ -2,6 +2,9 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { Resend } from "resend";
+import * as cors from "cors";
+
+const corsHandler = cors({ origin: true });
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -13,93 +16,113 @@ const generateToken = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
-exports.createInvite = functions.https.onCall(async (data, context) => {
-  // 1. Auth Check
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'You must be logged in to create an invite.');
-  }
+exports.createInvite = functions.https.onRequest(async (req, res) => {
+    corsHandler(req, res, async () => {
+        // 0. Method Check
+        if (req.method !== 'POST') {
+            res.status(405).send('Method Not Allowed');
+            return;
+        }
 
-  const { workspaceId, email } = data;
-  if (!workspaceId || !email) {
-    throw new functions.https.HttpsError('invalid-argument', 'Workspace ID and email are required.');
-  }
+        // 1. Auth Check
+        const idToken = req.headers.authorization?.split('Bearer ')[1];
+        if (!idToken) {
+            res.status(401).send('Unauthorized');
+            return;
+        }
 
-  const uid = context.auth.uid;
+        let decodedToken;
+        try {
+            decodedToken = await admin.auth().verifyIdToken(idToken);
+        } catch (error) {
+            res.status(401).send('Unauthorized: Invalid token');
+            return;
+        }
+        const uid = decodedToken.uid;
+        
+        const { workspaceId, email } = req.body;
+        if (!workspaceId || !email) {
+            res.status(400).send('Bad Request: Workspace ID and email are required.');
+            return;
+        }
 
-  // 2. Permission Check
-  const workspaceRef = db.doc(`workspaces/${workspaceId}`);
-  const workspaceSnap = await workspaceRef.get();
+        // 2. Permission Check
+        const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+        const workspaceSnap = await workspaceRef.get();
 
-  if (!workspaceSnap.exists) {
-    throw new functions.https.HttpsError('not-found', 'Workspace not found.');
-  }
+        if (!workspaceSnap.exists) {
+            res.status(404).send('Not Found: Workspace not found.');
+            return;
+        }
 
-  const workspaceData = workspaceSnap.data();
-  const userRole = workspaceData?.users?.[uid]?.role;
+        const workspaceData = workspaceSnap.data();
+        const userRole = workspaceData?.users?.[uid]?.role;
 
-  if (userRole !== 'admin') {
-    throw new functions.https.HttpsError('permission-denied', 'Only workspace admins can send invitations.');
-  }
-  
-  // 3. Create Invite in Firestore
-  const token = generateToken();
-  const expires = admin.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+        if (userRole !== 'admin') {
+            res.status(403).send('Forbidden: Only workspace admins can send invitations.');
+            return;
+        }
+        
+        // 3. Create Invite in Firestore
+        const token = generateToken();
+        const expires = admin.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-  const inviteRef = db.collection('invites').doc();
-  await inviteRef.set({
-    workspaceId,
-    email,
-    token,
-    expires,
-    createdBy: uid,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+        const inviteRef = db.collection('invites').doc();
+        await inviteRef.set({
+            workspaceId,
+            email,
+            token,
+            expires,
+            createdBy: uid,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
 
-  // 4. Send Email via Resend
-  const resendApiKey = functions.config().resend?.api_key || process.env.RESEND_API_KEY;
-  if (!resendApiKey) {
-    console.warn('RESEND_API_KEY not set. Cannot send invitation email.');
-    // Don't throw an error, just return success as the invite was created.
-    return { success: true, token: token };
-  }
+        // 4. Send Email via Resend
+        const resendApiKey = functions.config().resend?.api_key || process.env.RESEND_API_KEY;
+        if (!resendApiKey) {
+            console.warn('RESEND_API_KEY not set. Cannot send invitation email.');
+            res.status(200).json({ success: true, token: token, message: "Invite created, but email not sent due to missing API key." });
+            return;
+        }
 
-  const appUrl = functions.config().app?.url || process.env.NEXT_PUBLIC_APP_URL;
-  if (!appUrl) {
-    console.error('NEXT_PUBLIC_APP_URL not set. Cannot form join URL for email.');
-    return { success: true, token: token }; // Still success, but no email
-  }
-  
-  const joinUrl = `${appUrl}/join?token=${token}`;
-  const resend = new Resend(resendApiKey);
+        const appUrl = functions.config().app?.url || process.env.NEXT_PUBLIC_APP_URL;
+        if (!appUrl) {
+            console.error('NEXT_PUBLIC_APP_URL not set. Cannot form join URL for email.');
+            res.status(200).json({ success: true, token: token, message: "Invite created, but email not sent due to missing App URL." });
+            return;
+        }
+        
+        const joinUrl = `${appUrl}/join?token=${token}`;
+        const resend = new Resend(resendApiKey);
 
-  try {
-    await resend.emails.send({
-        from: 'onboarding@saturnsync.com',
-        to: email,
-        subject: `You're invited to join the "${workspaceData?.name}" workspace on SaturnSync!`,
-        html: `
-          <div style="font-family: sans-serif; text-align: center; padding: 40px;">
-            <h1 style="font-size: 24px;">You're Invited!</h1>
-            <p style="font-size: 16px; color: #555;">You have been invited to join the <strong>${workspaceData?.name}</strong> workspace on SaturnSync.</p>
-            <a 
-              href="${joinUrl}" 
-              target="_blank"
-              style="display: inline-block; background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin-top: 20px;"
-            >
-              Join Workspace
-            </a>
-            <p style="font-size: 12px; color: #999; margin-top: 30px;">
-              If you did not expect this invitation, you can ignore this email.
-            </p>
-          </div>
-        `,
+        try {
+            await resend.emails.send({
+                from: 'onboarding@saturnsync.com',
+                to: email,
+                subject: `You're invited to join the "${workspaceData?.name}" workspace on SaturnSync!`,
+                html: `
+                  <div style="font-family: sans-serif; text-align: center; padding: 40px;">
+                    <h1 style="font-size: 24px;">You're Invited!</h1>
+                    <p style="font-size: 16px; color: #555;">You have been invited to join the <strong>${workspaceData?.name}</strong> workspace on SaturnSync.</p>
+                    <a 
+                      href="${joinUrl}" 
+                      target="_blank"
+                      style="display: inline-block; background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin-top: 20px;"
+                    >
+                      Join Workspace
+                    </a>
+                    <p style="font-size: 12px; color: #999; margin-top: 30px;">
+                      If you did not expect this invitation, you can ignore this email.
+                    </p>
+                  </div>
+                `,
+            });
+            res.status(200).json({ success: true, token: token });
+        } catch (error) {
+            console.error('Error sending email via Resend:', error);
+            res.status(500).json({ success: false, error: 'Failed to send email.' });
+        }
     });
-  } catch (error) {
-    console.error('Error sending email via Resend:', error);
-    // Don't throw, just log. The invite is still valid.
-  }
-  
-  return { success: true, token: token };
 });
 
 
