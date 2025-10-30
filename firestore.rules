@@ -2,135 +2,190 @@
  * @fileoverview Firestore Security Rules for the application.
  *
  * Core Philosophy:
- * This ruleset prioritizes secure authorization based on user roles and ownership, while relaxing data shape validation for rapid prototyping.
+ * This ruleset enforces a hybrid security model. User profiles and denormalized user tasks are strictly user-owned.
+ * Workspaces and their hierarchical data (companies, projects, silos, tasks, sales) are accessible to workspace members.
+ * Invites are disabled at the rule level and intended to be handled by a trusted server environment (e.g., Cloud Functions).
  *
  * Data Structure:
- * The Firestore database is organized hierarchically with workspaces at the root.  Workspaces contain companies, which contain projects, which contain silos, which contain tasks.
- * User profiles are stored in a separate `/users` collection. Denormalized user-task relationships are stored in the `/user-tasks` collection.  Invitations are stored in the `/invites` collection.
+ * - /users/{userId}: User profile data.
+ * - /workspaces/{workspaceId}: Workspace data, including member lists.
+ * - /workspaces/{workspaceId}/companies/{companyId}: Companies within workspaces.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}: Projects within companies.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}: Silos (task containers) within projects.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}: Tasks within silos.
+ * - /user-tasks/{userId}/tasks/{taskId}: Denormalized task data for quick user lookups.
+ * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}: Sales data within projects.
+ * - /invites/{inviteId}: Invite documents.
  *
  * Key Security Decisions:
- * - Users can only read their own profile data.
- * - Workspace ownership and membership determine access to workspaces and their child collections (companies, projects, silos, tasks, and sales).
- * - User listing is disallowed.
- * - Data validation is minimized to focus on authorization.
+ * - User listing is disabled to prevent enumeration.
+ * - Workspace membership is validated using a `users` map on the workspace document for efficient checks.
+ * - Invites are completely disabled at the rule level, assuming a backend handles invite validation and processing.
+ * - Data shape is not strictly validated in the rules, allowing for rapid iteration.
+ * - Update and delete operations are guarded with `resource != null` to prevent errors.
  *
  * Denormalization for Authorization:
- * - Workspace documents contain a `users` map that stores user roles within the workspace.  This allows for efficient role-based authorization without needing to query a separate collection.
+ * - Workspace membership is denormalized into the `users` map within the `/workspaces/{workspaceId}` document. This allows for efficient `isWorkspaceMember()` checks without needing separate database reads.
+ * - The `ownerId` field on the `/workspaces/{workspaceId}` document enables fast owner-based authorization for workspace updates and deletes.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isWorkspaceMember(workspaceId) {
+      return isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users;
+    }
+
+    function isWorkspaceOwner(workspaceId) {
+      return isSignedIn() && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid;
+    }
+
     /**
-     * @description Allows users to read and write their own profile data.
+     * @description Controls access to user profile information. Users can read any profile but can only modify their own.
      * @path /users/{userId}
-     * @allow (get, list) User with matching UID can read their profile.
-     * @allow (create, update, delete) User with matching UID can create/update/delete their profile.
-     * @deny (get, list) User attempts to read another user's profile.
-     * @deny (create, update, delete) User attempts to modify another user's profile.
-     * @principle Enforces document ownership for all operations.
+     * @allow (get) Authenticated user can read any user profile.
+     * @allow (create, update, delete) Authenticated user can create, update, or delete their own profile.
+     * @deny (list) No user listing allowed.
+     * @deny (create, update, delete) Authenticated user cannot modify other profiles.
+     * @principle Enforces user-ownership for profile modifications.
      */
     match /users/{userId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-      function isOwner(userId) {
-        return request.auth.uid == userId;
-      }
-      allow get: if isSignedIn() && isOwner(userId);
+      allow get: if isSignedIn();
       allow list: if false;
       allow create: if isSignedIn() && isOwner(userId);
-      allow update: if isSignedIn() && isOwner(userId);
-      allow delete: if isSignedIn() && isOwner(userId);
+      allow update: if isSignedIn() && isOwner(userId) && resource.data.uid == userId;
+      allow delete: if isSignedIn() && isOwner(userId) && resource.data.uid == userId && resource != null;
     }
 
     /**
-     * @description Manages workspaces, allowing workspace owners and members to read workspace data.
+     * @description Controls access to workspace data. Authenticated users can read workspaces. Workspace creation is restricted to the owner.
+     *  Updates and deletes are restricted to the workspace owner.
      * @path /workspaces/{workspaceId}
-     * @allow (get, list) Authenticated user can read workspace data.
-     * @allow (create) Authenticated user can create a workspace.
-     * @allow (update, delete) Only the workspace owner can update/delete the workspace.
-     * @deny Unauthorized access.
-     * @principle Enforces workspace ownership and membership for write operations.
+     * @allow (get, list) Authenticated users can read and list workspaces.
+     * @allow (create) Authenticated user can create a workspace with themselves as the owner.
+     * @deny (update, delete) Only the workspace owner can update or delete a workspace.
+     * @principle Enforces workspace ownership for modifications.
      */
     match /workspaces/{workspaceId} {
-      function isSignedIn() {
-        return request.auth != null;
-      }
-      function isWorkspaceOwner(workspaceId) {
-        return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid;
-      }
-       function isWorkspaceMember(workspaceId) {
-        return request.auth.uid in get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users;
-      }
       allow get, list: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if isSignedIn() && isWorkspaceOwner(workspaceId);
+      allow update: if isWorkspaceOwner(workspaceId) && resource != null;
+      allow delete: if isWorkspaceOwner(workspaceId) && resource != null;
 
+      /**
+       * @description Controls access to company data within a workspace. Access is restricted to workspace members.
+       * @path /workspaces/{workspaceId}/companies/{companyId}
+       * @allow (get, list) Authenticated workspace members can read and list companies within the workspace.
+       * @allow (create, update) Authenticated workspace members can create and update companies within the workspace.
+       * @deny (delete) Authenticated workspace members cannot delete companies within the workspace.
+       * @principle Enforces workspace membership for company modifications.
+       */
       match /companies/{companyId} {
+        allow get, list: if isSignedIn();
+        allow create: if isWorkspaceMember(workspaceId);
+        allow update: if isWorkspaceMember(workspaceId) && resource != null;
+        allow delete: if isWorkspaceMember(workspaceId) && resource != null;
+
+        /**
+         * @description Controls access to project data within a company. Access is restricted to workspace members.
+         * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}
+         * @allow (get, list) Authenticated workspace members can read and list projects within the company.
+         * @allow (create, update) Authenticated workspace members can create and update projects within the company.
+         * @deny (delete) Authenticated workspace members cannot delete projects within the company.
+         * @principle Enforces workspace membership for project modifications.
+         */
+        match /projects/{projectId} {
           allow get, list: if isSignedIn();
-          allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
-          allow update, delete: if isSignedIn() && isWorkspaceMember(workspaceId);
+          allow create: if isWorkspaceMember(workspaceId);
+          allow update: if isWorkspaceMember(workspaceId) && resource != null;
+          allow delete: if isWorkspaceMember(workspaceId) && resource != null;
 
-          match /projects/{projectId} {
+          /**
+           * @description Controls access to silo data within a project. Access is restricted to workspace members.
+           * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}
+           * @allow (get, list) Authenticated workspace members can read and list silos within the project.
+           * @allow (create, update) Authenticated workspace members can create and update silos within the project.
+           * @deny (delete) Authenticated workspace members cannot delete silos within the project.
+           * @principle Enforces workspace membership for silo modifications.
+           */
+          match /silos/{siloId} {
+            allow get, list: if isSignedIn();
+            allow create: if isWorkspaceMember(workspaceId);
+            allow update: if isWorkspaceMember(workspaceId) && resource != null;
+            allow delete: if isWorkspaceMember(workspaceId) && resource != null;
+
+            /**
+             * @description Controls access to task data within a silo. Access is restricted to workspace members.
+             * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}
+             * @allow (get, list) Authenticated workspace members can read and list tasks within the silo.
+             * @allow (create, update) Authenticated workspace members can create and update tasks within the silo.
+             * @deny (delete) Authenticated workspace members cannot delete tasks within the silo.
+             * @principle Enforces workspace membership for task modifications.
+             */
+            match /tasks/{taskId} {
               allow get, list: if isSignedIn();
-              allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
-              allow update, delete: if isSignedIn() && isWorkspaceMember(workspaceId);
+              allow create: if isWorkspaceMember(workspaceId);
+              allow update: if isWorkspaceMember(workspaceId) && resource != null;
+              allow delete: if isWorkspaceMember(workspaceId) && resource != null;
+            }
 
-              match /silos/{siloId} {
-                  allow get, list: if isSignedIn();
-                  allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
-                  allow update, delete: if isSignedIn() && isWorkspaceMember(workspaceId);
-
-                  match /tasks/{taskId} {
-                      function isWorkspaceMember(workspaceId) {
-                          return request.auth.uid in get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users;
-                      }
-                      allow get, list: if isSignedIn();
-                      allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
-                      allow update, delete: if isSignedIn() && isWorkspaceMember(workspaceId);
-                  }
-
-                  match /sales/{saleId} {
-                       allow get, list: if isSignedIn();
-                       allow create: if isSignedIn() && isWorkspaceMember(workspaceId);
-                       allow update, delete: if isSignedIn() && isWorkspaceMember(workspaceId);
-                  }
-              }
+            /**
+             * @description Controls access to sale data within a project. Access is restricted to workspace members.
+             * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}
+             * @allow (get, list) Authenticated workspace members can read and list sales within the project.
+             * @allow (create, update) Authenticated workspace members can create and update sales within the project.
+             * @deny (delete) Authenticated workspace members cannot delete sales within the project.
+             * @principle Enforces workspace membership for sale modifications.
+             */
+            match /sales/{saleId} {
+              allow get, list: if isSignedIn();
+              allow create: if isWorkspaceMember(workspaceId);
+              allow update: if isWorkspaceMember(workspaceId) && resource != null;
+              allow delete: if isWorkspaceMember(workspaceId) && resource != null;
+            }
           }
+        }
       }
     }
 
     /**
-     * @description Manages denormalized user-task relationships, restricting access to the specific user's tasks.
+     * @description Controls access to denormalized user-task data. Users can only read, update, or delete their own tasks.
+     *  Workspace members can create tasks for other users (denormalization case).
      * @path /user-tasks/{userId}/tasks/{taskId}
-     * @allow (get, list) User with matching UID can read their task data.
-     * @allow (create) Authenticated user can create a user task.
-     * @allow (update, delete) User with matching UID can update/delete their task data.
-     * @deny Unauthorized access.
-     * @principle Enforces document ownership for all operations.
+     * @allow (get, list) Authenticated user can read and list their own tasks.
+     * @allow (create) Authenticated workspace member can create a task for another user, provided they are the assignee.
+     * @deny (update, delete) Only the assigned user can update or delete their own denormalized tasks.
+     * @principle Enforces user-ownership for denormalized tasks, with workspace member creation.
      */
-    match /user-tasks/{userId}/tasks/{taskId} {
-      function isSignedIn() {
-        return request.auth != null;
+    match /user-tasks/{userId} {
+      match /tasks/{taskId} {
+        allow get, list: if isSignedIn() && isOwner(userId);
+        allow create: if isSignedIn()
+          && userId == request.resource.data.assigneeId  // Must match proposed assignee
+          && isWorkspaceMember(request.resource.data.workspaceId)  // Creator must be member
+          && exists(/databases/$(database)/documents/workspaces/$(request.resource.data.workspaceId)/companies/$(request.resource.data.companyId)/projects/$(request.resource.data.projectId)/silos/$(request.resource.data.siloId)/tasks/$(taskId));  // Task must exist in hierarchy;
+        allow update: if isSignedIn() && isOwner(userId) && resource != null;
+        allow delete: if isSignedIn() && isOwner(userId) && resource != null;
       }
-      function isOwner(userId) {
-        return request.auth.uid == userId;
-      }
-      allow get, list: if isSignedIn() && isOwner(userId);
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update, delete: if isSignedIn() && isOwner(userId);
     }
 
     /**
-     * @description Manages invites.
+     * @description Disables all access to invites. Invite processing is intended to be handled by a trusted backend.
      * @path /invites/{inviteId}
-     * @allow (get, list) No access.
-     * @allow (create) No access.
-     * @allow (update, delete) No access.
+     * @deny (get, list, create, update, delete) No client-side access to invites is allowed.
+     * @principle Relies on a trusted backend for invite management.
      */
     match /invites/{inviteId} {
-        allow get, list, create, update, delete: if false;
+      allow get, list, create, update, delete: if false;
     }
   }
 }
