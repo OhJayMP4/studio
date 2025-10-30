@@ -2,28 +2,20 @@
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Button } from "@/components/ui/button";
-import { useFirestore } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
-import { addDoc, collection } from "firebase/firestore";
 import { UserPlus } from "lucide-react";
-import { errorEmitter } from "@/firebase/error-emitter";
-import { FirestorePermissionError } from "@/firebase/errors";
-import { sendInviteEmail } from "@/ai/flows/send-invite-email-flow";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { useFirebase } from "@/firebase";
 
 // Basic email validation
 const validateEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 };
 
-// Generate a simple random token
-const generateToken = () => {
-    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-}
-
 export function InviteMemberButton() {
     const { selectedWorkspace } = useSelectedWorkspace();
-    const firestore = useFirestore();
     const { toast } = useToast();
+    const { firebaseApp } = useFirebase();
 
     const handleInvite = async () => {
         if (!selectedWorkspace) {
@@ -49,72 +41,48 @@ export function InviteMemberButton() {
             });
             return;
         }
-
-        const token = generateToken();
-        const expires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours from now
-
-        const inviteData = {
-            workspaceId: selectedWorkspace.id,
-            email,
-            token,
-            expires,
-        };
-
-        const invitesCollection = collection(firestore, 'invites');
-
+        
         try {
-            await addDoc(invitesCollection, inviteData);
-
-            const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-            console.log('APP_URL from env:', appUrl); // Log for debug
+            const functions = getFunctions(firebaseApp);
+            const createInvite = httpsCallable(functions, 'createInvite');
             
-            if (!appUrl) {
-                console.error('FATAL: NEXT_PUBLIC_APP_URL is not defined in the environment. Cannot send invitation email.');
-                toast({
-                    variant: 'destructive',
-                    title: "Configuration Error",
-                    description: "The application URL is not configured. Please contact support.",
-                });
-                return;
-            }
-            const joinUrl = `${appUrl}/join?token=${token}`;
-            console.log('Generated join URL:', joinUrl);
-
-            // Call the Genkit flow to send the email
-            const result = await sendInviteEmail({
-                email: email,
-                workspaceName: selectedWorkspace.name,
-                joinUrl: joinUrl
+            const result = await createInvite({ 
+                workspaceId: selectedWorkspace.id, 
+                email: email 
             });
 
-            if (result.success) {
-                toast({
+            const data = result.data as { success: boolean, token?: string, error?: string };
+
+            if (data.success && data.token) {
+                 const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+                 if (!appUrl) {
+                    console.error('FATAL: NEXT_PUBLIC_APP_URL is not defined.');
+                    toast({
+                        variant: 'destructive',
+                        title: "Configuration Error",
+                        description: "The application URL is not configured. The invite was created but the email could not be sent.",
+                    });
+                    return;
+                }
+                 const joinUrl = `${appUrl}/join?token=${data.token}`;
+
+                // The email is now sent by the Cloud Function.
+                 toast({
                     title: "Invitation Sent!",
                     description: `An invitation email has been sent to ${email}.`,
                 });
+
             } else {
-                 toast({
-                    variant: 'destructive',
-                    title: "Email Failed to Send",
-                    description: "The invite was created, but the email could not be sent. Please check your Resend configuration.",
-                });
+                throw new Error(data.error || "An unknown error occurred in the createInvite function.");
             }
             
         } catch(error: any) {
-             if (error instanceof FirestorePermissionError || (error.name === 'FirebaseError' && error.code === 'permission-denied')) {
-                 const permissionError = new FirestorePermissionError({
-                    path: invitesCollection.path,
-                    operation: 'create',
-                    requestResourceData: inviteData,
-                });
-                errorEmitter.emit('permission-error', permissionError);
-             } else {
-                 toast({
-                    variant: 'destructive',
-                    title: "Failed to Send Invite",
-                    description: error.message || "An unknown error occurred.",
-                });
-             }
+            console.error("Error creating invite:", error);
+            toast({
+                variant: 'destructive',
+                title: "Failed to Send Invite",
+                description: error.message || "An unknown error occurred.",
+            });
         }
     };
 
