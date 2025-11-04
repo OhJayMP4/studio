@@ -94,20 +94,33 @@ service cloud.firestore {
     }
 
     /**
+     * @description Checks if an admin is removing a workspaceId from a user's profile.
+     * @path N/A (helper function)
+     * @allow N/A (helper function)
+     * @deny N/A (helper function)
+     * @principle Authorization: Allows admins to manage user profiles during workspace removal.
+     */
+    function isAdminRemovingWorkspaceFromUser(currentData) {
+      let removedWorkspaceId = currentData.workspaceIds.diff(request.resource.data.workspaceIds).removed().only();
+      return removedWorkspaceId != null && isWorkspaceAdmin(removedWorkspaceId);
+    }
+    
+    /**
      * @description Rules for user profile documents.
      * @path /users/{userId}
      * @allow (get) Authenticated user can read their own profile.
-     * @allow (create, update) Authenticated user can create or update their own profile.
+     * @allow (create, update) Authenticated user can create or update their own profile. Admin can remove workspaceId.
      * @allow (delete) Authenticated user can delete their own profile.
      * @deny (get) Another user attempts to read this user's profile.
-     * @deny (create, update, delete) Another user attempts to modify this user's profile.
+     * @deny (create, update, delete) Another user attempts to modify this user's profile (except for admin removing workspace).
      * @deny (list) Listing all users is not allowed.
-     * @principle Ownership: Enforces user-only access to profile data.
+     * @principle Ownership & Admin Privilege: Enforces user-only access, with a narrow exception for admins.
      */
     match /users/{userId} {
       allow get: if isSignedIn();
       allow list: if false;
-      allow create, update: if isSignedIn() && isOwner(userId);
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isSignedIn() && (isOwner(userId) || isAdminRemovingWorkspaceFromUser(resource.data));
       allow delete: if isSignedIn() && isOwner(userId);
     }
     
@@ -131,12 +144,12 @@ service cloud.firestore {
      * @path /workspaces/{workspaceId}
      * @allow (get, list) Authenticated user can read or list workspaces they are a member of.
      * @allow (create) Authenticated user can create a workspace if they are the owner.
-     * @allow (update) Workspace owner can update the workspace.
+     * @allow (update) Workspace admin can update the workspace.
      * @allow (delete) Workspace owner can delete the workspace.
      * @deny (get, list) Authenticated user attempts to read or list workspaces they are not a member of.
      * @deny (create) Authenticated user attempts to create a workspace without being the owner.
-     * @deny (update, delete) Non-owner attempts to update or delete the workspace.
-     * @principle Membership: Enforces workspace membership for access.
+     * @deny (update, delete) Non-admin attempts to update or delete the workspace.
+     * @principle Membership & Admin Privilege: Enforces workspace membership for access, with elevated permissions for admins.
      */
     match /workspaces/{workspaceId} {
       allow get, list: if isWorkspaceMember(workspaceId);
