@@ -1,6 +1,8 @@
+
 'use server';
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import { UserTask } from "@/lib/types";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -191,6 +193,106 @@ exports.onTaskWrite = functions.firestore
             });
         }
     });
+
+// --- Deletion Triggers ---
+
+exports.onCompanyDelete = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}')
+    .onDelete(async (snap, context) => {
+        const { workspaceId } = context.params;
+        const companyData = snap.data();
+        // Assume the last user to touch it is the deleter - this is an assumption
+        const actorUid = companyData.updatedBy || companyData.createdBy; 
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+
+        if (!actorName) return;
+
+        await createNotification(workspaceId, {
+            type: 'company_deleted',
+            actorUid,
+            actorName,
+            target: { id: snap.id, name: companyData.name, type: 'company', path: `/companies` },
+            isRelevantTo,
+        });
+    });
+
+exports.onProjectDelete = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}')
+    .onDelete(async (snap, context) => {
+        const { workspaceId, companyId } = context.params;
+        const projectData = snap.data();
+        const actorUid = projectData.updatedBy || projectData.createdBy;
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+        
+        if (!actorName) return;
+        
+        const companySnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get();
+        const companyName = companySnap.exists ? companySnap.data()?.name : '';
+        
+        await createNotification(workspaceId, {
+            type: 'project_deleted',
+            actorUid,
+            actorName,
+            target: { id: snap.id, name: projectData.name, type: 'project', path: `/company/${companyId}` },
+            context: { companyName },
+            isRelevantTo,
+        });
+    });
+
+exports.onSiloDelete = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}')
+    .onDelete(async (snap, context) => {
+        const { workspaceId, companyId, projectId } = context.params;
+        const siloData = snap.data();
+        const actorUid = siloData.updatedBy || siloData.createdBy;
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+
+        if (!actorName) return;
+
+        const companySnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get();
+        const projectSnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get();
+        const companyName = companySnap.exists ? companySnap.data()?.name : '';
+        const projectName = projectSnap.exists ? projectSnap.data()?.name : '';
+
+        await createNotification(workspaceId, {
+            type: 'silo_deleted',
+            actorUid,
+            actorName,
+            target: { id: snap.id, name: siloData.name, type: 'silo', path: `/company/${companyId}/project/${projectId}` },
+            context: { companyName, projectName },
+            isRelevantTo,
+        });
+    });
+
+exports.onTaskDelete = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
+    .onDelete(async (snap, context) => {
+        const { workspaceId, companyId, projectId, siloId } = context.params;
+        const taskData = snap.data();
+        const actorUid = taskData.updatedBy || taskData.createdBy;
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+        if (!actorName) return;
+
+        const [companySnap, projectSnap, siloSnap] = await Promise.all([
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get()
+        ]);
+
+        const companyName = companySnap.data()?.name || '';
+        const projectName = projectSnap.data()?.name || '';
+        const siloName = siloSnap.data()?.name || '';
+        
+        await createNotification(workspaceId, {
+            type: 'task_deleted',
+            actorUid,
+            actorName,
+            target: { id: snap.id, name: taskData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
+            context: { companyName, projectName, siloName },
+            isRelevantTo,
+        });
+    });
+
 
 
 // Generate a simple random token
@@ -521,4 +623,62 @@ exports.deleteWorkspace = functions.https.onCall(async (data, context) => {
         console.error('Error deleting workspace:', error);
         throw new functions.https.HttpsError('internal', 'Failed to delete workspace');
     }
+});
+
+
+exports.generateTeamReport = functions.https.onCall(async (data, context) => {
+    // 1. Auth Check
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'You must be signed in to generate reports.');
+    }
+    const callerUid = context.auth.uid;
+    const { workspaceId, userIds } = data;
+
+    if (!workspaceId || !Array.isArray(userIds) || userIds.length === 0) {
+        throw new functions.https.HttpsError('invalid-argument', 'Workspace ID and an array of user IDs are required.');
+    }
+
+    // 2. Permission Check (Caller must be an admin of the workspace)
+    const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+    const workspaceSnap = await workspaceRef.get();
+
+    if (!workspaceSnap.exists) {
+        throw new functions.https.HttpsError('not-found', 'Workspace not found.');
+    }
+
+    const workspaceData = workspaceSnap.data();
+    const callerRole = workspaceData?.users?.[callerUid]?.role;
+
+    if (callerRole !== 'admin') {
+        throw new functions.https.HttpsError('permission-denied', 'Only workspace admins can generate team reports.');
+    }
+
+    // 3. Fetch Data for each user
+    const reportData = [];
+
+    for (const userId of userIds) {
+        // Security check: Ensure the target user is also in the same workspace.
+        if (!workspaceData?.memberIds?.includes(userId)) {
+            console.warn(`Skipping user ${userId} as they are not a member of workspace ${workspaceId}.`);
+            continue;
+        }
+
+        const userRef = db.doc(`users/${userId}`);
+        const tasksQuery = db.collection(`user-tasks/${userId}/tasks`).where('workspaceId', '==', workspaceId);
+
+        const [userSnap, tasksSnap] = await Promise.all([
+            userRef.get(),
+            tasksQuery.get(),
+        ]);
+
+        const userProfile = userSnap.exists ? { id: userSnap.id, ...userSnap.data() } : { uid: userId, name: 'Unknown User' };
+        const tasks = tasksSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as UserTask) }));
+
+        reportData.push({
+            user: userProfile,
+            tasks: tasks.sort((a,b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()),
+        });
+    }
+
+    return reportData;
 });

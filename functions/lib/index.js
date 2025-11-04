@@ -533,4 +533,49 @@ exports.deleteWorkspace = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('internal', 'Failed to delete workspace');
     }
 });
+exports.generateTeamReport = functions.https.onCall(async (data, context) => {
+    var _a, _b, _c;
+    // 1. Auth Check
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'You must be signed in to generate reports.');
+    }
+    const callerUid = context.auth.uid;
+    const { workspaceId, userIds } = data;
+    if (!workspaceId || !Array.isArray(userIds) || userIds.length === 0) {
+        throw new functions.https.HttpsError('invalid-argument', 'Workspace ID and an array of user IDs are required.');
+    }
+    // 2. Permission Check (Caller must be an admin of the workspace)
+    const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+    const workspaceSnap = await workspaceRef.get();
+    if (!workspaceSnap.exists) {
+        throw new functions.https.HttpsError('not-found', 'Workspace not found.');
+    }
+    const workspaceData = workspaceSnap.data();
+    const callerRole = (_b = (_a = workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) === null || _a === void 0 ? void 0 : _a[callerUid]) === null || _b === void 0 ? void 0 : _b.role;
+    if (callerRole !== 'admin') {
+        throw new functions.https.HttpsError('permission-denied', 'Only workspace admins can generate team reports.');
+    }
+    // 3. Fetch Data for each user
+    const reportData = [];
+    for (const userId of userIds) {
+        // Security check: Ensure the target user is also in the same workspace.
+        if (!((_c = workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.memberIds) === null || _c === void 0 ? void 0 : _c.includes(userId))) {
+            console.warn(`Skipping user ${userId} as they are not a member of workspace ${workspaceId}.`);
+            continue;
+        }
+        const userRef = db.doc(`users/${userId}`);
+        const tasksQuery = db.collection(`user-tasks/${userId}/tasks`).where('workspaceId', '==', workspaceId);
+        const [userSnap, tasksSnap] = await Promise.all([
+            userRef.get(),
+            tasksQuery.get(),
+        ]);
+        const userProfile = userSnap.exists() ? Object.assign({ id: userSnap.id }, userSnap.data()) : { uid: userId, name: 'Unknown User' };
+        const tasks = tasksSnap.docs.map(doc => (Object.assign({ id: doc.id }, doc.data())));
+        reportData.push({
+            user: userProfile,
+            tasks: tasks.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()),
+        });
+    }
+    return reportData;
+});
 //# sourceMappingURL=index.js.map
