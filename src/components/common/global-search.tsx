@@ -1,0 +1,166 @@
+'use client';
+
+import { useState, useEffect, useMemo } from 'react';
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import { useSelectedWorkspace } from '@/app/(main)/layout';
+import { useFirestore } from '@/firebase';
+import { collectionGroup, query, where, getDocs } from 'firebase/firestore';
+import type { Company, Project, Silo, Task } from '@/lib/types';
+import { Search, Building, Folder, Box, CheckSquare } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+
+type SearchResult =
+  | { type: 'company'; item: Company & { path: string } }
+  | { type: 'project'; item: Project & { path: string; companyName: string } }
+  | { type: 'silo'; item: Silo & { path: string; companyName: string; projectName: string } }
+  | { type: 'task'; item: Task & { path: string; companyName: string; projectName: string; siloName: string } };
+
+
+export function GlobalSearch() {
+  const [open, setOpen] = useState(false);
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const { selectedWorkspace } = useSelectedWorkspace();
+  const firestore = useFirestore();
+  const router = useRouter();
+
+  // Open on Cmd+K
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setOpen((open) => !open);
+      }
+    };
+    document.addEventListener('keydown', down);
+    return () => document.removeEventListener('keydown', down);
+  }, []);
+
+  const dataQuery = useMemo(async () => {
+    if (!selectedWorkspace || !firestore) return [];
+
+    const workspacePath = `workspaces/${selectedWorkspace.id}`;
+    
+    const companiesQuery = query(collectionGroup(firestore, 'companies'), where('__name__', '>=', `${workspacePath}/`), where('__name__', '<', `${workspacePath}0`));
+    const projectsQuery = query(collectionGroup(firestore, 'projects'), where('__name__', '>=', `${workspacePath}/`), where('__name__', '<', `${workspacePath}0`));
+    const silosQuery = query(collectionGroup(firestore, 'silos'), where('__name__', '>=', `${workspacePath}/`), where('__name__', '<', `${workspacePath}0`));
+    const tasksQuery = query(collectionGroup(firestore, 'tasks'), where('__name__', '>=', `${workspacePath}/`), where('__name__', '<', `${workspacePath}0`));
+
+    const [companiesSnap, projectsSnap, silosSnap, tasksSnap] = await Promise.all([
+        getDocs(companiesQuery),
+        getDocs(projectsQuery),
+        getDocs(silosQuery),
+        getDocs(tasksQuery),
+    ]);
+
+    const companies = companiesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Company));
+    const projects = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+    const silos = silosSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), path: doc.ref.path } as Silo & { path: string }));
+    const tasks = tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), path: doc.ref.path } as Task & { path: string }));
+
+    const searchData: SearchResult[] = [];
+
+    companies.forEach(c => searchData.push({ type: 'company', item: { ...c, path: `company/${c.id}` } }));
+    
+    projects.forEach(p => {
+        const company = companies.find(c => c.id === p.companyId);
+        searchData.push({ type: 'project', item: { ...p, path: `company/${p.companyId}/project/${p.id}`, companyName: company?.name || '' } })
+    });
+
+    silos.forEach(s => {
+        const pathParts = s.path.split('/');
+        const companyId = pathParts[3];
+        const projectId = pathParts[5];
+        const company = companies.find(c => c.id === companyId);
+        const project = projects.find(p => p.id === projectId);
+        searchData.push({ type: 'silo', item: { ...s, path: `company/${companyId}/project/${projectId}`, companyName: company?.name || '', projectName: project?.name || '' } })
+    });
+
+    tasks.forEach(t => {
+        const pathParts = t.path.split('/');
+        const companyId = pathParts[3];
+        const projectId = pathParts[5];
+        const siloId = pathParts[7];
+        const company = companies.find(c => c.id === companyId);
+        const project = projects.find(p => p.id === projectId);
+        const silo = silos.find(silo => silo.id === siloId);
+        searchData.push({ type: 'task', item: { ...t, path: `company/${companyId}/project/${projectId}`, companyName: company?.name || '', projectName: project?.name || '', siloName: silo?.name || '' } })
+    });
+
+    return searchData;
+
+  }, [selectedWorkspace, firestore]);
+
+  useEffect(() => {
+    if (open) {
+        dataQuery.then(data => setResults(data));
+    }
+  }, [open, dataQuery]);
+
+  const onSelect = (path: string) => {
+    router.push(`/${path}`);
+    setOpen(false);
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="text-sm text-muted-foreground w-40 lg:w-64 flex items-center gap-2 border rounded-md px-3 py-1.5 hover:bg-accent"
+      >
+        <Search className="h-4 w-4" />
+        Search...
+        <kbd className="pointer-events-none ml-auto hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
+            <span className="text-xs">⌘</span>K
+        </kbd>
+      </button>
+      <CommandDialog open={open} onOpenChange={setOpen}>
+        <CommandInput placeholder="Search for companies, projects, tasks..." />
+        <CommandList>
+          <CommandEmpty>No results found.</CommandEmpty>
+          <CommandGroup heading="Companies">
+            {results.filter(r => r.type === 'company').map(({ item }) => (
+              <CommandItem key={item.id} onSelect={() => onSelect(item.path)} value={`company-${item.name}`}>
+                <Building className="mr-2 h-4 w-4" />
+                <span>{item.name}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+          <CommandGroup heading="Projects">
+            {results.filter(r => r.type === 'project').map(({ item }) => (
+              <CommandItem key={item.id} onSelect={() => onSelect(item.path)} value={`project-${item.name}`}>
+                <Folder className="mr-2 h-4 w-4" />
+                <span>{item.name}</span>
+                <span className='text-xs text-muted-foreground ml-2'>in {item.companyName}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+           <CommandGroup heading="Silos">
+            {results.filter(r => r.type === 'silo').map(({ item }) => (
+              <CommandItem key={item.id} onSelect={() => onSelect(item.path)} value={`silo-${item.name}`}>
+                <Box className="mr-2 h-4 w-4" />
+                <span>{item.name}</span>
+                <span className='text-xs text-muted-foreground ml-2'>in {item.projectName}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+           <CommandGroup heading="Tasks">
+            {results.filter(r => r.type === 'task').map(({ item }) => (
+              <CommandItem key={item.id} onSelect={() => onSelect(item.path)} value={`task-${item.title}`}>
+                <CheckSquare className="mr-2 h-4 w-4" />
+                <span>{item.title}</span>
+                <span className='text-xs text-muted-foreground ml-2'>in {item.siloName}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        </CommandList>
+      </CommandDialog>
+    </>
+  );
+}
