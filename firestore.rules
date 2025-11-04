@@ -141,7 +141,7 @@ service cloud.firestore {
     match /workspaces/{workspaceId} {
       allow get, list: if isWorkspaceMember(workspaceId);
       allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isWorkspaceOwner(workspaceId);
+      allow update: if isWorkspaceAdmin(workspaceId);
       allow delete: if isWorkspaceOwner(workspaceId);
 
       /**
@@ -255,3 +255,5 @@ service cloud.firestore {
     }
   }
 }
+
+    
