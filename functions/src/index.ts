@@ -690,11 +690,17 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
         ]);
 
         const userProfile = userSnap.exists ? { id: userSnap.id, ...userSnap.data() } : { uid: userId, name: 'Unknown User' };
-        const tasks = tasksSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as UserTask) }));
+        const tasks = tasksSnap.docs.map(doc => {
+            const data = doc.data() as UserTask;
+            return {
+                ...data,
+                id: doc.id,
+            };
+        });
 
         reportData.push({
             user: userProfile,
-            tasks: tasks.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()),
+            tasks: tasks.sort((a,b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()),
         });
     }
 
