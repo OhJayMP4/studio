@@ -569,7 +569,7 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
             userRef.get(),
             tasksQuery.get(),
         ]);
-        const userProfile = userSnap.exists() ? Object.assign({ id: userSnap.id }, userSnap.data()) : { uid: userId, name: 'Unknown User' };
+        const userProfile = userSnap.exists ? Object.assign({ id: userSnap.id }, userSnap.data()) : { uid: userId, name: 'Unknown User' };
         const tasks = tasksSnap.docs.map(doc => (Object.assign({ id: doc.id }, doc.data())));
         reportData.push({
             user: userProfile,

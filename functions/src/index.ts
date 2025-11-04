@@ -1,7 +1,26 @@
 'use server';
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import { UserTask } from "@/lib/types";
+
+// Define the type locally to make the function self-contained
+interface UserTask {
+    id: string;
+    originalTaskId: string;
+    workspaceId: string;
+    companyId: string;
+    projectId: string;
+    siloId: string;
+    title: string;
+    description?: string;
+    completed: boolean;
+    dueDate: string;
+    priority: 'low' | 'medium' | 'high';
+    assigneeId: string;
+    companyName: string;
+    projectName: string;
+    siloName: string;
+}
+
 
 admin.initializeApp();
 const db = admin.firestore();
