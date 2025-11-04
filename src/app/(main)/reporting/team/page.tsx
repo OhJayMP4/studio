@@ -1,13 +1,14 @@
 'use client';
-import { Suspense } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useFirestore } from '@/firebase';
-import { UserTask, UserProfile } from '@/lib/types';
+import { UserTask, UserProfile, Workspace } from '@/lib/types';
 import { collection, getDocs, query, doc, getDoc } from "firebase/firestore";
-import { useEffect, useState } from "react";
 import { format } from 'date-fns';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { cn } from '@/lib/utils';
+import { useSelectedWorkspace } from '@/app/(main)/layout';
 
 type ReportData = {
     user: UserProfile;
@@ -35,13 +36,14 @@ function ReportLoader() {
 
 function TeamReportContent() {
     const searchParams = useSearchParams();
-    const userIds = searchParams.getAll('u');
+    const userIds = useMemo(() => searchParams.getAll('u'), [searchParams]);
     const firestore = useFirestore();
+    const { selectedWorkspace } = useSelectedWorkspace();
     const [reportData, setReportData] = useState<ReportData[] | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        if (userIds.length === 0 || !firestore) {
+        if (userIds.length === 0 || !firestore || !selectedWorkspace) {
             setIsLoading(false);
             return;
         }
@@ -54,13 +56,20 @@ function TeamReportContent() {
                     const userRef = doc(firestore, 'users', userId);
                     const tasksRef = collection(firestore, 'user-tasks', userId, 'tasks');
                     
+                    const q = query(tasksRef, where => where('workspaceId', '==', selectedWorkspace.id));
+
                     const [userSnap, tasksSnap] = await Promise.all([
                         getDoc(userRef),
-                        getDocs(query(tasksRef))
+                        getDocs(q)
                     ]);
 
-                    const user = userSnap.exists() ? { id: userSnap.id, ...userSnap.data() } as UserProfile : { uid: userId, name: 'Unknown User', email: null, avatarUrl: null };
-                    const tasks = tasksSnap.docs.map(d => ({ id: d.id, ...d.data() } as UserTask)).sort((a,b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+                    const user = userSnap.exists() 
+                        ? { id: userSnap.id, ...userSnap.data() } as UserProfile 
+                        : { uid: userId, name: 'Unknown User', email: null, avatarUrl: null };
+                    
+                    const tasks = tasksSnap.docs
+                        .map(d => ({ id: d.id, ...d.data() } as UserTask))
+                        .sort((a,b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
                     data.push({ user, tasks });
                 }
@@ -73,7 +82,7 @@ function TeamReportContent() {
         };
 
         fetchData();
-    }, [userIds, firestore]);
+    }, [userIds, firestore, selectedWorkspace]);
     
     if (isLoading) {
         return <ReportLoader />;
@@ -107,7 +116,7 @@ function TeamReportContent() {
 
             <div className="flex justify-between items-start mb-8">
                  <div>
-                    <h1 className="text-3xl font-bold">Team Task Report</h1>
+                    <h1 className="text-3xl font-bold">Team Task Report for {selectedWorkspace?.name}</h1>
                     <p className="text-gray-500">Generated on: {format(new Date(), 'PPP p')}</p>
                  </div>
                  <Button onClick={() => window.print()} className="no-print bg-gray-800 text-white hover:bg-gray-700">Print Report</Button>
@@ -146,7 +155,7 @@ function TeamReportContent() {
                             </tbody>
                         </table>
                     ) : (
-                         <p className="pl-4 text-gray-500">No tasks assigned to this user.</p>
+                         <p className="pl-4 text-gray-500">No tasks assigned to this user in this workspace.</p>
                     )}
                 </div>
             ))}

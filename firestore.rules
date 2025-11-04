@@ -70,6 +70,14 @@ service cloud.firestore {
     function isWorkspaceMember(workspaceId) {
       return isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users;
     }
+    
+    /**
+     * @description Checks if two users are in the same workspace.
+     */
+    function areInSameWorkspace(userId1, userId2, workspaceId) {
+      let ws = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
+      return userId1 in ws.users && userId2 in ws.users;
+    }
 
     /**
      * @description Checks if the authenticated user is the owner of the specified workspace.
@@ -229,16 +237,17 @@ service cloud.firestore {
     /**
      * @description Rules for denormalized user task documents.
      * @path /user-tasks/{userId}/tasks/{taskId}
-     * @allow (get, list) Authenticated user can read or list their own tasks.
+     * @allow (get, list) Authenticated user can read their own tasks, or an admin from the same workspace can read them.
      * @allow (create) Any workspace member can create a task for another user.
      * @allow (update, delete) Authenticated user can update or delete their own tasks.
-     * @deny (get, list) Non-owner attempts to read or list tasks.
+     * @deny (get, list) Non-owner attempts to read or list tasks unless they are an admin in the same workspace.
      * @deny (create) Non-workspace member attempts to create the denormalized task.
      * @deny (update, delete) Non-owner attempts to update or delete tasks.
      * @principle Ownership & Membership: Enforces user-only access to their task list, but allows workspace members to add to it.
      */
     match /user-tasks/{userId}/tasks/{taskId} {
-      allow get, list: if isSignedIn() && isOwner(userId);
+      allow get: if isSignedIn() && (isOwner(userId) || isWorkspaceAdmin(resource.data.workspaceId));
+      allow list: if isSignedIn() && (isOwner(userId) || (isWorkspaceAdmin(request.query.resource.data.workspaceId) && areInSameWorkspace(request.auth.uid, userId, request.query.resource.data.workspaceId)));
       allow create: if isWorkspaceMember(request.resource.data.workspaceId);
       allow update: if isSignedIn() && isOwner(userId);
       allow delete: if isSignedIn() && isOwner(userId);
