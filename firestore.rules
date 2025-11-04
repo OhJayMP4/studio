@@ -9,7 +9,7 @@
  * Invites can only be created via trusted server to ensure security.
  *
  * Data Structure:
- * - /users/{userId}: User profiles, accessible only by the user themselves.
+ * - /users/{userId}: User profiles, accessible only by the user themselves. Admins can only modify workspaceIds for removal.
  * - /workspaces/{workspaceId}: Workspaces, accessible to members.
  * - /workspaces/{workspaceId}/companies/{companyId}: Companies within workspaces, accessible to workspace members.
  * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}: Projects within companies, accessible to workspace members.
@@ -49,9 +49,9 @@ service cloud.firestore {
 
     /**
      * @description Checks if the authenticated user is the owner of the resource (identified by userId).
-     * @path N/A (helper function)
-     * @allow N/A (helper function)
-     * @deny N/A (helper function)
+     * @path N'A (helper function)
+     * @allow N'A (helper function)
+     * @deny N'A (helper function)
      * @principle Authorization: Enforces user ownership.
      */
     function isOwner(userId) {
@@ -61,9 +61,9 @@ service cloud.firestore {
     /**
      * @description Checks if the authenticated user is a member of the specified workspace.
      *              Membership is determined by the presence of the user's UID in the `users` map on the workspace document.
-     * @path N/A (helper function)
+     * @path N'A (helper function)
      * @allow NA (helper function)
-     * @deny N/A (helper function)
+     * @deny N'A (helper function)
      * @principle Authorization: Enforces workspace membership for access.
      */
     function isWorkspaceMember(workspaceId) {
@@ -72,9 +72,9 @@ service cloud.firestore {
 
     /**
      * @description Checks if the authenticated user is the owner of the specified workspace.
-     * @path N/A (helper function)
-     * @allow N/A (helper function)
-     * @deny N/A (helper function)
+     * @path N'A (helper function)
+     * @allow N'A (helper function)
+     * @deny N'A (helper function)
      * @principle Authorization: Enforces workspace ownership for certain operations.
      */
     function isWorkspaceOwner(workspaceId) {
@@ -83,9 +83,9 @@ service cloud.firestore {
 
     /**
      * @description Checks if the authenticated user is an admin of the specified workspace.
-     * @path N/A (helper function)
-     * @allow N/A (helper function)
-     * @deny N/A (helper function)
+     * @path N'A (helper function)
+     * @allow N'A (helper function)
+     * @deny N'A (helper function)
      * @principle Authorization: Enforces workspace admin role for certain operations.
      */
     function isWorkspaceAdmin(workspaceId) {
@@ -94,25 +94,46 @@ service cloud.firestore {
     }
 
     /**
-     * @description Checks if an admin is removing a workspaceId from a user's profile.
+     * @description Checks if an admin is attempting to remove a user from a workspace.
+     *              This rule is secure because it ONLY allows the 'workspaceIds' field to be changed.
+     *              An admin cannot change a user's name, email, etc.
      * @path N/A (helper function)
      * @allow N/A (helper function)
      * @deny N/A (helper function)
-     * @principle Authorization: Allows admins to manage user profiles during workspace removal.
+     * @principle Authorization & Least Privilege: Allows admins to manage user profiles for workspace removal without granting broader edit permissions.
      */
-    function isAdminRemovingWorkspaceFromUser() {
-      let removedWorkspaceId = resource.data.workspaceIds.diff(request.resource.data.workspaceIds).removed().only();
-      return removedWorkspaceId != null && isWorkspaceAdmin(removedWorkspaceId);
+    function isAdminManagingUserWorkspaces() {
+        // Ensure that the only field being changed is `workspaceIds`
+        let otherFieldsChanged = request.resource.data.keys().removeAll(['uid', 'email', 'name', 'avatarUrl', 'workspaceIds']).size() > 0;
+        let mainFieldsChanged = request.resource.data.diff(resource.data).affectedKeys().removeAll(['workspaceIds']).size() > 0;
+
+        // The request is only valid if no other fields are being modified
+        if (mainFieldsChanged || otherFieldsChanged) {
+            return false;
+        }
+
+        // Get the list of workspace IDs that are being removed from the user's profile
+        let removedIds = resource.data.workspaceIds.diff(request.resource.data.workspaceIds).removed();
+
+        // If no IDs are being removed, this rule does not apply.
+        if (removedIds.size() == 0) {
+            return false;
+        }
+        
+        // Check if the requesting user is an admin of the workspace that is being removed.
+        let removedWorkspaceId = removedIds[0]; // We only support removing one at a time from the client
+        return isWorkspaceAdmin(removedWorkspaceId);
     }
     
     /**
      * @description Rules for user profile documents.
      * @path /users/{userId}
      * @allow (get) Authenticated user can read their own profile.
-     * @allow (create, update) Authenticated user can create or update their own profile. Admin can remove workspaceId.
+     * @allow (create) Authenticated user can create their own profile.
+     * @allow (update) Authenticated user can update their own profile, or a workspace admin can manage workspace memberships.
      * @allow (delete) Authenticated user can delete their own profile.
      * @deny (get) Another user attempts to read this user's profile.
-     * @deny (create, update, delete) Another user attempts to modify this user's profile (except for admin removing workspace).
+     * @deny (create, update, delete) Another user attempts to modify this user's profile (except for admin managing workspaces).
      * @deny (list) Listing all users is not allowed.
      * @principle Ownership & Admin Privilege: Enforces user-only access, with a narrow exception for admins.
      */
@@ -120,7 +141,7 @@ service cloud.firestore {
       allow get: if isSignedIn();
       allow list: if false;
       allow create: if isSignedIn() && isOwner(userId);
-      allow update: if isSignedIn() && (isOwner(userId) || isAdminRemovingWorkspaceFromUser());
+      allow update: if isSignedIn() && (isOwner(userId) || isAdminManagingUserWorkspaces());
       allow delete: if isSignedIn() && isOwner(userId);
     }
     
