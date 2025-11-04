@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useUser, FirebaseClientProvider } from '@/firebase';
+import { useUser, FirebaseClientProvider, useFirebase } from '@/firebase';
 import {
   getFunctions,
   httpsCallable,
@@ -21,6 +21,7 @@ function JoinProcessor() {
     const token = searchParams.get('token');
     
     const { user, isUserLoading } = useUser();
+    const { firebaseApp } = useFirebase();
     const { toast } = useToast();
     
     const [status, setStatus] = useState<'loading' | 'error' | 'success' | 'joining'>('loading');
@@ -50,11 +51,11 @@ function JoinProcessor() {
 
 
     const handleJoinWorkspace = async () => {
-        if (!user || !token) return;
+        if (!user || !token || !firebaseApp) return;
 
         setStatus('joining');
         try {
-            const functions = getFunctions();
+            const functions = getFunctions(firebaseApp);
             const joinWorkspace = httpsCallable(functions, 'joinWorkspace');
 
             const result = await joinWorkspace({ token });

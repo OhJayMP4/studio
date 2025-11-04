@@ -41,6 +41,7 @@ exports.createInvite = functions.https.onCall(async (data, context) => {
     // Check if user is already a member
     const existingUser = Object.values(workspaceData?.users || {}).find((member: any) => member.email === email);
     if(existingUser) {
+        // We throw an 'already-exists' error code which the client can use.
         throw new functions.https.HttpsError('already-exists', 'A user with this email is already a member of the workspace.');
     }
     
@@ -48,7 +49,7 @@ exports.createInvite = functions.https.onCall(async (data, context) => {
     const token = generateToken();
     const expires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours in millis
 
-    const inviteRef = db.collection('invites').doc();
+    const inviteRef = db.collection('invites').doc(); // Use auto-generated ID
     await inviteRef.set({
         workspaceId,
         email,
@@ -59,16 +60,19 @@ exports.createInvite = functions.https.onCall(async (data, context) => {
     });
 
     // 4. Send Email via Resend
+    // Use `functions.config()` to access environment variables set in Firebase.
     const resendApiKey = functions.config().resend?.api_key || process.env.RESEND_API_KEY;
     if (!resendApiKey) {
         console.warn('RESEND_API_KEY not set. Cannot send invitation email.');
-        // Still return success, as the invite is created.
+        // Still return success, as the invite is created. The client can show a message.
         return { success: true, message: "Invite created, but email not sent due to missing API key." };
     }
 
+    // Get the app URL from environment configuration
     const appUrl = functions.config().app?.url || process.env.NEXT_PUBLIC_APP_URL;
     if (!appUrl) {
         console.error('NEXT_PUBLIC_APP_URL not set. Cannot form join URL for email.');
+        // This is a critical configuration error.
         return { success: true, message: "Invite created, but email not sent due to missing App URL." };
     }
     

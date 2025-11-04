@@ -4,7 +4,7 @@ import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { UserPlus } from "lucide-react";
-import { useUser } from "@/firebase";
+import { useUser, useFirebase } from "@/firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
 
 // Basic email validation
@@ -16,6 +16,7 @@ export function InviteMemberButton() {
     const { selectedWorkspace } = useSelectedWorkspace();
     const { user } = useUser();
     const { toast } = useToast();
+    const { firebaseApp } = useFirebase();
 
     const handleInvite = async () => {
         if (!selectedWorkspace) {
@@ -56,7 +57,7 @@ export function InviteMemberButton() {
                 description: `Sending invite to ${email}.`,
             });
             
-            const functions = getFunctions();
+            const functions = getFunctions(firebaseApp);
             const createInvite = httpsCallable(functions, 'createInvite');
             
             const result = await createInvite({
