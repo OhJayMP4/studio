@@ -16,7 +16,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
-import { Bell, UserPlus, CheckCircle2, Building, Folder, Box, CheckSquare, FileText } from 'lucide-react';
+import { Bell, UserPlus, CheckCircle2, Building, Folder, Box, CheckSquare, FileText, Trash2 } from 'lucide-react';
 
 
 function NotificationsBreadcrumb() {
@@ -39,6 +39,11 @@ const getIcon = (type: Notification['type']) => {
         case 'project_added': return <Folder className="h-5 w-5 text-muted-foreground" />;
         case 'company_added': return <Building className="h-5 w-5 text-muted-foreground" />;
         case 'sale_added': return <FileText className="h-5 w-5 text-muted-foreground" />;
+        case 'task_deleted':
+        case 'silo_deleted':
+        case 'project_deleted':
+        case 'company_deleted':
+            return <Trash2 className="h-5 w-5 text-destructive" />;
         default: return <Bell className="h-5 w-5 text-muted-foreground" />;
     }
 }
@@ -55,8 +60,16 @@ const getNotificationText = (n: Notification) => {
             return <><span className="font-semibold">{n.actorName}</span> assigned <span className="font-semibold">{n.target.name}</span> to <span className="font-semibold">{n.assignee?.name}</span></>;
         case 'task_completed':
             return <><span className="font-semibold">{n.actorName}</span> completed the task: <span className="font-semibold">{n.target.name}</span></>;
-         case 'sale_added':
+        case 'sale_added':
             return <><span className="font-semibold">{n.actorName}</span> logged a new sale: <span className="font-semibold">{n.target.name}</span> for {n.context?.projectName}</>;
+        case 'company_deleted':
+            return <><span className="font-semibold">{n.actorName}</span> deleted the company: <span className="font-semibold">{n.target.name}</span></>;
+        case 'project_deleted':
+            return <><span className="font-semibold">{n.actorName}</span> deleted the project: <span className="font-semibold">{n.target.name}</span></>;
+        case 'silo_deleted':
+            return <><span className="font-semibold">{n.actorName}</span> deleted the silo: <span className="font-semibold">{n.target.name}</span></>;
+        case 'task_deleted':
+            return <><span className="font-semibold">{n.actorName}</span> deleted the task: <span className="font-semibold">{n.target.name}</span></>;
         default:
             return 'New activity';
     }

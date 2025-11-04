@@ -117,7 +117,7 @@ exports.onSaleCreate = functions.firestore
 exports.onTaskWrite = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
     .onWrite(async (change, context) => {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f, _g;
     const { workspaceId, companyId, projectId, siloId } = context.params;
     const beforeData = change.before.data();
     const afterData = change.after.data();
@@ -160,8 +160,8 @@ exports.onTaskWrite = functions.firestore
             db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get()
         ]);
         const companyName = ((_e = companySnap.data()) === null || _e === void 0 ? void 0 : _e.name) || '';
-        const projectName = companySnap.data()?.name || '';
-        const siloName = siloSnap.data()?.name || '';
+        const projectName = ((_f = projectSnap.data()) === null || _f === void 0 ? void 0 : _f.name) || '';
+        const siloName = ((_g = siloSnap.data()) === null || _g === void 0 ? void 0 : _g.name) || '';
         await createNotification(workspaceId, {
             type: 'task_completed',
             actorUid,

@@ -7,7 +7,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Button } from '../ui/button';
-import { Bell, Check, CheckSquare, Folder, Box, Building, UserPlus, FileText, CheckCircle2 } from 'lucide-react';
+import { Bell, Check, CheckSquare, Folder, Box, Building, UserPlus, FileText, CheckCircle2, Trash2 } from 'lucide-react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, orderBy, limit, writeBatch, doc, arrayUnion, updateDoc } from 'firebase/firestore';
@@ -87,6 +87,11 @@ const getIcon = (type: Notification['type']) => {
         case 'project_added': return <Folder className="h-4 w-4 text-muted-foreground" />;
         case 'company_added': return <Building className="h-4 w-4 text-muted-foreground" />;
         case 'sale_added': return <FileText className="h-4 w-4 text-muted-foreground" />;
+        case 'task_deleted':
+        case 'silo_deleted':
+        case 'project_deleted':
+        case 'company_deleted':
+            return <Trash2 className="h-4 w-4 text-destructive" />;
         default: return <Bell className="h-4 w-4 text-muted-foreground" />;
     }
 }
@@ -99,14 +104,20 @@ const getNotificationText = (n: Notification) => {
             return <><span className="font-semibold">{n.actorName}</span> added a new project: <span className="font-semibold">{n.target.name}</span> in {n.context?.companyName}</>;
         case 'silo_added':
             return <><span className="font-semibold">{n.actorName}</span> added a new silo: <span className="font-semibold">{n.target.name}</span> in {n.context?.projectName}</>;
-        case 'task_added':
-             return <><span className="font-semibold">{n.actorName}</span> assigned <span className="font-semibold">{n.target.name}</span> to <span className="font-semibold">{n.assignee?.name}</span></>;
         case 'task_assigned':
             return <><span className="font-semibold">{n.actorName}</span> assigned <span className="font-semibold">{n.target.name}</span> to <span className="font-semibold">{n.assignee?.name}</span></>;
         case 'task_completed':
             return <><span className="font-semibold">{n.actorName}</span> completed the task: <span className="font-semibold">{n.target.name}</span></>;
-         case 'sale_added':
+        case 'sale_added':
             return <><span className="font-semibold">{n.actorName}</span> logged a new sale: <span className="font-semibold">{n.target.name}</span> for {n.context?.projectName}</>;
+        case 'company_deleted':
+            return <><span className="font-semibold">{n.actorName}</span> deleted the company: <span className="font-semibold">{n.target.name}</span></>;
+        case 'project_deleted':
+            return <><span className="font-semibold">{n.actorName}</span> deleted the project: <span className="font-semibold">{n.target.name}</span></>;
+        case 'silo_deleted':
+            return <><span className="font-semibold">{n.actorName}</span> deleted the silo: <span className="font-semibold">{n.target.name}</span></>;
+        case 'task_deleted':
+            return <><span className="font-semibold">{n.actorName}</span> deleted the task: <span className="font-semibold">{n.target.name}</span></>;
         default:
             return 'New activity';
     }

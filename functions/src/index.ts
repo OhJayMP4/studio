@@ -192,6 +192,106 @@ exports.onTaskWrite = functions.firestore
         }
     });
 
+// --- Deletion Triggers ---
+
+exports.onCompanyDelete = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}')
+    .onDelete(async (snap, context) => {
+        const { workspaceId } = context.params;
+        const companyData = snap.data();
+        // Assume the last user to touch it is the deleter - this is an assumption
+        const actorUid = companyData.updatedBy || companyData.createdBy; 
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+
+        if (!actorName) return;
+
+        await createNotification(workspaceId, {
+            type: 'company_deleted',
+            actorUid,
+            actorName,
+            target: { id: snap.id, name: companyData.name, type: 'company', path: `/companies` },
+            isRelevantTo,
+        });
+    });
+
+exports.onProjectDelete = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}')
+    .onDelete(async (snap, context) => {
+        const { workspaceId, companyId } = context.params;
+        const projectData = snap.data();
+        const actorUid = projectData.updatedBy || projectData.createdBy;
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+        
+        if (!actorName) return;
+        
+        const companySnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get();
+        const companyName = companySnap.exists ? companySnap.data()?.name : '';
+        
+        await createNotification(workspaceId, {
+            type: 'project_deleted',
+            actorUid,
+            actorName,
+            target: { id: snap.id, name: projectData.name, type: 'project', path: `/company/${companyId}` },
+            context: { companyName },
+            isRelevantTo,
+        });
+    });
+
+exports.onSiloDelete = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}')
+    .onDelete(async (snap, context) => {
+        const { workspaceId, companyId, projectId } = context.params;
+        const siloData = snap.data();
+        const actorUid = siloData.updatedBy || siloData.createdBy;
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+
+        if (!actorName) return;
+
+        const companySnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get();
+        const projectSnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get();
+        const companyName = companySnap.exists ? companySnap.data()?.name : '';
+        const projectName = projectSnap.exists ? projectSnap.data()?.name : '';
+
+        await createNotification(workspaceId, {
+            type: 'silo_deleted',
+            actorUid,
+            actorName,
+            target: { id: snap.id, name: siloData.name, type: 'silo', path: `/company/${companyId}/project/${projectId}` },
+            context: { companyName, projectName },
+            isRelevantTo,
+        });
+    });
+
+exports.onTaskDelete = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
+    .onDelete(async (snap, context) => {
+        const { workspaceId, companyId, projectId, siloId } = context.params;
+        const taskData = snap.data();
+        const actorUid = taskData.updatedBy || taskData.createdBy;
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+        if (!actorName) return;
+
+        const [companySnap, projectSnap, siloSnap] = await Promise.all([
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get()
+        ]);
+
+        const companyName = companySnap.data()?.name || '';
+        const projectName = projectSnap.data()?.name || '';
+        const siloName = siloSnap.data()?.name || '';
+        
+        await createNotification(workspaceId, {
+            type: 'task_deleted',
+            actorUid,
+            actorName,
+            target: { id: snap.id, name: taskData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
+            context: { companyName, projectName, siloName },
+            isRelevantTo,
+        });
+    });
+
+
 
 // Generate a simple random token
 const generateToken = () => {

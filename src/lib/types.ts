@@ -101,7 +101,7 @@ export type Invite = {
 
 export type Notification = {
     id: string;
-    type: 'task_added' | 'task_assigned' | 'task_completed' | 'silo_added' | 'project_added' | 'company_added' | 'sale_added';
+    type: 'task_assigned' | 'task_completed' | 'silo_added' | 'project_added' | 'company_added' | 'sale_added' | 'task_deleted' | 'silo_deleted' | 'project_deleted' | 'company_deleted';
     actorUid: string;
     actorName: string;
     target: {
