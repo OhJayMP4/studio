@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { UserPlus } from "lucide-react";
 import { useUser, useFirebase } from "@/firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
+import { sendInviteEmail } from "@/ai/flows/send-invite-email-flow";
 
 // Basic email validation
 const validateEmail = (email: string) => {
@@ -53,7 +54,7 @@ export function InviteMemberButton() {
         
         try {
             toast({
-                title: "Sending Invitation...",
+                title: "Creating Invitation...",
                 description: `Sending invite to ${email}.`,
             });
             
@@ -65,20 +66,40 @@ export function InviteMemberButton() {
                 email: email,
             });
 
-            const data = result.data as { success: boolean, message?: string };
+            const data = result.data as { success: boolean, joinUrl?: string, workspaceName?: string };
 
-            if (data.success) {
+            if (data.success && data.joinUrl && data.workspaceName) {
                  toast({
-                    title: "Invitation Sent!",
-                    description: data.message || `An invitation email has been sent to ${email}.`,
+                    title: "Invitation Created!",
+                    description: `Now sending email...`,
                 });
+
+                // Now call the Genkit flow to send the email
+                const emailResult = await sendInviteEmail({
+                    email,
+                    workspaceName: data.workspaceName,
+                    joinUrl: data.joinUrl,
+                });
+
+                if (emailResult.success) {
+                    toast({
+                        title: "Invitation Sent!",
+                        description: `An invitation has been sent to ${email}.`,
+                    });
+                } else {
+                     toast({
+                        variant: 'destructive',
+                        title: "Email Failed to Send",
+                        description: `The invite was created, but the email could not be sent. You can share this link manually: ${data.joinUrl}`,
+                    });
+                }
+
             } else {
-                throw new Error(data.message || "An unknown error occurred in the createInvite function.");
+                throw new Error("The createInvite function failed to return the necessary data.");
             }
             
         } catch(error: any) {
             console.error("Error creating invite:", error);
-            // The onCall function throws an HttpsError which has a message property
             const message = error.message || "An unknown error occurred.";
             toast({
                 variant: 'destructive',

@@ -45,7 +45,7 @@ env:
       - BUILD
       - RUNTIME
   - variable: RESEND_API_KEY
-    value: "YOUR_RESEND_API_KEY_HERE"
+    value: "re_hfnUftgP_LxQrEY7o8aEKeHUumQfM1Zqw"
     availability:
       - BUILD
       - RUNTIME

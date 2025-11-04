@@ -19,13 +19,12 @@ const sendInviteEmailFlow = ai.defineFlow(
   async (input) => {
     const { email, workspaceName, joinUrl } = input;
 
+    // This will correctly access the environment variable from apphosting.yaml
     const resendApiKey = process.env.RESEND_API_KEY;
     
     if (!resendApiKey) {
         console.warn(
-            'RESEND_API_KEY is not set. Skipping email sending. Email body would have been:\n',
-            `To: ${email}\nSubject: You're invited to join ${workspaceName} on SaturnSync!\n\n` +
-            `Click here to join: ${joinUrl}`
+            'RESEND_API_KEY is not set in environment variables. Cannot send email.'
         );
         return { success: false };
     }
@@ -34,7 +33,7 @@ const sendInviteEmailFlow = ai.defineFlow(
 
     try {
       await resend.emails.send({
-        from: 'onboarding@saturnsync.com', // Must be a verified domain in Resend
+        from: 'onboarding@saturnsync.com',
         to: email,
         subject: `You're invited to join the "${workspaceName}" workspace on SaturnSync!`,
         html: `
@@ -44,7 +43,7 @@ const sendInviteEmailFlow = ai.defineFlow(
             <a 
               href="${joinUrl}" 
               target="_blank"
-              style="display: inline-block; background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin-top: 20px;"
+              style="display: inline-block; background-color: #FF6812; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin-top: 20px;"
             >
               Join Workspace
             </a>
@@ -58,8 +57,6 @@ const sendInviteEmailFlow = ai.defineFlow(
       return { success: true };
     } catch (error) {
       console.error('Error sending email via Resend:', error);
-      // We don't want to block the user flow if the email fails, so we return success=false but don't throw.
-      // In a production app, you'd add more robust error handling or a retry mechanism here.
       return { success: false };
     }
   }

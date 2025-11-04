@@ -1,7 +1,6 @@
 'use server';
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import { Resend } from "resend";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -61,54 +60,11 @@ exports.createInvite = functions.https.onCall(async (data, context) => {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // 4. Send Email via Resend
-    // Use `functions.config()` to access environment variables set in Firebase.
-    const resendApiKey = functions.config().resend?.api_key || process.env.RESEND_API_KEY;
-    if (!resendApiKey) {
-        console.warn('RESEND_API_KEY not set. Cannot send invitation email.');
-        // Still return success, as the invite is created. The client can show a message.
-        return { success: true, message: "Invite created, but email not sent due to missing API key." };
-    }
-
-    // Get the app URL from environment configuration
-    const appUrl = functions.config().app?.url || process.env.NEXT_PUBLIC_APP_URL;
-    if (!appUrl) {
-        console.error('NEXT_PUBLIC_APP_URL not set. Cannot form join URL for email.');
-        // This is a critical configuration error.
-        return { success: true, message: "Invite created, but email not sent due to missing App URL." };
-    }
-    
+    // 4. Form the Join URL and return it to the client
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const joinUrl = `${appUrl}/join?token=${token}`;
-    const resend = new Resend(resendApiKey);
-
-    try {
-        await resend.emails.send({
-            from: 'onboarding@saturnsync.com',
-            to: email,
-            subject: `You're invited to join the "${workspaceData?.name}" workspace on SaturnSync!`,
-            html: `
-              <div style="font-family: sans-serif; text-align: center; padding: 40px;">
-                <h1 style="font-size: 24px;">You're Invited!</h1>
-                <p style="font-size: 16px; color: #555;">You have been invited to join the <strong>${workspaceData?.name}</strong> workspace on SaturnSync.</p>
-                <a 
-                  href="${joinUrl}" 
-                  target="_blank"
-                  style="display: inline-block; background-color: #FF6812; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin-top: 20px;"
-                >
-                  Join Workspace
-                </a>
-                <p style="font-size: 12px; color: #999; margin-top: 30px;">
-                  If you did not expect this invitation, you can ignore this email.
-                </p>
-              </div>
-            `,
-        });
-         return { success: true };
-    } catch (error) {
-        console.error('Error sending email via Resend:', error);
-        // Throw an internal error that the client can catch
-        throw new functions.https.HttpsError('internal', 'Failed to send invitation email.');
-    }
+    
+    return { success: true, joinUrl, workspaceName: workspaceData?.name };
 });
 
 
@@ -153,13 +109,25 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
     
     const workspaceId = inviteData.workspaceId;
     const workspaceRef = db.doc(`workspaces/${workspaceId}`);
-    const userRef = db.doc(`users/${uid}`);
+    const userRef = doc(db.doc(`users/${uid}`).path);
 
     await db.runTransaction(async (transaction) => {
         const workspaceDoc = await transaction.get(workspaceRef);
+        const userDoc = await transaction.get(userRef);
 
-        if (!workspaceDoc.exists) {
+        if (!workspaceDoc.exists()) {
           throw new functions.https.HttpsError("not-found", "The workspace you were invited to no longer exists.");
+        }
+        
+        if (!userDoc.exists()) {
+            // Create the user profile if it doesn't exist
+            transaction.set(userRef, {
+                uid,
+                email,
+                name: displayName,
+                avatarUrl: photoURL,
+                workspaceIds: [],
+            });
         }
 
         const workspaceData = workspaceDoc.data();
