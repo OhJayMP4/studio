@@ -1,8 +1,8 @@
 'use client';
 
-import { useDoc, useFirestore, useMemoFirebase, useCollection } from "@/firebase";
+import { useDoc, useFirestore, useMemoFirebase } from "@/firebase";
 import type { Workspace, Project, Task } from "@/lib/types";
-import { collectionGroup, doc, query, where, getDocs } from "firebase/firestore";
+import { collection, doc, getDocs } from "firebase/firestore";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
@@ -38,6 +38,10 @@ export default function LiveReportPage() {
     const firestore = useFirestore();
     const [currentTime, setCurrentTime] = useState(new Date());
 
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [tasks, setTasks] = useState<Task[]>([]);
+    const [isLoadingData, setIsLoadingData] = useState(true);
+
     const workspaceRef = useMemoFirebase(() => {
         if (!workspaceId) return null;
         return doc(firestore, 'workspaces', workspaceId);
@@ -45,28 +49,51 @@ export default function LiveReportPage() {
 
     const { data: workspace, isLoading: isLoadingWorkspace } = useDoc<Workspace>(workspaceRef);
 
-    const projectsQuery = useMemoFirebase(() => {
-      if (!workspaceId) return null;
-       const workspacePath = `workspaces/${workspaceId}`;
-       return query(
-          collectionGroup(firestore, 'projects'),
-          where('__name__', '>=', `${workspacePath}/`),
-          where('__name__', '<', `${workspacePath}0`)
-        );
-    }, [firestore, workspaceId]);
-    const { data: projects, isLoading: isLoadingProjects } = useCollection<Project>(projectsQuery);
+     useEffect(() => {
+        if (!workspaceId || !firestore) {
+            setIsLoadingData(false);
+            return;
+        }
 
-    const tasksQuery = useMemoFirebase(() => {
-        if (!workspaceId) return null;
-        const workspacePath = `workspaces/${workspaceId}`;
-        return query(
-          collectionGroup(firestore, 'tasks'),
-          where('__name__', '>=', `${workspacePath}/`),
-          where('__name__', '<', `${workspacePath}0`)
-        );
-    }, [firestore, workspaceId]);
-    const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
+        const fetchWorkspaceData = async () => {
+            setIsLoadingData(true);
+            try {
+                const companiesRef = collection(firestore, 'workspaces', workspaceId, 'companies');
+                const companiesSnapshot = await getDocs(companiesRef);
+                
+                let allProjects: Project[] = [];
+                let allTasks: Task[] = [];
 
+                for (const companyDoc of companiesSnapshot.docs) {
+                    const projectsRef = collection(companyDoc.ref, 'projects');
+                    const projectsSnapshot = await getDocs(projectsRef);
+                    
+                    for (const projectDoc of projectsSnapshot.docs) {
+                        allProjects.push({ id: projectDoc.id, ...projectDoc.data() } as Project);
+                        
+                        const silosRef = collection(projectDoc.ref, 'silos');
+                        const silosSnapshot = await getDocs(silosRef);
+
+                        for (const siloDoc of silosSnapshot.docs) {
+                            const tasksRef = collection(siloDoc.ref, 'tasks');
+                            const tasksSnapshot = await getDocs(tasksRef);
+                            tasksSnapshot.forEach(taskDoc => {
+                                allTasks.push({ id: taskDoc.id, ...taskDoc.data() } as Task);
+                            });
+                        }
+                    }
+                }
+                setProjects(allProjects);
+                setTasks(allTasks);
+            } catch (error) {
+                console.error("Error fetching live report data: ", error);
+            } finally {
+                setIsLoadingData(false);
+            }
+        };
+        
+        fetchWorkspaceData();
+    }, [workspaceId, firestore]);
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -75,9 +102,9 @@ export default function LiveReportPage() {
         return () => clearInterval(timer);
     }, []);
 
-    const isLoading = isLoadingWorkspace || isLoadingProjects || isLoadingTasks;
+    const isLoading = isLoadingWorkspace || isLoadingData;
     
-    if (isLoading || !workspace || !projects || !tasks) {
+    if (isLoading || !workspace) {
         return <LiveReportLoader />;
     }
 
@@ -91,8 +118,8 @@ export default function LiveReportPage() {
 
                 <main className="space-y-8">
                     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                       <ProjectStatusChart projects={projects} isLoading={isLoadingProjects} />
-                       <TaskPriorityChart tasks={tasks} isLoading={isLoadingTasks} />
+                       <ProjectStatusChart projects={projects} isLoading={isLoading} />
+                       <TaskPriorityChart tasks={tasks} isLoading={isLoading} />
                          <Card>
                             <CardHeader>
                                 <CardTitle>Coming Soon</CardTitle>
