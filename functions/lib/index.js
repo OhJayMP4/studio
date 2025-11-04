@@ -3,9 +3,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-const firestore_1 = require("firebase-admin/firestore");
 admin.initializeApp();
-const db = (0, firestore_1.getFirestore)();
+const db = admin.firestore();
 // Generate a simple random token
 const generateToken = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
