@@ -3,8 +3,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const firestore_1 = require("firebase-admin/firestore");
 admin.initializeApp();
-const db = admin.firestore();
+const db = (0, firestore_1.getFirestore)();
 // Generate a simple random token
 const generateToken = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -88,15 +89,15 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
         }
         const workspaceId = inviteData.workspaceId;
         const workspaceRef = db.doc(`workspaces/${workspaceId}`);
-        const userRef = doc(db.doc(`users/${uid}`).path);
+        const userRef = db.doc(`users/${uid}`);
         await db.runTransaction(async (transaction) => {
             var _a;
             const workspaceDoc = await transaction.get(workspaceRef);
             const userDoc = await transaction.get(userRef);
-            if (!workspaceDoc.exists()) {
+            if (!workspaceDoc.exists) {
                 throw new functions.https.HttpsError("not-found", "The workspace you were invited to no longer exists.");
             }
-            if (!userDoc.exists()) {
+            if (!userDoc.exists) {
                 // Create the user profile if it doesn't exist
                 transaction.set(userRef, {
                     uid,

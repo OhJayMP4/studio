@@ -1,7 +1,7 @@
 'use server';
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import { DocumentData, DocumentSnapshot, getFirestore } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 
 admin.initializeApp();
 const db = getFirestore();
