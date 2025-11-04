@@ -4,9 +4,10 @@ import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Link as LinkIcon } from "lucide-react";
+import { FileText, Link as LinkIcon, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { TeamReportDialog } from "@/components/reporting/team-report-dialog";
 
 export default function ReportingPage() {
     const { selectedWorkspace } = useSelectedWorkspace();
@@ -48,7 +49,7 @@ export default function ReportingPage() {
         <p className="text-muted-foreground">Generate reports for your workspace.</p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <Card>
             <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -77,6 +78,20 @@ export default function ReportingPage() {
             </CardHeader>
             <CardContent>
                 <Button onClick={handleLiveReportClick}>Copy Link & Open</Button>
+            </CardContent>
+        </Card>
+         <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <Users />
+                   Team Report
+                </CardTitle>
+                <CardDescription>
+                   Select team members to generate a printable report of all their assigned tasks across the workspace.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <TeamReportDialog />
             </CardContent>
         </Card>
       </div>
