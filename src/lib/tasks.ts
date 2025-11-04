@@ -40,7 +40,7 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
     const siloData = siloSnap.data() as Silo;
     
     // 2. Create the original task
-    batch.set(taskRef, taskData);
+    batch.set(taskRef, {...taskData, projectId});
 
     // 3. SECURITY CHECK: Verify assignee is a member of the workspace before denormalizing
     if (workspaceData.users && workspaceData.users[taskData.assigneeId]) {

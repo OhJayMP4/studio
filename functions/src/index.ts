@@ -5,8 +5,6 @@ import { Resend } from "resend";
 
 admin.initializeApp();
 const db = admin.firestore();
-const storage = admin.storage();
-
 
 // Generate a simple random token
 const generateToken = () => {
@@ -137,8 +135,9 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
     const inviteDoc = inviteQuerySnapshot.docs[0];
     const inviteData = inviteDoc.data();
 
+    // Validate the invite is for the correct user
     if (inviteData.email !== email) {
-        throw new functions.https.https.HttpsError('permission-denied', 'This invitation is not intended for your account.');
+        throw new functions.https.HttpsError('permission-denied', 'This invitation is not intended for your account.');
     }
 
     if (inviteData.expires < Date.now()) {
@@ -159,23 +158,27 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
 
         const workspaceData = workspaceDoc.data();
         if (workspaceData?.memberIds?.includes(uid)) {
+          // If user is already a member, we can just delete the invite and exit gracefully.
           transaction.delete(inviteDoc.ref);
           return;
         }
 
+        // Add user to the workspace
         transaction.update(workspaceRef, {
           memberIds: admin.firestore.FieldValue.arrayUnion(uid),
           [`users.${uid}`]: {
-            role: "contributor",
+            role: "contributor", // Default role for invited users
             name: displayName,
             avatarUrl: photoURL,
           },
         });
 
+        // Add workspace to the user's profile
         transaction.update(userRef, {
           workspaceIds: admin.firestore.FieldValue.arrayUnion(workspaceId),
         });
 
+        // Delete the used invite
         transaction.delete(inviteDoc.ref);
     });
 
@@ -217,7 +220,7 @@ exports.finalizeWorkspaceLogo = functions.https.onCall(async (data, context) => 
     }
 
     // 3. Move the file in Cloud Storage
-    const bucket = storage.bucket();
+    const bucket = admin.storage().bucket();
     const tempFile = bucket.file(tempFilePath);
     const finalFilePath = `workspaces/${workspaceId}/logo`;
     const finalFile = bucket.file(finalFilePath);
