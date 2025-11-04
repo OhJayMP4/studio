@@ -52,7 +52,7 @@ exports.createInvite = functions.https.onCall(async (data, context) => {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     // 4. Form the Join URL and return it to the client
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const appUrl = 'https://saturnsync.com';
     const joinUrl = `${appUrl}/join?token=${token}`;
     return { success: true, joinUrl, workspaceName: workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.name };
 });
@@ -179,6 +179,62 @@ exports.finalizeWorkspaceLogo = functions.https.onCall(async (data, context) => 
     catch (error) {
         console.error("Error moving file or updating Firestore:", error);
         throw new functions.https.HttpsError('internal', 'Failed to finalize workspace logo.');
+    }
+});
+exports.removeUserFromWorkspace = functions.https.onCall(async (data, context) => {
+    var _a, _b;
+    // Auth check
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Must be signed in');
+    }
+    const { workspaceId, userIdToRemove } = data;
+    if (!workspaceId || !userIdToRemove) {
+        throw new functions.https.HttpsError('invalid-argument', 'workspaceId and userIdToRemove are required');
+    }
+    // Get workspace and verify caller is admin
+    const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+    const workspaceDoc = await workspaceRef.get();
+    if (!workspaceDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Workspace not found');
+    }
+    const workspaceData = workspaceDoc.data();
+    const callerRole = (_b = (_a = workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) === null || _a === void 0 ? void 0 : _a[context.auth.uid]) === null || _b === void 0 ? void 0 : _b.role;
+    if (callerRole !== 'admin') {
+        throw new functions.https.HttpsError('permission-denied', 'Only workspace admins can remove users');
+    }
+    // Prevent removing the owner
+    if ((workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.ownerId) === userIdToRemove) {
+        throw new functions.https.HttpsError('permission-denied', 'Cannot remove the workspace owner');
+    }
+    // Remove user from workspace and workspace from user in a transaction
+    const userRef = db.doc(`users/${userIdToRemove}`);
+    try {
+        await db.runTransaction(async (transaction) => {
+            const userDoc = await transaction.get(userRef);
+            if (!userDoc.exists) {
+                // If the user to remove doesn't exist, we can still proceed to remove them from the workspace
+                // This handles cases where a user might have been deleted from auth but their reference remains.
+            }
+            // Remove user from workspace
+            transaction.update(workspaceRef, {
+                memberIds: admin.firestore.FieldValue.arrayRemove(userIdToRemove),
+                [`users.${userIdToRemove}`]: admin.firestore.FieldValue.delete()
+            });
+            // If the user document exists, remove the workspace from their profile
+            if (userDoc.exists) {
+                transaction.update(userRef, {
+                    workspaceIds: admin.firestore.FieldValue.arrayRemove(workspaceId)
+                });
+            }
+        });
+        return { success: true };
+    }
+    catch (error) {
+        console.error('Error removing user from workspace:', error);
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        }
+        throw new functions.https.HttpsError('internal', 'Failed to remove user from workspace');
     }
 });
 //# sourceMappingURL=index.js.map

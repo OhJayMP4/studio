@@ -1,7 +1,6 @@
 'use server';
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import { Resend } from "resend";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -218,4 +217,70 @@ exports.finalizeWorkspaceLogo = functions.https.onCall(async (data, context) => 
         console.error("Error moving file or updating Firestore:", error);
         throw new functions.https.HttpsError('internal', 'Failed to finalize workspace logo.');
     }
+});
+
+
+exports.removeUserFromWorkspace = functions.https.onCall(async (data, context) => {
+  // Auth check
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Must be signed in');
+  }
+
+  const { workspaceId, userIdToRemove } = data;
+  
+  if (!workspaceId || !userIdToRemove) {
+    throw new functions.https.HttpsError('invalid-argument', 'workspaceId and userIdToRemove are required');
+  }
+
+  // Get workspace and verify caller is admin
+  const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+  const workspaceDoc = await workspaceRef.get();
+  
+  if (!workspaceDoc.exists) {
+    throw new functions.https.HttpsError('not-found', 'Workspace not found');
+  }
+
+  const workspaceData = workspaceDoc.data();
+  const callerRole = workspaceData?.users?.[context.auth.uid]?.role;
+  
+  if (callerRole !== 'admin') {
+    throw new functions.https.HttpsError('permission-denied', 'Only workspace admins can remove users');
+  }
+
+  // Prevent removing the owner
+  if (workspaceData?.ownerId === userIdToRemove) {
+    throw new functions.https.HttpsError('permission-denied', 'Cannot remove the workspace owner');
+  }
+
+  // Remove user from workspace and workspace from user in a transaction
+  const userRef = db.doc(`users/${userIdToRemove}`);
+  
+  try {
+    await db.runTransaction(async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+      
+      // Remove user from workspace's members list and user map
+      transaction.update(workspaceRef, {
+        memberIds: admin.firestore.FieldValue.arrayRemove(userIdToRemove),
+        [`users.${userIdToRemove}`]: admin.firestore.FieldValue.delete()
+      });
+      
+      // If the user document exists, remove the workspace from their profile's list
+      if (userDoc.exists) {
+        transaction.update(userRef, {
+            workspaceIds: admin.firestore.FieldValue.arrayRemove(workspaceId)
+        });
+      }
+      // If userDoc doesn't exist, we don't need to do anything for the user's profile,
+      // but the user is still correctly removed from the workspace.
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error removing user from workspace:', error);
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError('internal', 'Failed to remove user from workspace');
+  }
 });
