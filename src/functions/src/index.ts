@@ -167,7 +167,8 @@ exports.onTaskWrite = functions.firestore
 
         // Task Completion
         if (beforeData && afterData && beforeData.completed === false && afterData.completed === true) {
-            const actorUid = afterData.updatedBy || afterData.createdBy;
+            // The person completing the task is the assignee.
+            const actorUid = afterData.assigneeId; 
             const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
              if (!actorName) return;
 
