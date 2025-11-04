@@ -100,8 +100,8 @@ service cloud.firestore {
      * @deny N/A (helper function)
      * @principle Authorization: Allows admins to manage user profiles during workspace removal.
      */
-    function isAdminRemovingWorkspaceFromUser(currentData) {
-      let removedWorkspaceId = currentData.workspaceIds.diff(request.resource.data.workspaceIds).removed().only();
+    function isAdminRemovingWorkspaceFromUser() {
+      let removedWorkspaceId = resource.data.workspaceIds.diff(request.resource.data.workspaceIds).removed().only();
       return removedWorkspaceId != null && isWorkspaceAdmin(removedWorkspaceId);
     }
     
@@ -120,7 +120,7 @@ service cloud.firestore {
       allow get: if isSignedIn();
       allow list: if false;
       allow create: if isSignedIn() && isOwner(userId);
-      allow update: if isSignedIn() && (isOwner(userId) || isAdminRemovingWorkspaceFromUser(resource.data));
+      allow update: if isSignedIn() && (isOwner(userId) || isAdminRemovingWorkspaceFromUser());
       allow delete: if isSignedIn() && isOwner(userId);
     }
     
