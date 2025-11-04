@@ -143,7 +143,7 @@ export function AddCompanyDialog({ children }: { children?: React.ReactNode }) {
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="yearlyTurnoverTarget">Yearly Turnover Target ($)</Label>
+              <Label htmlFor="yearlyTurnoverTarget">Yearly Turnover Target (R)</Label>
               <Input
                 id="yearlyTurnoverTarget"
                 type="number"

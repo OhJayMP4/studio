@@ -178,7 +178,7 @@ function ProjectsList({ companyId }: { companyId: string }) {
                                 </Link>
                                 {project.hasMonetaryValue && project.monetaryValue && (
                                     <span className="text-lg font-semibold text-green-500">
-                                        ${project.monetaryValue.toLocaleString()}
+                                        R{project.monetaryValue.toLocaleString()}
                                     </span>
                                 )}
                             </CardTitle>

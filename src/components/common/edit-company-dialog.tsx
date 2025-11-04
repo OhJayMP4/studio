@@ -126,7 +126,7 @@ export function EditCompanyDialog({ company, children }: EditCompanyDialogProps)
               {errors.logoUrl && <p className="text-sm text-destructive mt-1">{errors.logoUrl.message}</p>}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="yearlyTurnoverTarget">Yearly Turnover Target ($)</Label>
+              <Label htmlFor="yearlyTurnoverTarget">Yearly Turnover Target (R)</Label>
               <Input id="yearlyTurnoverTarget" type="number" {...register('yearlyTurnoverTarget')} />
               {errors.yearlyTurnoverTarget && <p className="text-sm text-destructive mt-1">{errors.yearlyTurnoverTarget.message}</p>}
             </div>
