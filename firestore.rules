@@ -1,3 +1,4 @@
+
 /**
  * @fileoverview Firestore Security Rules for the application.
  *
@@ -112,17 +113,17 @@ service cloud.firestore {
     
     // Global collection group queries for search functionality
     match /{path=**}/tasks/{taskId} {
-      allow read, list: if isWorkspaceMember(get(/databases/$(database)/documents/$(path)).data.workspaceId);
+      allow read: if isWorkspaceMember(get(/databases/$(database)/documents/workspaces/$(resource.data.workspaceId)).id);
     }
      match /{path=**}/silos/{siloId} {
-      allow read: if isWorkspaceMember(get(/databases/$(database)/documents/$(path)).data.workspaceId);
+       allow read: if isWorkspaceMember(get(/databases/$(database)/documents/$(path)).data.workspaceId);
     }
      match /{path=**}/projects/{projectId} {
-      allow read: if isWorkspaceMember(get(/databases/$(database)/documents/$(path)).data.workspaceId);
+      allow read: if isWorkspaceMember(resource.data.workspaceId);
     }
     
     match /{path=**}/companies/{companyId} {
-      allow read: if isWorkspaceMember(get(/databases/$(database)/documents/$(path)).data.workspaceId);
+      allow read: if isWorkspaceMember(resource.data.workspaceId);
     }
 
     /**
@@ -254,5 +255,3 @@ service cloud.firestore {
     }
   }
 }
-
-    
