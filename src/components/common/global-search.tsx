@@ -12,7 +12,7 @@ import {
 import { VisuallyHidden } from '@/components/ui/visually-hidden';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useFirestore, errorEmitter, FirestorePermissionError } from '@/firebase';
-import { collectionGroup, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, DocumentData } from 'firebase/firestore';
 import type { Company, Project, Silo, Task } from '@/lib/types';
 import { Search, Building, Folder, Box, CheckSquare } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -54,74 +54,63 @@ export function GlobalSearch() {
         };
 
         setLoading(true);
-        const workspacePath = `workspaces/${selectedWorkspace.id}`;
-        
         try {
-            const companiesQuery = query(collectionGroup(firestore, 'companies'), where('workspaceId', '==', selectedWorkspace.id));
-            const projectsQuery = query(collectionGroup(firestore, 'projects'), where('workspaceId', '==', selectedWorkspace.id));
-            const silosQuery = query(collectionGroup(firestore, 'silos'), where('__name__', '>=', `${workspacePath}/`), where('__name__', '<', `${workspacePath}0`));
-            const tasksQuery = query(collectionGroup(firestore, 'tasks'), where('projectId', '!=', ''));
-
-            const [companiesSnap, projectsSnap, silosSnap, tasksSnap] = await Promise.all([
-                getDocs(companiesQuery).catch(err => {
-                    errorEmitter.emit('permission-error', new FirestorePermissionError({ operation: 'list', path: 'companies' }));
-                    throw err;
-                }),
-                getDocs(projectsQuery).catch(err => {
-                    errorEmitter.emit('permission-error', new FirestorePermissionError({ operation: 'list', path: 'projects' }));
-                    throw err;
-                }),
-                getDocs(silosQuery).catch(err => {
-                    errorEmitter.emit('permission-error', new FirestorePermissionError({ operation: 'list', path: 'silos' }));
-                    throw err;
-                }),
-                getDocs(tasksQuery).catch(err => {
-                    errorEmitter.emit('permission-error', new FirestorePermissionError({ operation: 'list', path: 'tasks' }));
-                    throw err;
-                }),
-            ]);
-
+            const companiesRef = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies');
+            const companiesSnap = await getDocs(companiesRef);
             const companies = companiesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Company));
-            const projects = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
-            const silos = silosSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), path: doc.ref.path } as Silo & { path: string }));
-            const tasks = tasksSnap.docs.map(doc => {
-                const taskData = doc.data() as Task;
-                 if (taskData.projectId) { // Filter tasks that belong to projects in the current workspace
-                    const project = projects.find(p => p.id === taskData.projectId);
-                    if (project) {
-                        return { id: doc.id, ...taskData, path: doc.ref.path } as Task & { path: string };
-                    }
-                 }
-                 return null;
-            }).filter((t): t is Task & { path: string } => t !== null);
 
+            const allProjects: Project[] = [];
+            const allSilos: (Silo & { path: string })[] = [];
+            const allTasks: (Task & { path: string })[] = [];
+
+            for (const company of companies) {
+                const projectsRef = collection(companiesRef, company.id, 'projects');
+                const projectsSnap = await getDocs(projectsRef);
+                const projects = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+                allProjects.push(...projects);
+
+                for (const project of projects) {
+                    const silosRef = collection(projectsRef, project.id, 'silos');
+                    const silosSnap = await getDocs(silosRef);
+                    const silos = silosSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), path: doc.ref.path } as Silo & { path: string }));
+                    allSilos.push(...silos);
+
+                    for (const silo of silos) {
+                        const tasksRef = collection(silosRef, silo.id, 'tasks');
+                        const tasksSnap = await getDocs(tasksRef);
+                        const tasks = tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), path: doc.ref.path } as Task & { path: string }));
+                        allTasks.push(...tasks);
+                    }
+                }
+            }
+            
             const searchData: SearchResult[] = [];
 
             companies.forEach(c => searchData.push({ type: 'company', item: { ...c, path: `company/${c.id}` } }));
             
-            projects.forEach(p => {
+            allProjects.forEach(p => {
                 const company = companies.find(c => c.id === p.companyId);
                 searchData.push({ type: 'project', item: { ...p, path: `company/${p.companyId}/project/${p.id}`, companyName: company?.name || '' } })
             });
 
-            silos.forEach(s => {
+            allSilos.forEach(s => {
                 const pathParts = s.path.split('/');
                 const companyId = pathParts[3];
                 const projectId = pathParts[5];
                 const company = companies.find(c => c.id === companyId);
-                const project = projects.find(p => p.id === projectId);
+                const project = allProjects.find(p => p.id === projectId);
                 if (company && project) {
                     searchData.push({ type: 'silo', item: { ...s, path: `company/${companyId}/project/${projectId}`, companyName: company.name, projectName: project.name } })
                 }
             });
 
-            tasks.forEach(t => {
-                const project = projects.find(p => p.id === t.projectId);
+            allTasks.forEach(t => {
+                const project = allProjects.find(p => p.id === t.projectId);
                 if (project) {
                     const company = companies.find(c => c.id === project.companyId);
                     const pathParts = t.path.split('/');
                     const siloId = pathParts[7];
-                    const silo = silos.find(silo => silo.id === siloId);
+                    const silo = allSilos.find(silo => silo.id === siloId);
 
                     if (company && project && silo) {
                         searchData.push({ type: 'task', item: { ...t, path: `company/${project.companyId}/project/${project.id}`, companyName: company.name, projectName: project.name, siloName: silo.name } })
@@ -132,13 +121,14 @@ export function GlobalSearch() {
             setResults(searchData);
         } catch (error) {
             console.error("Global search failed:", error);
-            // Error is already emitted, just stop loading state
+            if (error instanceof Error && error.message.includes('permission-denied')) {
+                 errorEmitter.emit('permission-error', new FirestorePermissionError({ operation: 'list', path: 'documents in workspace' }));
+            }
         } finally {
             setLoading(false);
         }
     }
     
-    // We only want to fetch data when the dialog is opened
     if (open && results.length === 0 && !loading) {
       fetchSearchData();
     }
@@ -173,41 +163,49 @@ export function GlobalSearch() {
           ) : (
             <>
               {results.length === 0 && !loading ? <CommandEmpty>No results found.</CommandEmpty> : null}
-              <CommandGroup heading="Companies">
-                {results.filter(r => r.type === 'company').map(({ item }) => (
-                  <CommandItem key={item.id} onSelect={() => onSelect(item.path)} value={`company-${item.name}`}>
-                    <Building className="mr-2 h-4 w-4" />
-                    <span>{item.name}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-              <CommandGroup heading="Projects">
-                {results.filter(r => r.type === 'project').map(({ item }) => (
-                  <CommandItem key={item.id} onSelect={() => onSelect(item.path)} value={`project-${item.name}`}>
-                    <Folder className="mr-2 h-4 w-4" />
-                    <span>{item.name}</span>
-                    <span className='text-xs text-muted-foreground ml-2'>in {item.companyName}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-              <CommandGroup heading="Silos">
-                {results.filter(r => r.type === 'silo').map(({ item }) => (
-                  <CommandItem key={item.id} onSelect={() => onSelect(item.path)} value={`silo-${item.name}`}>
-                    <Box className="mr-2 h-4 w-4" />
-                    <span>{item.name}</span>
-                    <span className='text-xs text-muted-foreground ml-2'>in {item.projectName}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-              <CommandGroup heading="Tasks">
-                {results.filter(r => r.type === 'task').map(({ item }) => (
-                  <CommandItem key={item.id} onSelect={() => onSelect(item.path)} value={`task-${item.title}`}>
-                    <CheckSquare className="mr-2 h-4 w-4" />
-                    <span>{item.title}</span>
-                    <span className='text-xs text-muted-foreground ml-2'>in {item.siloName}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+              {results.some(r => r.type === 'company') && (
+                <CommandGroup heading="Companies">
+                  {results.filter(r => r.type === 'company').map(({ item }) => (
+                    <CommandItem key={item.id} onSelect={() => onSelect(item.path)} value={`company-${item.name}`}>
+                      <Building className="mr-2 h-4 w-4" />
+                      <span>{item.name}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              {results.some(r => r.type === 'project') && (
+                <CommandGroup heading="Projects">
+                  {results.filter(r => r.type === 'project').map(({ item }) => (
+                    <CommandItem key={item.id} onSelect={() => onSelect(item.path)} value={`project-${item.name}`}>
+                      <Folder className="mr-2 h-4 w-4" />
+                      <span>{item.name}</span>
+                      <span className='text-xs text-muted-foreground ml-2'>in {item.companyName}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              {results.some(r => r.type === 'silo') && (
+                <CommandGroup heading="Silos">
+                  {results.filter(r => r.type === 'silo').map(({ item }) => (
+                    <CommandItem key={item.id} onSelect={() => onSelect(item.path)} value={`silo-${item.name}`}>
+                      <Box className="mr-2 h-4 w-4" />
+                      <span>{item.name}</span>
+                      <span className='text-xs text-muted-foreground ml-2'>in {item.projectName}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              {results.some(r => r.type === 'task') && (
+                <CommandGroup heading="Tasks">
+                  {results.filter(r => r.type === 'task').map(({ item }) => (
+                    <CommandItem key={item.id} onSelect={() => onSelect(item.path)} value={`task-${item.title}`}>
+                      <CheckSquare className="mr-2 h-4 w-4" />
+                      <span>{item.title}</span>
+                      <span className='text-xs text-muted-foreground ml-2'>in {item.siloName}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
             </>
           )}
         </CommandList>
