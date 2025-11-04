@@ -1,10 +1,10 @@
 'use server';
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import { getFirestore } from "firebase-admin/firestore";
+import { Resend } from "resend";
 
 admin.initializeApp();
-const db = getFirestore();
+const db = admin.firestore();
 
 // Generate a simple random token
 const generateToken = () => {
