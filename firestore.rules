@@ -109,6 +109,19 @@ service cloud.firestore {
       allow create, update: if isSignedIn() && isOwner(userId);
       allow delete: if isSignedIn() && isOwner(userId);
     }
+    
+    match /{path=**}/tasks/{taskId} {
+      allow read: if isWorkspaceMember(get(/databases/$(database)/documents/$(path)).data.workspaceId);
+    }
+     match /{path=**}/silos/{siloId} {
+      allow read: if isWorkspaceMember(get(/databases/$(database)/documents/$(path)).data.workspaceId);
+    }
+     match /{path=**}/projects/{projectId} {
+      allow read: if isWorkspaceMember(get(/databases/$(database)/documents/$(path)).data.workspaceId);
+    }
+     match /{path=**}/companies/{companyId} {
+      allow read: if isWorkspaceMember(get(/databases/$(database)/documents/$(path)).data.workspaceId);
+    }
 
     /**
      * @description Rules for workspace documents.
