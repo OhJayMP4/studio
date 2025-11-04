@@ -5,6 +5,193 @@ import * as admin from "firebase-admin";
 admin.initializeApp();
 const db = admin.firestore();
 
+// Helper to get user info and workspace members
+const getActorAndRelevantUsers = async (workspaceId: string, actorUid: string) => {
+    const workspaceSnap = await db.doc(`workspaces/${workspaceId}`).get();
+    if (!workspaceSnap.exists) {
+        console.error(`Workspace ${workspaceId} not found.`);
+        return { actorName: null, isRelevantTo: [] };
+    }
+    const workspaceData = workspaceSnap.data();
+    const actor = workspaceData?.users?.[actorUid];
+    const actorName = actor?.name || 'A user';
+    const isRelevantTo = Object.keys(workspaceData?.users || {}).filter(uid => uid !== actorUid);
+    return { actorName, isRelevantTo };
+};
+
+// Helper to create a notification document
+const createNotification = async (workspaceId: string, notificationData: any) => {
+    try {
+        await db.collection(`notifications/${workspaceId}/activities`).add({
+            ...notificationData,
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+            readBy: [],
+        });
+    } catch (error) {
+        console.error(`Failed to create notification for workspace ${workspaceId}:`, error);
+    }
+};
+
+// --- Notification Triggers ---
+
+// On Company Create
+exports.onCompanyCreate = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}')
+    .onCreate(async (snap, context) => {
+        const { workspaceId } = context.params;
+        const companyData = snap.data();
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, companyData.createdBy);
+
+        if (!actorName) return;
+
+        await createNotification(workspaceId, {
+            type: 'company_added',
+            actorUid: companyData.createdBy,
+            actorName,
+            target: { id: snap.id, name: companyData.name, type: 'company', path: `/company/${snap.id}` },
+            isRelevantTo,
+        });
+    });
+
+// On Project Create
+exports.onProjectCreate = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}')
+    .onCreate(async (snap, context) => {
+        const { workspaceId, companyId } = context.params;
+        const projectData = snap.data();
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, projectData.createdBy);
+        
+        if (!actorName) return;
+        
+        const companySnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get();
+        const companyName = companySnap.exists ? companySnap.data()?.name : '';
+        
+        await createNotification(workspaceId, {
+            type: 'project_added',
+            actorUid: projectData.createdBy,
+            actorName,
+            target: { id: snap.id, name: projectData.name, type: 'project', path: `/company/${companyId}/project/${snap.id}` },
+            context: { companyName },
+            isRelevantTo,
+        });
+    });
+
+// On Silo Create
+exports.onSiloCreate = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}')
+    .onCreate(async (snap, context) => {
+        const { workspaceId, companyId, projectId } = context.params;
+        const siloData = snap.data();
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, siloData.createdBy);
+
+        if (!actorName) return;
+
+        const companySnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get();
+        const projectSnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get();
+        const companyName = companySnap.exists ? companySnap.data()?.name : '';
+        const projectName = projectSnap.exists ? projectSnap.data()?.name : '';
+
+        await createNotification(workspaceId, {
+            type: 'silo_added',
+            actorUid: siloData.createdBy,
+            actorName,
+            target: { id: snap.id, name: siloData.name, type: 'silo', path: `/company/${companyId}/project/${projectId}` },
+            context: { companyName, projectName },
+            isRelevantTo,
+        });
+    });
+
+// On Sale Create
+exports.onSaleCreate = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}')
+    .onCreate(async (snap, context) => {
+        const { workspaceId, companyId, projectId } = context.params;
+        const saleData = snap.data();
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, saleData.createdBy);
+
+        if (!actorName) return;
+
+        const companySnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get();
+        const projectSnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get();
+        const companyName = companySnap.exists ? companySnap.data()?.name : '';
+        const projectName = projectSnap.exists ? projectSnap.data()?.name : '';
+
+        await createNotification(workspaceId, {
+            type: 'sale_added',
+            actorUid: saleData.createdBy,
+            actorName,
+            target: { id: snap.id, name: `Sale of R${saleData.value}`, type: 'sale', path: `/company/${companyId}/project/${projectId}` },
+            context: { companyName, projectName },
+            isRelevantTo,
+        });
+    });
+
+
+// On Task Create & Update
+exports.onTaskWrite = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
+    .onWrite(async (change, context) => {
+        const { workspaceId, companyId, projectId, siloId } = context.params;
+        
+        const beforeData = change.before.data();
+        const afterData = change.after.data();
+
+        // Task Creation or Re-assignment
+        if (afterData && (!beforeData || beforeData.assigneeId !== afterData.assigneeId)) {
+            const actorUid = afterData.updatedBy || afterData.createdBy;
+            const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+            if (!actorName) return;
+
+            const [companySnap, projectSnap, siloSnap, assigneeSnap] = await Promise.all([
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get(),
+                db.doc(`users/${afterData.assigneeId}`).get()
+            ]);
+
+            const companyName = companySnap.data()?.name || '';
+            const projectName = projectSnap.data()?.name || '';
+            const siloName = siloSnap.data()?.name || '';
+            const assigneeName = assigneeSnap.exists ? assigneeSnap.data()?.name : 'an unknown user';
+            
+            await createNotification(workspaceId, {
+                type: 'task_assigned',
+                actorUid,
+                actorName,
+                target: { id: change.after.id, name: afterData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
+                assignee: { uid: afterData.assigneeId, name: assigneeName },
+                context: { companyName, projectName, siloName },
+                isRelevantTo,
+            });
+        }
+
+        // Task Completion
+        if (beforeData && afterData && beforeData.completed === false && afterData.completed === true) {
+            const actorUid = afterData.updatedBy || afterData.createdBy;
+            const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+             if (!actorName) return;
+
+            const [companySnap, projectSnap, siloSnap] = await Promise.all([
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get()
+            ]);
+            const companyName = companySnap.data()?.name || '';
+            const projectName = projectSnap.data()?.name || '';
+            const siloName = siloSnap.data()?.name || '';
+
+            await createNotification(workspaceId, {
+                type: 'task_completed',
+                actorUid,
+                actorName,
+                target: { id: change.after.id, name: afterData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
+                context: { companyName, projectName, siloName },
+                isRelevantTo,
+            });
+        }
+    });
+
+
 // Generate a simple random token
 const generateToken = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -334,5 +521,3 @@ exports.deleteWorkspace = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('internal', 'Failed to delete workspace');
     }
 });
-
-    

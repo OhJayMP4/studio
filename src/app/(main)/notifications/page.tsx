@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import {
   Breadcrumb,
@@ -9,8 +9,8 @@ import {
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, orderBy, limit, writeBatch, doc, arrayUnion, startAfter, getDocs } from 'firebase/firestore';
+import { useUser, useFirestore, useCollection } from '@/firebase';
+import { collection, query, orderBy, limit, writeBatch, doc, arrayUnion, startAfter, getDocs, updateDoc } from 'firebase/firestore';
 import type { Notification } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
 import { Button } from '@/components/ui/button';
@@ -33,7 +33,6 @@ function NotificationsBreadcrumb() {
 
 const getIcon = (type: Notification['type']) => {
     switch (type) {
-        case 'task_added': return <CheckSquare className="h-5 w-5 text-muted-foreground" />;
         case 'task_assigned': return <UserPlus className="h-5 w-5 text-muted-foreground" />;
         case 'task_completed': return <CheckCircle2 className="h-5 w-5 text-green-500" />;
         case 'silo_added': return <Box className="h-5 w-5 text-muted-foreground" />;
@@ -52,8 +51,6 @@ const getNotificationText = (n: Notification) => {
             return <><span className="font-semibold">{n.actorName}</span> added a new project: <span className="font-semibold">{n.target.name}</span> in {n.context?.companyName}</>;
         case 'silo_added':
             return <><span className="font-semibold">{n.actorName}</span> added a new silo: <span className="font-semibold">{n.target.name}</span> in {n.context?.projectName}</>;
-        case 'task_added':
-            return <><span className="font-semibold">{n.actorName}</span> added a new task: <span className="font-semibold">{n.target.name}</span> in {n.context?.siloName}</>;
         case 'task_assigned':
             return <><span className="font-semibold">{n.actorName}</span> assigned <span className="font-semibold">{n.target.name}</span> to <span className="font-semibold">{n.assignee?.name}</span></>;
         case 'task_completed':
@@ -94,7 +91,7 @@ export default function NotificationsPage() {
     }
 
     const fetchNotifications = async (loadMore = false) => {
-        if (!selectedWorkspace || !user || !hasMore) {
+        if (!selectedWorkspace || !user || (!hasMore && loadMore)) {
             setIsLoading(false);
             return;
         }
@@ -116,7 +113,7 @@ export default function NotificationsPage() {
             
             setLastVisible(documentSnapshots.docs[documentSnapshots.docs.length - 1]);
             setNotifications(prev => loadMore ? [...prev, ...newNotifications] : newNotifications);
-            setHasMore(newNotifications.length > 0);
+            setHasMore(newNotifications.length === 25);
 
         } catch (error) {
             console.error("Error fetching notifications:", error);
@@ -126,10 +123,12 @@ export default function NotificationsPage() {
     };
     
     useEffect(() => {
-        // Initial fetch
+        setNotifications([]);
+        setLastVisible(null);
+        setHasMore(true);
         fetchNotifications();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedWorkspace, user]);
+    }, [selectedWorkspace]);
 
 
     const handleNotificationClick = async (notification: Notification) => {
@@ -177,7 +176,7 @@ export default function NotificationsPage() {
                                     <div className="flex-1 space-y-1">
                                         <p className="text-sm">{getNotificationText(n)}</p>
                                         <p className="text-xs text-muted-foreground">
-                                            {formatDistanceToNow(new Date(n.timestamp.seconds * 1000), { addSuffix: true })}
+                                            {n.timestamp ? formatDistanceToNow(new Date(n.timestamp.seconds * 1000), { addSuffix: true }) : ''}
                                         </p>
                                     </div>
                                     {user && !n.readBy.includes(user.uid) && (

@@ -9,8 +9,8 @@ import {
 import { Button } from '../ui/button';
 import { Bell, Check, CheckSquare, Folder, Box, Building, UserPlus, FileText, CheckCircle2 } from 'lucide-react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, orderBy, limit, writeBatch, doc, arrayUnion } from 'firebase/firestore';
+import { useUser, useFirestore, useCollection } from '@/firebase';
+import { collection, query, orderBy, limit, writeBatch, doc, arrayUnion, updateDoc } from 'firebase/firestore';
 import type { Notification } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
 import { ScrollArea } from '../ui/scroll-area';
@@ -23,7 +23,7 @@ function useUnreadNotifications() {
     const { user } = useUser();
     const firestore = useFirestore();
 
-    const notificationsQuery = useMemoFirebase(() => {
+    const notificationsQuery = useMemo(() => {
         if (!selectedWorkspace || !user) return null;
         return query(
             collection(firestore, `notifications/${selectedWorkspace.id}/activities`),
@@ -51,7 +51,7 @@ export function Notifications() {
   const handleSeeAllClick = () => {
     setIsOpen(false);
     if (selectedWorkspace) {
-        router.push(`/notifications?wsId=${selectedWorkspace.id}`);
+        router.push(`/notifications`);
     }
   }
 
@@ -81,7 +81,6 @@ export function Notifications() {
 
 const getIcon = (type: Notification['type']) => {
     switch (type) {
-        case 'task_added': return <CheckSquare className="h-4 w-4 text-muted-foreground" />;
         case 'task_assigned': return <UserPlus className="h-4 w-4 text-muted-foreground" />;
         case 'task_completed': return <CheckCircle2 className="h-4 w-4 text-green-500" />;
         case 'silo_added': return <Box className="h-4 w-4 text-muted-foreground" />;
@@ -100,8 +99,6 @@ const getNotificationText = (n: Notification) => {
             return <><span className="font-semibold">{n.actorName}</span> added a new project: <span className="font-semibold">{n.target.name}</span> in {n.context?.companyName}</>;
         case 'silo_added':
             return <><span className="font-semibold">{n.actorName}</span> added a new silo: <span className="font-semibold">{n.target.name}</span> in {n.context?.projectName}</>;
-        case 'task_added':
-            return <><span className="font-semibold">{n.actorName}</span> added a new task: <span className="font-semibold">{n.target.name}</span> in {n.context?.siloName}</>;
         case 'task_assigned':
             return <><span className="font-semibold">{n.actorName}</span> assigned <span className="font-semibold">{n.target.name}</span> to <span className="font-semibold">{n.assignee?.name}</span></>;
         case 'task_completed':
@@ -119,7 +116,7 @@ function NotificationList({ onNotificationClick }: { onNotificationClick?: () =>
     const firestore = useFirestore();
     const router = useRouter();
 
-    const notificationsQuery = useMemoFirebase(() => {
+    const notificationsQuery = useMemo(() => {
         if (!selectedWorkspace || !user) return null;
         return query(
             collection(firestore, `notifications/${selectedWorkspace.id}/activities`),
@@ -131,23 +128,27 @@ function NotificationList({ onNotificationClick }: { onNotificationClick?: () =>
     const { data: notifications, isLoading } = useCollection<Notification>(notificationsQuery);
     
     const handleNotificationClick = async (notification: Notification) => {
-        if (!user || notification.readBy.includes(user.uid)) {
-            if (notification.target.path) router.push(notification.target.path);
+        if (!user || !selectedWorkspace) {
             onNotificationClick?.();
             return;
-        };
-
-        const notifRef = doc(firestore, `notifications/${selectedWorkspace?.id}/activities/${notification.id}`);
-        try {
-            await writeBatch(firestore).update(notifRef, {
-                readBy: arrayUnion(user.uid)
-            }).commit();
-        } catch (e) {
-            console.error("Error marking notification as read:", e);
-        } finally {
-            if (notification.target.path) router.push(notification.target.path);
-            onNotificationClick?.();
         }
+
+        if (!notification.readBy.includes(user.uid)) {
+            const notifRef = doc(firestore, `notifications/${selectedWorkspace.id}/activities/${notification.id}`);
+            try {
+                // No need to batch for a single update
+                await updateDoc(notifRef, {
+                    readBy: arrayUnion(user.uid)
+                });
+            } catch (e) {
+                console.error("Error marking notification as read:", e);
+            }
+        }
+        
+        if (notification.target.path) {
+            router.push(notification.target.path);
+        }
+        onNotificationClick?.();
     }
 
 
@@ -175,7 +176,7 @@ function NotificationList({ onNotificationClick }: { onNotificationClick?: () =>
                             <div className="flex-1 space-y-1">
                                 <p className="text-sm">{getNotificationText(n)}</p>
                                 <p className="text-xs text-muted-foreground">
-                                    {formatDistanceToNow(new Date(n.timestamp.seconds * 1000), { addSuffix: true })}
+                                    {n.timestamp ? formatDistanceToNow(new Date(n.timestamp.seconds * 1000), { addSuffix: true }) : ''}
                                 </p>
                             </div>
                              {user && !n.readBy.includes(user.uid) && (

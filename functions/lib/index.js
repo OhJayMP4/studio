@@ -5,6 +5,186 @@ const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 admin.initializeApp();
 const db = admin.firestore();
+// Helper to get user info and workspace members
+const getActorAndRelevantUsers = async (workspaceId, actorUid) => {
+    var _a;
+    const workspaceSnap = await db.doc(`workspaces/${workspaceId}`).get();
+    if (!workspaceSnap.exists) {
+        console.error(`Workspace ${workspaceId} not found.`);
+        return { actor: null, isRelevantTo: [] };
+    }
+    const workspaceData = workspaceSnap.data();
+    const actor = (_a = workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) === null || _a === void 0 ? void 0 : _a[actorUid];
+    const actorName = (actor === null || actor === void 0 ? void 0 : actor.name) || 'A user';
+    const isRelevantTo = Object.keys((workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) || {}).filter(uid => uid !== actorUid);
+    return { actorName, isRelevantTo };
+};
+// Helper to create a notification document
+const createNotification = async (workspaceId, notificationData) => {
+    try {
+        await db.collection(`notifications/${workspaceId}/activities`).add(Object.assign(Object.assign({}, notificationData), { timestamp: admin.firestore.FieldValue.serverTimestamp(), readBy: [] }));
+    }
+    catch (error) {
+        console.error(`Failed to create notification for workspace ${workspaceId}:`, error);
+    }
+};
+// --- Notification Triggers ---
+// On Company Create
+exports.onCompanyCreate = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}')
+    .onCreate(async (snap, context) => {
+    const { workspaceId } = context.params;
+    const companyData = snap.data();
+    const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, companyData.createdBy);
+    if (!actorName)
+        return;
+    await createNotification(workspaceId, {
+        type: 'company_added',
+        actorUid: companyData.createdBy,
+        actorName,
+        target: { id: snap.id, name: companyData.name, type: 'company', path: `/company/${snap.id}` },
+        isRelevantTo,
+    });
+});
+// On Project Create
+exports.onProjectCreate = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}')
+    .onCreate(async (snap, context) => {
+    var _a;
+    const { workspaceId, companyId } = context.params;
+    const projectData = snap.data();
+    const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, projectData.createdBy);
+    if (!actorName)
+        return;
+    const companySnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get();
+    const companyName = companySnap.exists ? (_a = companySnap.data()) === null || _a === void 0 ? void 0 : _a.name : '';
+    await createNotification(workspaceId, {
+        type: 'project_added',
+        actorUid: projectData.createdBy,
+        actorName,
+        target: { id: snap.id, name: projectData.name, type: 'project', path: `/company/${companyId}/project/${snap.id}` },
+        context: { companyName },
+        isRelevantTo,
+    });
+});
+// On Silo Create
+exports.onSiloCreate = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}')
+    .onCreate(async (snap, context) => {
+    var _a, _b;
+    const { workspaceId, companyId, projectId } = context.params;
+    const siloData = snap.data();
+    const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, siloData.createdBy);
+    if (!actorName)
+        return;
+    const companySnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get();
+    const projectSnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get();
+    const companyName = companySnap.exists ? (_a = companySnap.data()) === null || _a === void 0 ? void 0 : _a.name : '';
+    const projectName = projectSnap.exists ? (_b = projectSnap.data()) === null || _b === void 0 ? void 0 : _b.name : '';
+    await createNotification(workspaceId, {
+        type: 'silo_added',
+        actorUid: siloData.createdBy,
+        actorName,
+        target: { id: snap.id, name: siloData.name, type: 'silo', path: `/company/${companyId}/project/${projectId}` },
+        context: { companyName, projectName },
+        isRelevantTo,
+    });
+});
+// On Sale Create
+exports.onSaleCreate = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}')
+    .onCreate(async (snap, context) => {
+    var _a, _b;
+    const { workspaceId, companyId, projectId } = context.params;
+    const saleData = snap.data();
+    const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, saleData.createdBy);
+    if (!actorName)
+        return;
+    const companySnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get();
+    const projectSnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get();
+    const companyName = companySnap.exists ? (_a = companySnap.data()) === null || _a === void 0 ? void 0 : _a.name : '';
+    const projectName = projectSnap.exists ? (_b = projectSnap.data()) === null || _b === void 0 ? void 0 : _b.name : '';
+    await createNotification(workspaceId, {
+        type: 'sale_added',
+        actorUid: saleData.createdBy,
+        actorName,
+        target: { id: snap.id, name: `Sale of R${saleData.value}`, type: 'sale', path: `/company/${companyId}/project/${projectId}` },
+        context: { companyName, projectName },
+        isRelevantTo,
+    });
+});
+// On Task Create & Update
+exports.onTaskWrite = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
+    .onWrite(async (change, context) => {
+    var _a, _b, _c, _d, _e, _f, _g;
+    const { workspaceId, companyId, projectId, siloId } = context.params;
+    const beforeData = change.before.data();
+    const afterData = change.after.data();
+    // Task Creation
+    if (!change.before.exists && change.after.exists && afterData) {
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, afterData.createdBy);
+        if (!actorName)
+            return;
+        const [companySnap, projectSnap, siloSnap] = await Promise.all([
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get()
+        ]);
+        const companyName = ((_a = companySnap.data()) === null || _a === void 0 ? void 0 : _a.name) || '';
+        const projectName = ((_b = projectSnap.data()) === null || _b === void 0 ? void 0 : _b.name) || '';
+        const siloName = ((_c = siloSnap.data()) === null || _c === void 0 ? void 0 : _c.name) || '';
+        await createNotification(workspaceId, {
+            type: 'task_added',
+            actorUid: afterData.createdBy,
+            actorName,
+            target: { id: change.after.id, name: afterData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
+            context: { companyName, projectName, siloName },
+            isRelevantTo,
+        });
+        return;
+    }
+    // Task Update (Assignment or Completion)
+    if (change.before.exists && change.after.exists && beforeData && afterData) {
+        const actorUid = afterData.updatedBy || afterData.createdBy; // Assume an 'updatedBy' field might be set.
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+        if (!actorName)
+            return;
+        const [companySnap, projectSnap, siloSnap] = await Promise.all([
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get()
+        ]);
+        const companyName = ((_d = companySnap.data()) === null || _d === void 0 ? void 0 : _d.name) || '';
+        const projectName = ((_e = projectSnap.data()) === null || _e === void 0 ? void 0 : _e.name) || '';
+        const siloName = ((_f = siloSnap.data()) === null || _f === void 0 ? void 0 : _f.name) || '';
+        // Task Re-assignment
+        if (beforeData.assigneeId !== afterData.assigneeId) {
+            const assigneeSnap = await db.doc(`users/${afterData.assigneeId}`).get();
+            const assigneeName = assigneeSnap.exists ? (_g = assigneeSnap.data()) === null || _g === void 0 ? void 0 : _g.name : 'an unknown user';
+            await createNotification(workspaceId, {
+                type: 'task_assigned',
+                actorUid,
+                actorName,
+                target: { id: change.after.id, name: afterData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
+                assignee: { uid: afterData.assigneeId, name: assigneeName },
+                context: { companyName, projectName, siloName },
+                isRelevantTo,
+            });
+        }
+        // Task Completion
+        if (beforeData.completed === false && afterData.completed === true) {
+            await createNotification(workspaceId, {
+                type: 'task_completed',
+                actorUid,
+                actorName,
+                target: { id: change.after.id, name: afterData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
+                context: { companyName, projectName, siloName },
+                isRelevantTo,
+            });
+        }
+    }
+});
 // Generate a simple random token
 const generateToken = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -66,8 +246,8 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('invalid-argument', 'Invite token is required.');
     }
     const uid = context.auth.uid;
-    const email = context.auth.token.email;
-    const displayName = context.auth.token.name || email;
+    const authEmail = context.auth.token.email;
+    const displayName = context.auth.token.name || authEmail;
     const photoURL = context.auth.token.picture || null;
     const invitesRef = db.collection("invites");
     const inviteQuery = invitesRef.where("token", "==", token).limit(1);
@@ -78,8 +258,9 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
         }
         const inviteDoc = inviteQuerySnapshot.docs[0];
         const inviteData = inviteDoc.data();
-        // Validate the invite is for the correct user
-        if (inviteData.email !== email) {
+        const inviteEmail = inviteData.email;
+        // Validate the invite is for the correct user (case-insensitive)
+        if (inviteEmail.toLowerCase() !== (authEmail === null || authEmail === void 0 ? void 0 : authEmail.toLowerCase())) {
             throw new functions.https.HttpsError('permission-denied', 'This invitation is not intended for your account.');
         }
         if (inviteData.expires < Date.now()) {
@@ -100,7 +281,7 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
                 // Create the user profile if it doesn't exist
                 transaction.set(userRef, {
                     uid,
-                    email,
+                    email: authEmail,
                     name: displayName,
                     avatarUrl: photoURL,
                     workspaceIds: [],
@@ -179,6 +360,58 @@ exports.finalizeWorkspaceLogo = functions.https.onCall(async (data, context) => 
     catch (error) {
         console.error("Error moving file or updating Firestore:", error);
         throw new functions.https.HttpsError('internal', 'Failed to finalize workspace logo.');
+    }
+});
+exports.removeUserFromWorkspace = functions.https.onCall(async (data, context) => {
+    var _a, _b;
+    // Auth check
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Must be signed in');
+    }
+    const { workspaceId, userIdToRemove } = data;
+    if (!workspaceId || !userIdToRemove) {
+        throw new functions.https.HttpsError('invalid-argument', 'workspaceId and userIdToRemove are required');
+    }
+    // Get workspace and verify caller is admin
+    const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+    const workspaceDoc = await workspaceRef.get();
+    if (!workspaceDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Workspace not found');
+    }
+    const workspaceData = workspaceDoc.data();
+    const callerRole = (_b = (_a = workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) === null || _a === void 0 ? void 0 : _a[context.auth.uid]) === null || _b === void 0 ? void 0 : _b.role;
+    if (callerRole !== 'admin') {
+        throw new functions.https.HttpsError('permission-denied', 'Only workspace admins can remove users');
+    }
+    // Prevent removing the owner
+    if ((workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.ownerId) === userIdToRemove) {
+        throw new functions.https.HttpsError('permission-denied', 'Cannot remove the workspace owner');
+    }
+    // Remove user from workspace and workspace from user in a transaction
+    const userRef = db.doc(`users/${userIdToRemove}`);
+    try {
+        await db.runTransaction(async (transaction) => {
+            const userDoc = await transaction.get(userRef);
+            // Remove user from workspace's members list and user map
+            transaction.update(workspaceRef, {
+                memberIds: admin.firestore.FieldValue.arrayRemove(userIdToRemove),
+                [`users.${userIdToRemove}`]: admin.firestore.FieldValue.delete()
+            });
+            // If the user document exists, remove the workspace from their profile's list
+            if (userDoc.exists) {
+                transaction.update(userRef, {
+                    workspaceIds: admin.firestore.FieldValue.arrayRemove(workspaceId)
+                });
+            }
+        });
+        return { success: true };
+    }
+    catch (error) {
+        console.error('Error removing user from workspace:', error);
+        if (error instanceof functions.https.HttpsError) {
+            throw error;
+        }
+        throw new functions.https.HttpsError('internal', 'Failed to remove user from workspace');
     }
 });
 exports.deleteWorkspace = functions.https.onCall(async (data, context) => {
