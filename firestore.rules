@@ -110,8 +110,9 @@ service cloud.firestore {
       allow delete: if isSignedIn() && isOwner(userId);
     }
     
-    match /tasks/{taskId} {
-      allow read, list: if isWorkspaceMember(get(/databases/$(database)/documents/workspaces/JYI3OvEDZn2zBbMHAp2B/companies/YE6GRygTnjlNbKQChrZ1/projects/YCxYtZAuhtgYvxHXJgHh).data.workspaceId);
+    // Global collection group queries for search functionality
+    match /{path=**}/tasks/{taskId} {
+      allow read, list: if isWorkspaceMember(get(/databases/$(database)/documents/$(path)).data.workspaceId);
     }
      match /{path=**}/silos/{siloId} {
       allow read: if isWorkspaceMember(get(/databases/$(database)/documents/$(path)).data.workspaceId);
@@ -119,7 +120,8 @@ service cloud.firestore {
      match /{path=**}/projects/{projectId} {
       allow read: if isWorkspaceMember(get(/databases/$(database)/documents/$(path)).data.workspaceId);
     }
-     match /{path=**}/companies/{companyId} {
+    
+    match /{path=**}/companies/{companyId} {
       allow read: if isWorkspaceMember(get(/databases/$(database)/documents/$(path)).data.workspaceId);
     }
 
