@@ -246,8 +246,7 @@ service cloud.firestore {
      * @principle Ownership & Membership: Enforces user-only access to their task list, but allows workspace members to add to it.
      */
     match /user-tasks/{userId}/tasks/{taskId} {
-      allow get: if isSignedIn() && (isOwner(userId) || isWorkspaceAdmin(resource.data.workspaceId));
-      allow list: if isSignedIn() && (isOwner(userId) || (isWorkspaceAdmin(request.query.resource.data.workspaceId) && areInSameWorkspace(request.auth.uid, userId, request.query.resource.data.workspaceId)));
+      allow get, list: if isSignedIn() && (isOwner(userId) || isWorkspaceAdmin(resource.data.workspaceId));
       allow create: if isWorkspaceMember(request.resource.data.workspaceId);
       allow update: if isSignedIn() && isOwner(userId);
       allow delete: if isSignedIn() && isOwner(userId);
@@ -280,3 +279,5 @@ service cloud.firestore {
     }
   }
 }
+
+    
