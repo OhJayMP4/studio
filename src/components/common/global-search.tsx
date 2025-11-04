@@ -16,6 +16,7 @@ import { collectionGroup, query, where, getDocs } from 'firebase/firestore';
 import type { Company, Project, Silo, Task } from '@/lib/types';
 import { Search, Building, Folder, Box, CheckSquare } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { DialogTitle } from '@/components/ui/dialog';
 
 type SearchResult =
   | { type: 'company'; item: Company & { path: string } }
