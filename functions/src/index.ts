@@ -259,11 +259,6 @@ exports.removeUserFromWorkspace = functions.https.onCall(async (data, context) =
     await db.runTransaction(async (transaction) => {
       const userDoc = await transaction.get(userRef);
       
-      if (!userDoc.exists) {
-        // If the user to remove doesn't exist, we can still proceed to remove them from the workspace
-        // This handles cases where a user might have been deleted from auth but their reference remains.
-      }
-
       // Remove user from workspace
       transaction.update(workspaceRef, {
         memberIds: admin.firestore.FieldValue.arrayRemove(userIdToRemove),
@@ -286,4 +281,57 @@ exports.removeUserFromWorkspace = functions.https.onCall(async (data, context) =
     }
     throw new functions.https.HttpsError('internal', 'Failed to remove user from workspace');
   }
+});
+
+
+exports.deleteWorkspace = functions.https.onCall(async (data, context) => {
+    // Auth check
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Must be signed in');
+    }
+
+    const { workspaceId } = data;
+    if (!workspaceId) {
+        throw new functions.https.HttpsError('invalid-argument', 'workspaceId is required');
+    }
+
+    const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+    const workspaceDoc = await workspaceRef.get();
+
+    if (!workspaceDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Workspace not found');
+    }
+
+    const workspaceData = workspaceDoc.data();
+
+    // Permission check: only owner can delete
+    if (workspaceData?.ownerId !== context.auth.uid) {
+        throw new functions.https.HttpsError('permission-denied', 'Only the workspace owner can delete the workspace');
+    }
+
+    const batch = db.batch();
+
+    // 1. Remove workspaceId from all members' user profiles
+    if (workspaceData?.memberIds && Array.isArray(workspaceData.memberIds)) {
+        workspaceData.memberIds.forEach(memberId => {
+            const userRef = db.doc(`users/${memberId}`);
+            batch.update(userRef, {
+                workspaceIds: admin.firestore.FieldValue.arrayRemove(workspaceId)
+            });
+        });
+    }
+
+    // 2. TODO: Delete all sub-collections (companies, projects, etc.). This is complex and requires recursive deletion.
+    // For now, we will just delete the main workspace document. A more robust solution would handle this.
+
+    // 3. Delete the workspace document itself
+    batch.delete(workspaceRef);
+
+    try {
+        await batch.commit();
+        return { success: true };
+    } catch (error) {
+        console.error('Error deleting workspace:', error);
+        throw new functions.https.HttpsError('internal', 'Failed to delete workspace');
+    }
 });

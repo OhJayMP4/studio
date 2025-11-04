@@ -133,7 +133,7 @@ service cloud.firestore {
      * @allow (get, list) Authenticated user can read or list workspaces they are a member of.
      * @allow (create) Authenticated user can create a workspace if they are the owner.
      * @allow (update) Workspace admin can update the workspace.
-     * @allow (delete) Workspace owner can delete the workspace.
+     * @allow (delete) Workspace owner can delete the workspace. This is handled by a Cloud Function.
      * @deny (get, list) Authenticated user attempts to read or list workspaces they are not a member of.
      * @deny (create) Authenticated user attempts to create a workspace without being the owner.
      * @deny (update, delete) Non-admin attempts to update or delete the workspace.
@@ -143,7 +143,7 @@ service cloud.firestore {
       allow get, list: if isWorkspaceMember(workspaceId);
       allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
       allow update: if isWorkspaceAdmin(workspaceId);
-      allow delete: if isWorkspaceOwner(workspaceId);
+      allow delete: if false; // Deletion must be done via Cloud Function
 
       /**
        * @description Rules for company documents within a workspace.

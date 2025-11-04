@@ -8,7 +8,7 @@ import { Label } from '../ui/label';
 import { Button } from '../ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useFirebase, useUser } from '@/firebase';
-import { doc, updateDoc, writeBatch, getDoc } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { TeamMemberTable } from './team-member-table';
@@ -49,35 +49,16 @@ export function WorkspaceManager() {
     };
 
     const handleDeleteWorkspace = async () => {
-        if (!selectedWorkspace) return;
+        if (!selectedWorkspace || !firebaseApp) return;
 
         setIsDeleting(true);
         toast({ title: 'Deleting Workspace...', description: 'This may take a few moments.' });
 
         try {
-            const workspaceRef = doc(firestore, 'workspaces', selectedWorkspace.id);
-            
-            const batch = writeBatch(firestore);
+            const functions = getFunctions(firebaseApp);
+            const deleteWorkspaceFn = httpsCallable(functions, 'deleteWorkspace');
 
-            // Fetch user documents to update their workspace arrays
-            if (selectedWorkspace.memberIds) {
-                for (const memberId of selectedWorkspace.memberIds) {
-                    const userRef = doc(firestore, 'users', memberId);
-                    const userSnap = await getDoc(userRef);
-                    if (userSnap.exists()) {
-                        const userData = userSnap.data();
-                        if (userData && userData.workspaceIds) {
-                             batch.update(userRef, {
-                                workspaceIds: userData.workspaceIds.filter((id: string) => id !== selectedWorkspace.id)
-                            });
-                        }
-                    }
-                }
-            }
-            
-            batch.delete(workspaceRef);
-
-            await batch.commit();
+            await deleteWorkspaceFn({ workspaceId: selectedWorkspace.id });
 
             toast({
                 title: 'Workspace Deleted',
@@ -86,6 +67,7 @@ export function WorkspaceManager() {
 
             setSelectedWorkspace(null); 
             router.push('/dashboard');
+            router.refresh();
 
         } catch (error: any) {
             console.error("Error deleting workspace: ", error);
