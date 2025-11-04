@@ -44,6 +44,11 @@ env:
     availability:
       - BUILD
       - RUNTIME
+  - variable: RESEND_API_KEY
+    value: "YOUR_RESEND_API_KEY_HERE"
+    availability:
+      - BUILD
+      - RUNTIME
 
 # The build command for the Next.js app.
 # This is used to build the production version of the app.
