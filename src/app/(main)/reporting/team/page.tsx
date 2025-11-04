@@ -73,7 +73,7 @@ function TeamReportContent() {
         };
 
         fetchData();
-    }, [userIds.join(','), firestore]);
+    }, [userIds, firestore]);
     
     if (isLoading) {
         return <ReportLoader />;
@@ -89,6 +89,9 @@ function TeamReportContent() {
                 @media print {
                     body {
                          -webkit-print-color-adjust: exact;
+                    }
+                     .printable-area, .printable-area * {
+                        visibility: visible;
                     }
                     .printable-area {
                         position: absolute;
@@ -127,7 +130,7 @@ function TeamReportContent() {
                                 {tasks.map(task => {
                                     const isOverdue = new Date(task.dueDate) < new Date() && !task.completed;
                                     return (
-                                        <tr key={task.id} className={`border-b border-gray-200 align-top ${task.completed ? 'text-gray-400 bg-gray-50 line-through' : ''}`}>
+                                        <tr key={task.id} className={cn('border-b border-gray-200 align-top', { 'text-gray-400 bg-gray-50 line-through': task.completed })}>
                                             <td className="p-2">
                                                 <p className="font-medium">{task.title}</p>
                                                 {task.description && <p className="text-xs text-gray-500 mt-1">{task.description}</p>}
@@ -135,8 +138,8 @@ function TeamReportContent() {
                                             <td className="p-2 text-xs text-gray-600">
                                                 {task.companyName} / {task.projectName} / {task.siloName}
                                             </td>
-                                            <td className={`p-2 ${isOverdue ? 'text-red-500 font-bold' : ''}`}>{format(new Date(task.dueDate), 'MMM d, yyyy')}</td>
-                                            <td className={`p-2 font-medium ${priorityStyles[task.priority]}`}>{task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}</td>
+                                            <td className={cn('p-2', { 'text-red-500 font-bold': isOverdue })}>{format(new Date(task.dueDate), 'MMM d, yyyy')}</td>
+                                            <td className={cn('p-2 font-medium', priorityStyles[task.priority])}>{task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}</td>
                                         </tr>
                                     )
                                 })}
@@ -159,4 +162,3 @@ export default function TeamReportPage() {
         </Suspense>
     );
 }
-
