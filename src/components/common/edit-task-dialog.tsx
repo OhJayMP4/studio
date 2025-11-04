@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFirestore } from '@/firebase';
+import { useFirestore, useUser } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { doc, updateDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
@@ -65,6 +65,7 @@ const getWorkspaceUsers = (workspace: Workspace | null) => {
 export function EditTaskDialog({ task, path, children }: EditTaskDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const firestore = useFirestore();
+  const { user } = useUser();
   const { selectedWorkspace } = useSelectedWorkspace();
   const { toast } = useToast();
 
@@ -87,7 +88,7 @@ export function EditTaskDialog({ task, path, children }: EditTaskDialogProps) {
   }, [isOpen, task, form]);
 
   const handleUpdateTask = async (data: FormValues) => {
-    if (!selectedWorkspace) return;
+    if (!selectedWorkspace || !user) return;
 
     try {
       const taskRef = doc(firestore, path);
@@ -97,6 +98,7 @@ export function EditTaskDialog({ task, path, children }: EditTaskDialogProps) {
         dueDate: data.dueDate.toISOString(),
         priority: data.priority,
         assigneeId: data.assigneeId,
+        updatedBy: user.uid,
       });
       
       toast({

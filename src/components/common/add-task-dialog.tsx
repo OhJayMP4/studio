@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFirestore } from '@/firebase';
+import { useFirestore, useUser } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useToast } from '@/hooks/use-toast';
 import { CalendarIcon, PlusCircle } from 'lucide-react';
@@ -66,6 +66,7 @@ const getWorkspaceUsers = (workspace: Workspace | null) => {
 export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTaskDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const firestore = useFirestore();
+  const { user } = useUser();
   const { selectedWorkspace } = useSelectedWorkspace();
   const { toast } = useToast();
 
@@ -83,11 +84,11 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
   const workspaceUsers = getWorkspaceUsers(selectedWorkspace);
 
   const handleCreateTask = async (data: FormValues) => {
-    if (!selectedWorkspace) {
+    if (!selectedWorkspace || !user) {
       toast({
         variant: 'destructive',
-        title: 'Workspace Error',
-        description: 'A workspace must be selected to add a task.',
+        title: 'Error',
+        description: 'A workspace must be selected and you must be logged in to add a task.',
       });
       return;
     }
@@ -106,6 +107,7 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
           assigneeId: data.assigneeId,
           completed: false,
           projectId: projectId,
+          createdBy: user.uid
         }
       });
       

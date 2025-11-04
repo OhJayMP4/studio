@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFirestore } from '@/firebase';
+import { useFirestore, useUser } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { addDoc, collection, doc, getDocs, runTransaction, updateDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
@@ -70,6 +70,7 @@ async function calculateTaskProgress(firestore: any, workspaceId: string, compan
 export function AddSaleDialog({ project, companyId, children }: AddSaleDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const firestore = useFirestore();
+  const { user } = useUser();
   const { selectedWorkspace } = useSelectedWorkspace();
   const { toast } = useToast();
 
@@ -84,11 +85,11 @@ export function AddSaleDialog({ project, companyId, children }: AddSaleDialogPro
   });
 
   const handleLogSale = async (data: FormValues) => {
-    if (!selectedWorkspace) {
+    if (!selectedWorkspace || !user) {
       toast({
         variant: 'destructive',
-        title: 'Workspace Error',
-        description: 'A workspace must be selected to log a sale.',
+        title: 'Error',
+        description: 'A workspace must be selected and you must be logged in to log a sale.',
       });
       return;
     }
@@ -111,6 +112,7 @@ export function AddSaleDialog({ project, companyId, children }: AddSaleDialogPro
                 source: data.source,
                 value: data.value,
                 projectId: project.id,
+                createdBy: user.uid,
             });
 
             // 2. Calculate new total sales value

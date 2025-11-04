@@ -32,6 +32,10 @@ export default function MainSidebar() {
     if (exact) {
       return pathname === path;
     }
+    // Make sure /company/* doesn't activate companies
+    if (path === '/companies' && (pathname.startsWith('/company/') || pathname.startsWith('/reporting') || pathname.startsWith('/settings'))) {
+        return false;
+    }
     return pathname.startsWith(path);
   };
 

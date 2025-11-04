@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFirestore } from '@/firebase';
+import { useFirestore, useUser } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { addDoc, collection } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
@@ -38,6 +38,7 @@ type FormValues = z.infer<typeof formSchema>;
 export function AddCompanyDialog({ children }: { children?: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const firestore = useFirestore();
+  const { user } = useUser();
   const { selectedWorkspace } = useSelectedWorkspace();
   const { toast } = useToast();
 
@@ -51,11 +52,11 @@ export function AddCompanyDialog({ children }: { children?: React.ReactNode }) {
   });
 
   const handleCreateCompany = async (data: FormValues) => {
-    if (!selectedWorkspace) {
+    if (!selectedWorkspace || !user) {
       toast({
         variant: 'destructive',
-        title: 'Workspace Error',
-        description: 'You must select a workspace to add a company.',
+        title: 'Error',
+        description: 'You must select a workspace and be logged in to add a company.',
       });
       return;
     }
@@ -68,6 +69,7 @@ export function AddCompanyDialog({ children }: { children?: React.ReactNode }) {
         logoUrl: data.logoUrl || null,
         yearlyTurnoverTarget: data.yearlyTurnoverTarget || null,
         workspaceId: selectedWorkspace.id,
+        createdBy: user.uid,
       });
       
       toast({

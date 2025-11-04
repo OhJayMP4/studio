@@ -4,6 +4,7 @@ import Link from "next/link";
 import { PlusCircle } from "lucide-react";
 import { GlobalQuickAdd } from "../common/global-quick-add";
 import { GlobalSearch } from "../common/global-search";
+import { Notifications } from "../common/notifications";
 
 export default function Header() {
   return (
@@ -12,6 +13,7 @@ export default function Header() {
       <div className="ml-auto flex items-center gap-4">
         <GlobalSearch />
         <GlobalQuickAdd />
+        <Notifications />
       </div>
     </header>
   );

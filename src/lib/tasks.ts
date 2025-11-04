@@ -1,5 +1,5 @@
 'use client';
-import { collection, doc, addDoc, writeBatch, getDoc, Firestore, DocumentData } from "firebase/firestore";
+import { collection, doc, writeBatch, getDoc, Firestore } from "firebase/firestore";
 import type { Company, Project, Silo, Task, Workspace } from "./types";
 
 interface AddTaskParams {
@@ -7,7 +7,7 @@ interface AddTaskParams {
     companyId: string;
     projectId: string;
     siloId: string;
-    taskData: Omit<Task, 'id' | 'description'> & { description?: string };
+    taskData: Omit<Task, 'id' | 'description'> & { description?: string, createdBy: string };
 }
 
 export async function addTask(firestore: Firestore, params: AddTaskParams) {
@@ -95,8 +95,11 @@ export async function updateTaskCompletion(firestore: Firestore, originalTaskPat
 
     const batch = writeBatch(firestore);
 
-    // Update original task
-    batch.update(originalTaskRef, { completed });
+    // Update original task, and add an 'updatedBy' field
+    const auth = (await import('firebase/auth')).getAuth();
+    const currentUser = auth.currentUser;
+    
+    batch.update(originalTaskRef, { completed, updatedBy: currentUser?.uid });
 
     // Update denormalized task(s) - should only be one
     userTasksSnap.forEach(document => {

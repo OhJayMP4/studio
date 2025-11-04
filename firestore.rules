@@ -18,6 +18,7 @@
  * - /user-tasks/{userId}/tasks/{taskId}: Denormalized task data for user-specific queries, accessible only by the user.
  * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}: Sales data, accessible to workspace members.
  * - /invites/{inviteId}: Invitations to join workspaces, managed exclusively by the server.
+ * - /notifications/{workspaceId}/activities/{activityId}: Notifications for workspace activity.
  *
  * Key Security Decisions:
  * - User listing is explicitly disallowed to prevent enumeration.
@@ -253,6 +254,20 @@ service cloud.firestore {
     match /invites/{inviteId} {
       allow get, list, update, delete: if false;
       allow create: if isWorkspaceAdmin(request.resource.data.workspaceId);
+    }
+
+     /**
+     * @description Rules for notification documents.
+     * @path /notifications/{workspaceId}/activities/{activityId}
+     * @allow (read, list) Members of the workspace can read notifications.
+     * @allow (update) Members can update (e.g., mark as read).
+     * @allow (create, delete) Denied for all clients.
+     * @principle Membership & Server-Only: Enforces read access for members and server-only creation.
+     */
+    match /notifications/{workspaceId}/activities/{activityId} {
+      allow read, list: if isWorkspaceMember(workspaceId);
+      allow create, delete: if false;
+      allow update: if isWorkspaceMember(workspaceId);
     }
   }
 }

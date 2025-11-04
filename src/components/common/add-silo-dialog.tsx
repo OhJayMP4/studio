@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFirestore } from '@/firebase';
+import { useFirestore, useUser } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { addDoc, collection, getDocs } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
@@ -37,6 +37,7 @@ interface AddSiloDialogProps {
 export function AddSiloDialog({ companyId, projectId, children }: AddSiloDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const firestore = useFirestore();
+  const { user } = useUser();
   const { selectedWorkspace } = useSelectedWorkspace();
   const { toast } = useToast();
 
@@ -50,11 +51,11 @@ export function AddSiloDialog({ companyId, projectId, children }: AddSiloDialogP
   });
 
   const handleCreateSilo = async (data: FormValues) => {
-    if (!selectedWorkspace) {
+    if (!selectedWorkspace || !user) {
       toast({
         variant: 'destructive',
-        title: 'Workspace Error',
-        description: 'You must select a workspace to add a silo.',
+        title: 'Error',
+        description: 'You must select a workspace and be logged in to add a silo.',
       });
       return;
     }
@@ -69,6 +70,7 @@ export function AddSiloDialog({ companyId, projectId, children }: AddSiloDialogP
       await addDoc(silosCollection, {
         name: data.name,
         order: order,
+        createdBy: user.uid,
       });
       
       toast({

@@ -115,11 +115,21 @@
         "yearlyTurnoverTarget": {
           "type": "number",
           "description": "The yearly turnover target for the company."
+        },
+        "workspaceId": {
+          "type": "string",
+          "description": "The ID of the workspace this company belongs to."
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "The UID of the user who created the company."
         }
       },
       "required": [
         "name",
-        "description"
+        "description",
+        "workspaceId",
+        "createdBy"
       ]
     },
     "Project": {
@@ -152,9 +162,17 @@
           "type": "string",
           "description": "The ID of the company this project belongs to."
         },
+        "workspaceId": {
+          "type": "string",
+          "description": "The ID of the workspace this project belongs to."
+        },
         "totalSalesValue": {
           "type": "number",
           "description": "The total value of all logged sales for the project."
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "The UID of the user who created the project."
         }
       },
       "required": [
@@ -162,7 +180,9 @@
         "deadline",
         "hasMonetaryValue",
         "progress",
-        "companyId"
+        "companyId",
+        "workspaceId",
+        "createdBy"
       ]
     },
     "Silo": {
@@ -177,11 +197,16 @@
         "order": {
           "type": "number",
           "description": "The order of the silo in the project view."
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "The UID of the user who created the silo."
         }
       },
       "required": [
         "name",
-        "order"
+        "order",
+        "createdBy"
       ]
     },
     "Task": {
@@ -222,6 +247,10 @@
         "projectId": {
           "type": "string",
           "description": "The ID of the project this task belongs to."
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "The UID of the user who created the task."
         }
       },
       "required": [
@@ -230,7 +259,8 @@
         "priority",
         "assigneeId",
         "dueDate",
-        "projectId"
+        "projectId",
+        "createdBy"
       ]
     },
     "UserTask": {
@@ -325,13 +355,18 @@
         "projectId": {
           "type": "string",
           "description": "The ID of the project this sale belongs to."
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "The UID of the user who logged the sale."
         }
       },
       "required": [
         "date",
         "source",
         "value",
-        "projectId"
+        "projectId",
+        "createdBy"
       ]
     },
     "Invite": {
@@ -362,6 +397,104 @@
         "email",
         "token",
         "expires"
+      ]
+    },
+    "Notification": {
+      "title": "Notification",
+      "type": "object",
+      "description": "A notification for a workspace activity.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "task_added",
+            "task_assigned",
+            "task_completed",
+            "silo_added",
+            "project_added",
+            "company_added",
+            "sale_added"
+          ]
+        },
+        "actorUid": {
+          "type": "string"
+        },
+        "actorName": {
+          "type": "string"
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+             "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "type",
+            "path"
+          ]
+        },
+        "assignee": {
+          "type": "object",
+          "properties": {
+            "uid": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "context": {
+          "type": "object",
+          "properties": {
+            "companyName": {
+              "type": "string"
+            },
+            "projectName": {
+              "type": "string"
+            },
+            "siloName": {
+              "type": "string"
+            }
+          }
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "readBy": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "isRelevantTo": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "actorUid",
+        "actorName",
+        "target",
+        "timestamp",
+        "readBy",
+        "isRelevantTo"
       ]
     }
   },
@@ -424,6 +557,12 @@
         "$ref": "#/entities/Invite"
       },
       "description": "Stores pending invitations for users to join workspaces."
+    },
+    "/notifications/{workspaceId}/activities/{activityId}": {
+      "schema": {
+        "$ref": "#/entities/Notification"
+      },
+      "description": "Stores workspace activity notifications."
     }
   }
 }

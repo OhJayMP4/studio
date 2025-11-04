@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFirestore } from '@/firebase';
+import { useFirestore, useUser } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { addDoc, collection } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
@@ -55,6 +55,7 @@ interface AddProjectDialogProps {
 export function AddProjectDialog({ companyId, children }: AddProjectDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const firestore = useFirestore();
+  const { user } = useUser();
   const { selectedWorkspace } = useSelectedWorkspace();
   const { toast } = useToast();
 
@@ -75,11 +76,11 @@ export function AddProjectDialog({ companyId, children }: AddProjectDialogProps)
   const hasMonetaryValue = watch('hasMonetaryValue');
 
   const handleCreateProject = async (data: FormValues) => {
-    if (!selectedWorkspace) {
+    if (!selectedWorkspace || !user) {
       toast({
         variant: 'destructive',
-        title: 'Workspace Error',
-        description: 'You must select a workspace to add a project.',
+        title: 'Error',
+        description: 'You must select a workspace and be logged in to add a project.',
       });
       return;
     }
@@ -94,7 +95,8 @@ export function AddProjectDialog({ companyId, children }: AddProjectDialogProps)
         totalSalesValue: 0,
         progress: 0,
         companyId: companyId,
-        workspaceId: selectedWorkspace.id, // Add workspaceId to satisfy security rules
+        workspaceId: selectedWorkspace.id,
+        createdBy: user.uid,
       });
       
       toast({

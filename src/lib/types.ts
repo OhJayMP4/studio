@@ -28,6 +28,7 @@ export type Company = {
   logoUrl?: string;
   yearlyTurnoverTarget?: number;
   workspaceId: string;
+  createdBy: string;
 };
 
 export type Project = {
@@ -40,12 +41,14 @@ export type Project = {
   companyId: string;
   workspaceId: string;
   totalSalesValue: number;
+  createdBy: string;
 };
 
 export type Silo = {
     id: string;
     name: string;
     order: number;
+    createdBy: string;
 };
 
 export type Task = {
@@ -56,7 +59,9 @@ export type Task = {
     dueDate: string; // ISO 8601 date string
     priority: 'low' | 'medium' | 'high';
     assigneeId: string;
-    projectId: string; // Added to link task to project
+    projectId: string; 
+    createdBy: string;
+    updatedBy?: string;
 };
 
 export type UserTask = {
@@ -83,6 +88,7 @@ export type Sale = {
     source: string;
     value: number;
     projectId: string;
+    createdBy: string;
 }
 
 export type Invite = {
@@ -91,5 +97,33 @@ export type Invite = {
     email: string;
     token: string;
     expires: number; // Unix timestamp
+}
+
+export type Notification = {
+    id: string;
+    type: 'task_added' | 'task_assigned' | 'task_completed' | 'silo_added' | 'project_added' | 'company_added' | 'sale_added';
+    actorUid: string;
+    actorName: string;
+    target: {
+        id: string;
+        name: string;
+        type: string;
+        path: string;
+    };
+    assignee?: {
+        uid: string;
+        name: string;
+    };
+    context?: {
+        companyName?: string;
+        projectName?: string;
+        siloName?: string;
+    };
+    timestamp: {
+        seconds: number;
+        nanoseconds: number;
+    };
+    readBy: string[];
+    isRelevantTo: string[];
 }
     
