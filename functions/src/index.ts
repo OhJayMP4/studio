@@ -10,7 +10,7 @@ const getActorAndRelevantUsers = async (workspaceId: string, actorUid: string) =
     const workspaceSnap = await db.doc(`workspaces/${workspaceId}`).get();
     if (!workspaceSnap.exists) {
         console.error(`Workspace ${workspaceId} not found.`);
-        return { actor: null, isRelevantTo: [] };
+        return { actorName: null, isRelevantTo: [] };
     }
     const workspaceData = workspaceSnap.data();
     const actor = workspaceData?.users?.[actorUid];
@@ -136,10 +136,41 @@ exports.onTaskWrite = functions.firestore
         const beforeData = change.before.data();
         const afterData = change.after.data();
 
-        // Task Creation
-        if (!change.before.exists && change.after.exists && afterData) {
-            const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, afterData.createdBy);
+        // Task Creation or Re-assignment
+        if (afterData && (!beforeData || beforeData.assigneeId !== afterData.assigneeId)) {
+            const actorUid = afterData.updatedBy || afterData.createdBy;
+            const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
             if (!actorName) return;
+
+            const [companySnap, projectSnap, siloSnap, assigneeSnap] = await Promise.all([
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get(),
+                db.doc(`users/${afterData.assigneeId}`).get()
+            ]);
+
+            const companyName = companySnap.data()?.name || '';
+            const projectName = projectSnap.data()?.name || '';
+            const siloName = siloSnap.data()?.name || '';
+            const assigneeName = assigneeSnap.exists ? assigneeSnap.data()?.name : 'an unknown user';
+            
+            await createNotification(workspaceId, {
+                type: 'task_assigned',
+                actorUid,
+                actorName,
+                target: { id: change.after.id, name: afterData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
+                assignee: { uid: afterData.assigneeId, name: assigneeName },
+                context: { companyName, projectName, siloName },
+                isRelevantTo,
+            });
+        }
+
+        // Task Completion
+        if (beforeData && afterData && beforeData.completed === false && afterData.completed === true) {
+            // The person completing the task is the assignee.
+            const actorUid = afterData.assigneeId; 
+            const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+             if (!actorName) return;
 
             const [companySnap, projectSnap, siloSnap] = await Promise.all([
                 db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
@@ -151,57 +182,13 @@ exports.onTaskWrite = functions.firestore
             const siloName = siloSnap.data()?.name || '';
 
             await createNotification(workspaceId, {
-                type: 'task_added',
-                actorUid: afterData.createdBy,
+                type: 'task_completed',
+                actorUid,
                 actorName,
                 target: { id: change.after.id, name: afterData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
                 context: { companyName, projectName, siloName },
                 isRelevantTo,
             });
-            return;
-        }
-
-        // Task Update (Assignment or Completion)
-        if (change.before.exists && change.after.exists && beforeData && afterData) {
-            const actorUid = afterData.updatedBy || afterData.createdBy; // Assume an 'updatedBy' field might be set.
-            const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
-            if (!actorName) return;
-
-            const [companySnap, projectSnap, siloSnap] = await Promise.all([
-                db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
-                db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
-                db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get()
-            ]);
-            const companyName = companySnap.data()?.name || '';
-            const projectName = projectSnap.data()?.name || '';
-            const siloName = siloSnap.data()?.name || '';
-
-            // Task Re-assignment
-            if (beforeData.assigneeId !== afterData.assigneeId) {
-                 const assigneeSnap = await db.doc(`users/${afterData.assigneeId}`).get();
-                 const assigneeName = assigneeSnap.exists ? assigneeSnap.data()?.name : 'an unknown user';
-                await createNotification(workspaceId, {
-                    type: 'task_assigned',
-                    actorUid,
-                    actorName,
-                    target: { id: change.after.id, name: afterData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
-                    assignee: { uid: afterData.assigneeId, name: assigneeName },
-                    context: { companyName, projectName, siloName },
-                    isRelevantTo,
-                });
-            }
-
-            // Task Completion
-            if (beforeData.completed === false && afterData.completed === true) {
-                 await createNotification(workspaceId, {
-                    type: 'task_completed',
-                    actorUid,
-                    actorName,
-                    target: { id: change.after.id, name: afterData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
-                    context: { companyName, projectName, siloName },
-                    isRelevantTo,
-                });
-            }
         }
     });
 
@@ -535,5 +522,3 @@ exports.deleteWorkspace = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('internal', 'Failed to delete workspace');
     }
 });
-
-    

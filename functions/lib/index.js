@@ -11,7 +11,7 @@ const getActorAndRelevantUsers = async (workspaceId, actorUid) => {
     const workspaceSnap = await db.doc(`workspaces/${workspaceId}`).get();
     if (!workspaceSnap.exists) {
         console.error(`Workspace ${workspaceId} not found.`);
-        return { actor: null, isRelevantTo: [] };
+        return { actorName: null, isRelevantTo: [] };
     }
     const workspaceData = workspaceSnap.data();
     const actor = (_a = workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) === null || _a === void 0 ? void 0 : _a[actorUid];
@@ -117,36 +117,40 @@ exports.onSaleCreate = functions.firestore
 exports.onTaskWrite = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
     .onWrite(async (change, context) => {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c, _d, _e;
     const { workspaceId, companyId, projectId, siloId } = context.params;
     const beforeData = change.before.data();
     const afterData = change.after.data();
-    // Task Creation
-    if (!change.before.exists && change.after.exists && afterData) {
-        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, afterData.createdBy);
+    // Task Creation or Re-assignment
+    if (afterData && (!beforeData || beforeData.assigneeId !== afterData.assigneeId)) {
+        const actorUid = afterData.updatedBy || afterData.createdBy;
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
         if (!actorName)
             return;
-        const [companySnap, projectSnap, siloSnap] = await Promise.all([
+        const [companySnap, projectSnap, siloSnap, assigneeSnap] = await Promise.all([
             db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
             db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
-            db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get()
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get(),
+            db.doc(`users/${afterData.assigneeId}`).get()
         ]);
         const companyName = ((_a = companySnap.data()) === null || _a === void 0 ? void 0 : _a.name) || '';
         const projectName = ((_b = projectSnap.data()) === null || _b === void 0 ? void 0 : _b.name) || '';
         const siloName = ((_c = siloSnap.data()) === null || _c === void 0 ? void 0 : _c.name) || '';
+        const assigneeName = assigneeSnap.exists ? (_d = assigneeSnap.data()) === null || _d === void 0 ? void 0 : _d.name : 'an unknown user';
         await createNotification(workspaceId, {
-            type: 'task_added',
-            actorUid: afterData.createdBy,
+            type: 'task_assigned',
+            actorUid,
             actorName,
             target: { id: change.after.id, name: afterData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
+            assignee: { uid: afterData.assigneeId, name: assigneeName },
             context: { companyName, projectName, siloName },
             isRelevantTo,
         });
-        return;
     }
-    // Task Update (Assignment or Completion)
-    if (change.before.exists && change.after.exists && beforeData && afterData) {
-        const actorUid = afterData.updatedBy || afterData.createdBy; // Assume an 'updatedBy' field might be set.
+    // Task Completion
+    if (beforeData && afterData && beforeData.completed === false && afterData.completed === true) {
+        // The person completing the task is the assignee.
+        const actorUid = afterData.assigneeId;
         const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
         if (!actorName)
             return;
@@ -155,34 +159,17 @@ exports.onTaskWrite = functions.firestore
             db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
             db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get()
         ]);
-        const companyName = ((_d = companySnap.data()) === null || _d === void 0 ? void 0 : _d.name) || '';
-        const projectName = ((_e = projectSnap.data()) === null || _e === void 0 ? void 0 : _e.name) || '';
-        const siloName = ((_f = siloSnap.data()) === null || _f === void 0 ? void 0 : _f.name) || '';
-        // Task Re-assignment
-        if (beforeData.assigneeId !== afterData.assigneeId) {
-            const assigneeSnap = await db.doc(`users/${afterData.assigneeId}`).get();
-            const assigneeName = assigneeSnap.exists ? (_g = assigneeSnap.data()) === null || _g === void 0 ? void 0 : _g.name : 'an unknown user';
-            await createNotification(workspaceId, {
-                type: 'task_assigned',
-                actorUid,
-                actorName,
-                target: { id: change.after.id, name: afterData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
-                assignee: { uid: afterData.assigneeId, name: assigneeName },
-                context: { companyName, projectName, siloName },
-                isRelevantTo,
-            });
-        }
-        // Task Completion
-        if (beforeData.completed === false && afterData.completed === true) {
-            await createNotification(workspaceId, {
-                type: 'task_completed',
-                actorUid,
-                actorName,
-                target: { id: change.after.id, name: afterData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
-                context: { companyName, projectName, siloName },
-                isRelevantTo,
-            });
-        }
+        const companyName = ((_e = companySnap.data()) === null || _e === void 0 ? void 0 : _e.name) || '';
+        const projectName = companySnap.data()?.name || '';
+        const siloName = siloSnap.data()?.name || '';
+        await createNotification(workspaceId, {
+            type: 'task_completed',
+            actorUid,
+            actorName,
+            target: { id: change.after.id, name: afterData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
+            context: { companyName, projectName, siloName },
+            isRelevantTo,
+        });
     }
 });
 // Generate a simple random token
