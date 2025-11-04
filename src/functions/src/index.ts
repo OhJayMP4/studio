@@ -80,8 +80,8 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
   }
   
   const uid = context.auth.uid;
-  const email = context.auth.token.email;
-  const displayName = context.auth.token.name || email;
+  const authEmail = context.auth.token.email;
+  const displayName = context.auth.token.name || authEmail;
   const photoURL = context.auth.token.picture || null;
 
   const invitesRef = db.collection("invites");
@@ -96,9 +96,10 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
 
     const inviteDoc = inviteQuerySnapshot.docs[0];
     const inviteData = inviteDoc.data();
+    const inviteEmail = inviteData.email;
 
-    // Validate the invite is for the correct user
-    if (inviteData.email !== email) {
+    // Validate the invite is for the correct user (case-insensitive)
+    if (inviteEmail.toLowerCase() !== authEmail?.toLowerCase()) {
         throw new functions.https.HttpsError('permission-denied', 'This invitation is not intended for your account.');
     }
 
@@ -123,7 +124,7 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
             // Create the user profile if it doesn't exist
             transaction.set(userRef, {
                 uid,
-                email,
+                email: authEmail,
                 name: displayName,
                 avatarUrl: photoURL,
                 workspaceIds: [],
@@ -333,3 +334,5 @@ exports.deleteWorkspace = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('internal', 'Failed to delete workspace');
     }
 });
+
+    
