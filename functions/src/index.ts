@@ -39,10 +39,12 @@ exports.createInvite = functions.https.onCall(async (data, context) => {
     }
 
     // Check if user is already a member
-    const existingUser = Object.values(workspaceData?.users || {}).find((member: any) => member.email === email);
-    if(existingUser) {
-        // We throw an 'already-exists' error code which the client can use.
-        throw new functions.https.HttpsError('already-exists', 'A user with this email is already a member of the workspace.');
+    const existingUserQuery = await db.collection('users').where('email', '==', email).limit(1).get();
+    if (!existingUserQuery.empty) {
+        const existingUserId = existingUserQuery.docs[0].id;
+        if (workspaceData?.memberIds?.includes(existingUserId)) {
+            throw new functions.https.HttpsError('already-exists', 'A user with this email is already a member of the workspace.');
+        }
     }
     
     // 3. Create Invite in Firestore
@@ -91,7 +93,7 @@ exports.createInvite = functions.https.onCall(async (data, context) => {
                 <a 
                   href="${joinUrl}" 
                   target="_blank"
-                  style="display: inline-block; background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin-top: 20px;"
+                  style="display: inline-block; background-color: #FF6812; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin-top: 20px;"
                 >
                   Join Workspace
                 </a>
