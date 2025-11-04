@@ -237,16 +237,16 @@ service cloud.firestore {
     /**
      * @description Rules for denormalized user task documents.
      * @path /user-tasks/{userId}/tasks/{taskId}
-     * @allow (get, list) Authenticated user can read their own tasks, or an admin from the same workspace can read them.
+     * @allow (get, list) Authenticated user can read their own tasks. Admins cannot read other user's tasks directly from the client. Reports are generated via Cloud Functions.
      * @allow (create) Any workspace member can create a task for another user.
      * @allow (update, delete) Authenticated user can update or delete their own tasks.
-     * @deny (get, list) Non-owner attempts to read or list tasks unless they are an admin in the same workspace.
+     * @deny (get, list) Non-owner attempts to read or list tasks.
      * @deny (create) Non-workspace member attempts to create the denormalized task.
      * @deny (update, delete) Non-owner attempts to update or delete tasks.
      * @principle Ownership & Membership: Enforces user-only access to their task list, but allows workspace members to add to it.
      */
     match /user-tasks/{userId}/tasks/{taskId} {
-      allow get, list: if isSignedIn() && (isOwner(userId) || isWorkspaceAdmin(resource.data.workspaceId));
+      allow get, list: if isSignedIn() && isOwner(userId);
       allow create: if isWorkspaceMember(request.resource.data.workspaceId);
       allow update: if isSignedIn() && isOwner(userId);
       allow delete: if isSignedIn() && isOwner(userId);

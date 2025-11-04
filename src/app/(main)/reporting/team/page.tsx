@@ -1,14 +1,15 @@
 'use client';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useFirestore } from '@/firebase';
+import { useFirebase, useUser } from '@/firebase';
 import { UserTask, UserProfile, Workspace } from '@/lib/types';
-import { collection, getDocs, query, doc, getDoc } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { format } from 'date-fns';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { cn } from '@/lib/utils';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
+import { useToast } from '@/hooks/use-toast';
 
 type ReportData = {
     user: UserProfile;
@@ -37,13 +38,14 @@ function ReportLoader() {
 function TeamReportContent() {
     const searchParams = useSearchParams();
     const userIds = useMemo(() => searchParams.getAll('u'), [searchParams]);
-    const firestore = useFirestore();
+    const { firebaseApp } = useFirebase();
+    const { toast } = useToast();
     const { selectedWorkspace } = useSelectedWorkspace();
     const [reportData, setReportData] = useState<ReportData[] | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        if (userIds.length === 0 || !firestore || !selectedWorkspace) {
+        if (userIds.length === 0 || !firebaseApp || !selectedWorkspace) {
             setIsLoading(false);
             return;
         }
@@ -51,38 +53,27 @@ function TeamReportContent() {
         const fetchData = async () => {
             setIsLoading(true);
             try {
-                const data: ReportData[] = [];
-                for (const userId of userIds) {
-                    const userRef = doc(firestore, 'users', userId);
-                    const tasksRef = collection(firestore, 'user-tasks', userId, 'tasks');
-                    
-                    const q = query(tasksRef, where => where('workspaceId', '==', selectedWorkspace.id));
-
-                    const [userSnap, tasksSnap] = await Promise.all([
-                        getDoc(userRef),
-                        getDocs(q)
-                    ]);
-
-                    const user = userSnap.exists() 
-                        ? { id: userSnap.id, ...userSnap.data() } as UserProfile 
-                        : { uid: userId, name: 'Unknown User', email: null, avatarUrl: null };
-                    
-                    const tasks = tasksSnap.docs
-                        .map(d => ({ id: d.id, ...d.data() } as UserTask))
-                        .sort((a,b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
-
-                    data.push({ user, tasks });
-                }
-                setReportData(data);
-            } catch (error) {
+                const functions = getFunctions(firebaseApp);
+                const generateTeamReport = httpsCallable(functions, 'generateTeamReport');
+                const result = await generateTeamReport({
+                    workspaceId: selectedWorkspace.id,
+                    userIds: userIds,
+                });
+                setReportData(result.data as ReportData[]);
+            } catch (error: any) {
                 console.error("Error fetching team report data:", error);
+                 toast({
+                    variant: 'destructive',
+                    title: 'Failed to generate report',
+                    description: error.message || 'An unexpected error occurred.',
+                });
             } finally {
                 setIsLoading(false);
             }
         };
 
         fetchData();
-    }, [userIds, firestore, selectedWorkspace]);
+    }, [userIds, firebaseApp, selectedWorkspace, toast]);
     
     if (isLoading) {
         return <ReportLoader />;
@@ -171,3 +162,5 @@ export default function TeamReportPage() {
         </Suspense>
     );
 }
+
+    
