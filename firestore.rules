@@ -61,7 +61,7 @@ service cloud.firestore {
      * @description Checks if the authenticated user is a member of the specified workspace.
      *              Membership is determined by the presence of the user's UID in the `users` map on the workspace document.
      * @path N/A (helper function)
-     * @allow N/A (helper function)
+     * @allow NA (helper function)
      * @deny N/A (helper function)
      * @principle Authorization: Enforces workspace membership for access.
      */
@@ -188,21 +188,21 @@ service cloud.firestore {
               allow update: if isWorkspaceMember(workspaceId);
               allow delete: if isWorkspaceMember(workspaceId);
             }
-
-            /**
-             * @description Rules for sale documents within a project.
-             * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}
-             * @allow (get, list) Authenticated workspace member can read or list sales.
-             * @allow (create, update, delete) Authenticated workspace member can create, update, or delete sales.
-             * @deny (get, list) Non-member attempts to read or list sales.
-             * @deny (create, update, or delete) Non-member attempts to create, update, or delete sales.
-             */
-            match /sales/{saleId} {
-              allow get, list: if isWorkspaceMember(workspaceId);
-              allow create: if isWorkspaceMember(workspaceId);
-              allow update: if isWorkspaceMember(workspaceId);
-              allow delete: if isWorkspaceMember(workspaceId);
-            }
+          }
+          
+          /**
+           * @description Rules for sale documents within a project.
+           * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}
+           * @allow (get, list) Authenticated workspace member can read or list sales.
+           * @allow (create, update, delete) Authenticated workspace member can create, update, or delete sales.
+           * @deny (get, list) Non-member attempts to read or list sales.
+           * @deny (create, update, or delete) Non-member attempts to create, update, or delete sales.
+           */
+          match /sales/{saleId} {
+            allow get, list: if isWorkspaceMember(workspaceId);
+            allow create: if isWorkspaceMember(workspaceId);
+            allow update: if isWorkspaceMember(workspaceId);
+            allow delete: if isWorkspaceMember(workspaceId);
           }
         }
       }
