@@ -94,35 +94,46 @@ service cloud.firestore {
     }
 
     /**
-     * @description Checks if an admin is attempting to remove a user from a workspace.
-     *              This rule is secure because it ONLY allows the 'workspaceIds' field to be changed.
-     *              An admin cannot change a user's name, email, etc.
+     * @description Checks if an admin is removing a workspaceId from a user's profile.
      * @path N/A (helper function)
      * @allow N/A (helper function)
      * @deny N/A (helper function)
-     * @principle Authorization & Least Privilege: Allows admins to manage user profiles for workspace removal without granting broader edit permissions.
+     * @principle Authorization: Allows admins to manage user profiles during workspace removal.
      */
-    function isAdminManagingUserWorkspaces() {
-        // Ensure that the only field being changed is `workspaceIds`
-        let otherFieldsChanged = request.resource.data.keys().removeAll(['uid', 'email', 'name', 'avatarUrl', 'workspaceIds']).size() > 0;
-        let mainFieldsChanged = request.resource.data.diff(resource.data).affectedKeys().removeAll(['workspaceIds']).size() > 0;
-
-        // The request is only valid if no other fields are being modified
-        if (mainFieldsChanged || otherFieldsChanged) {
-            return false;
-        }
-
-        // Get the list of workspace IDs that are being removed from the user's profile
-        let removedIds = resource.data.workspaceIds.diff(request.resource.data.workspaceIds).removed();
-
-        // If no IDs are being removed, this rule does not apply.
-        if (removedIds.size() == 0) {
-            return false;
-        }
-        
-        // Check if the requesting user is an admin of the workspace that is being removed.
-        let removedWorkspaceId = removedIds[0]; // We only support removing one at a time from the client
-        return isWorkspaceAdmin(removedWorkspaceId);
+    function isAdminRemovingWorkspaceFromUser() {
+      // Get the workspace ID that's being removed
+      let oldWorkspaceIds = resource.data.workspaceIds;
+      let newWorkspaceIds = request.resource.data.workspaceIds;
+      
+      // Check if we're only removing workspaceIds (not adding or changing other fields)
+      let isOnlyRemovingWorkspace = 
+        newWorkspaceIds.size() < oldWorkspaceIds.size() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['workspaceIds']);
+      
+      if (!isOnlyRemovingWorkspace) {
+        return false;
+      }
+      
+      // Get the removed workspace ID
+      let removedWorkspaceIds = oldWorkspaceIds.toSet().difference(newWorkspaceIds.toSet());
+      
+      // Check if exactly one workspace was removed
+      if (removedWorkspaceIds.size() != 1) {
+        return false;
+      }
+      
+      let removedWorkspaceId = removedWorkspaceIds.hasAny([removedWorkspaceIds.keys()[0]]) 
+        ? removedWorkspaceIds.keys()[0] 
+        : null;
+      
+      if (removedWorkspaceId == null) {
+        return false;
+      }
+      
+      // Check if the requester is an admin of that workspace
+      let workspace = get(/databases/$(database)/documents/workspaces/$(removedWorkspaceId));
+      return request.auth.uid in workspace.data.users && 
+             workspace.data.users[request.auth.uid].role == 'admin';
     }
     
     /**
@@ -141,7 +152,7 @@ service cloud.firestore {
       allow get: if isSignedIn();
       allow list: if false;
       allow create: if isSignedIn() && isOwner(userId);
-      allow update: if isSignedIn() && (isOwner(userId) || isAdminManagingUserWorkspaces());
+      allow update: if isSignedIn() && (isOwner(userId) || isAdminRemovingWorkspaceFromUser());
       allow delete: if isSignedIn() && isOwner(userId);
     }
     
