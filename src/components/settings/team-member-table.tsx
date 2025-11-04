@@ -1,21 +1,23 @@
 'use client';
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
-import { useUser, useFirestore } from "@/firebase";
+import { useUser, useFirestore, useFirebase } from "@/firebase";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Button } from "../ui/button";
 import { Trash2 } from "lucide-react";
-import { doc, updateDoc, arrayRemove, getDoc, writeBatch } from "firebase/firestore";
+import { doc, updateDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { DeleteDialog } from "../common/delete-dialog";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 
 export function TeamMemberTable() {
-    const { selectedWorkspace, setSelectedWorkspace } = useSelectedWorkspace();
+    const { selectedWorkspace } = useSelectedWorkspace();
     const { user: currentUser } = useUser();
     const firestore = useFirestore();
+    const { firebaseApp } = useFirebase();
     const { toast } = useToast();
 
     if (!selectedWorkspace || !currentUser) return null;
@@ -46,43 +48,31 @@ export function TeamMemberTable() {
         }
     };
 
-    const handleRemoveUser = async (targetUid: string, targetName: string | null) => {
+    const handleRemoveUser = async (userIdToRemove: string, targetName: string | null) => {
         if (!selectedWorkspace) return;
         
         try {
-            const workspaceRef = doc(firestore, 'workspaces', selectedWorkspace.id);
-            const userRef = doc(firestore, 'users', targetUid);
-
-            const batch = writeBatch(firestore);
-
-            const workspaceDoc = await getDoc(workspaceRef);
-            const workspaceData = workspaceDoc.data();
-
-            if (workspaceData) {
-                const newUsersMap = { ...workspaceData.users };
-                delete newUsersMap[targetUid];
-                const newMemberIds = workspaceData.memberIds.filter((id: string) => id !== targetUid);
-
-                batch.update(workspaceRef, {
-                    users: newUsersMap,
-                    memberIds: newMemberIds,
-                });
-
-                const userDoc = await getDoc(userRef);
-                const userData = userDoc.data();
-                if (userData && userData.workspaceIds) {
-                    const newWorkspaceIds = userData.workspaceIds.filter((id: string) => id !== selectedWorkspace.id);
-                    batch.update(userRef, { workspaceIds: newWorkspaceIds });
-                }
-            }
+            const functions = getFunctions(firebaseApp);
+            const removeUserFromWorkspace = httpsCallable(functions, 'removeUserFromWorkspace');
             
-            await batch.commit();
+            await removeUserFromWorkspace({
+              workspaceId: selectedWorkspace.id,
+              userIdToRemove: userIdToRemove
+            });
 
-            toast({ title: "User Removed", description: `${targetName || 'The user'} has been removed from the workspace.` });
-
-        } catch (error: any) {
-             toast({ variant: 'destructive', title: "Removal Failed", description: error.message });
-        }
+            toast({
+              title: "User Removed",
+              description: `${targetName || 'The user'} has been removed from the workspace.`
+            });
+            
+          } catch (error: any) {
+            console.error('Error removing user:', error);
+            toast({
+              variant: "destructive",
+              title: "Failed to Remove User",
+              description: error.message || "An error occurred"
+            });
+          }
     };
 
     return (
@@ -99,8 +89,9 @@ export function TeamMemberTable() {
                     {members.map(({ uid, name, avatarUrl, role }) => {
                         const fallback = name ? name.charAt(0).toUpperCase() : '?';
                         const isCurrentUser = uid === currentUser.uid;
-                        const isLastAdmin = role === 'admin' && members.filter(m => m.role === 'admin').length <= 1;
                         const isOwner = uid === selectedWorkspace.ownerId;
+                        // You can't remove yourself or the owner.
+                        const canBeRemoved = !isCurrentUser && !isOwner;
 
                         return (
                             <TableRow key={uid}>
@@ -120,7 +111,7 @@ export function TeamMemberTable() {
                                     <Select
                                         defaultValue={role}
                                         onValueChange={(value) => handleRoleChange(uid, value as 'admin' | 'contributor' | 'viewer')}
-                                        disabled={(isCurrentUser && isLastAdmin) || isOwner}
+                                        disabled={isOwner} // Only the owner role cannot be changed
                                     >
                                         <SelectTrigger className="w-[180px]">
                                             <SelectValue />
@@ -140,7 +131,7 @@ export function TeamMemberTable() {
                                         <Button
                                             variant="ghost"
                                             size="icon"
-                                            disabled={isCurrentUser || isOwner}
+                                            disabled={!canBeRemoved}
                                             aria-label={`Remove ${name}`}
                                         >
                                             <Trash2 className="h-4 w-4 text-destructive" />

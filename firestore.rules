@@ -9,7 +9,7 @@
  * Invites can only be created via trusted server to ensure security.
  *
  * Data Structure:
- * - /users/{userId}: User profiles, accessible only by the user themselves. Admins can only modify workspaceIds for removal.
+ * - /users/{userId}: User profiles, accessible only by the user themselves. Admins must use a cloud function to manage workspace membership.
  * - /workspaces/{workspaceId}: Workspaces, accessible to members.
  * - /workspaces/{workspaceId}/companies/{companyId}: Companies within workspaces, accessible to workspace members.
  * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}: Projects within companies, accessible to workspace members.
@@ -92,67 +92,23 @@ service cloud.firestore {
       let ws = get(/databases/$(database)/documents/workspaces/$(workspaceId));
       return isWorkspaceMember(workspaceId) && ws.data.users[request.auth.uid].role == 'admin';
     }
-
-    /**
-     * @description Checks if an admin is removing a workspaceId from a user's profile.
-     * @path N/A (helper function)
-     * @allow N/A (helper function)
-     * @deny N/A (helper function)
-     * @principle Authorization: Allows admins to manage user profiles during workspace removal.
-     */
-    function isAdminRemovingWorkspaceFromUser() {
-      // Get the workspace ID that's being removed
-      let oldWorkspaceIds = resource.data.workspaceIds;
-      let newWorkspaceIds = request.resource.data.workspaceIds;
-      
-      // Check if we're only removing workspaceIds (not adding or changing other fields)
-      let isOnlyRemovingWorkspace = 
-        newWorkspaceIds.size() < oldWorkspaceIds.size() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['workspaceIds']);
-      
-      if (!isOnlyRemovingWorkspace) {
-        return false;
-      }
-      
-      // Get the removed workspace ID
-      let removedWorkspaceIds = oldWorkspaceIds.toSet().difference(newWorkspaceIds.toSet());
-      
-      // Check if exactly one workspace was removed
-      if (removedWorkspaceIds.size() != 1) {
-        return false;
-      }
-      
-      let removedWorkspaceId = removedWorkspaceIds.hasAny([removedWorkspaceIds.keys()[0]]) 
-        ? removedWorkspaceIds.keys()[0] 
-        : null;
-      
-      if (removedWorkspaceId == null) {
-        return false;
-      }
-      
-      // Check if the requester is an admin of that workspace
-      let workspace = get(/databases/$(database)/documents/workspaces/$(removedWorkspaceId));
-      return request.auth.uid in workspace.data.users && 
-             workspace.data.users[request.auth.uid].role == 'admin';
-    }
     
     /**
      * @description Rules for user profile documents.
      * @path /users/{userId}
      * @allow (get) Authenticated user can read their own profile.
-     * @allow (create) Authenticated user can create their own profile.
-     * @allow (update) Authenticated user can update their own profile, or a workspace admin can manage workspace memberships.
+     * @allow (create, update) Authenticated user can create or update their own profile.
      * @allow (delete) Authenticated user can delete their own profile.
      * @deny (get) Another user attempts to read this user's profile.
-     * @deny (create, update, delete) Another user attempts to modify this user's profile (except for admin managing workspaces).
+     * @deny (create, update, delete) Another user attempts to modify this user's profile.
      * @deny (list) Listing all users is not allowed.
-     * @principle Ownership & Admin Privilege: Enforces user-only access, with a narrow exception for admins.
+     * @principle Ownership: Enforces user-only access. Admins must use Cloud Functions to modify.
      */
     match /users/{userId} {
       allow get: if isSignedIn();
       allow list: if false;
       allow create: if isSignedIn() && isOwner(userId);
-      allow update: if isSignedIn() && (isOwner(userId) || isAdminRemovingWorkspaceFromUser());
+      allow update: if isSignedIn() && isOwner(userId);
       allow delete: if isSignedIn() && isOwner(userId);
     }
     
@@ -300,5 +256,3 @@ service cloud.firestore {
     }
   }
 }
-
-    
