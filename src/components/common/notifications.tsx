@@ -9,7 +9,7 @@ import {
 import { Button } from '../ui/button';
 import { Bell, Check, CheckSquare, Folder, Box, Building, UserPlus, FileText, CheckCircle2 } from 'lucide-react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { useUser, useFirestore, useCollection } from '@/firebase';
+import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, orderBy, limit, writeBatch, doc, arrayUnion, updateDoc } from 'firebase/firestore';
 import type { Notification } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
@@ -23,7 +23,7 @@ function useUnreadNotifications() {
     const { user } = useUser();
     const firestore = useFirestore();
 
-    const notificationsQuery = useMemo(() => {
+    const notificationsQuery = useMemoFirebase(() => {
         if (!selectedWorkspace || !user) return null;
         return query(
             collection(firestore, `notifications/${selectedWorkspace.id}/activities`),
@@ -99,6 +99,8 @@ const getNotificationText = (n: Notification) => {
             return <><span className="font-semibold">{n.actorName}</span> added a new project: <span className="font-semibold">{n.target.name}</span> in {n.context?.companyName}</>;
         case 'silo_added':
             return <><span className="font-semibold">{n.actorName}</span> added a new silo: <span className="font-semibold">{n.target.name}</span> in {n.context?.projectName}</>;
+        case 'task_added':
+             return <><span className="font-semibold">{n.actorName}</span> assigned <span className="font-semibold">{n.target.name}</span> to <span className="font-semibold">{n.assignee?.name}</span></>;
         case 'task_assigned':
             return <><span className="font-semibold">{n.actorName}</span> assigned <span className="font-semibold">{n.target.name}</span> to <span className="font-semibold">{n.assignee?.name}</span></>;
         case 'task_completed':
@@ -116,7 +118,7 @@ function NotificationList({ onNotificationClick }: { onNotificationClick?: () =>
     const firestore = useFirestore();
     const router = useRouter();
 
-    const notificationsQuery = useMemo(() => {
+    const notificationsQuery = useMemoFirebase(() => {
         if (!selectedWorkspace || !user) return null;
         return query(
             collection(firestore, `notifications/${selectedWorkspace.id}/activities`),
