@@ -62,7 +62,7 @@ exports.createInvite = functions.https.onCall(async (data, context) => {
     });
 
     // 4. Form the Join URL and return it to the client
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const appUrl = 'https://saturnsync.com';
     const joinUrl = `${appUrl}/join?token=${token}`;
     
     return { success: true, joinUrl, workspaceName: workspaceData?.name };
