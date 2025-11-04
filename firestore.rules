@@ -92,29 +92,6 @@ service cloud.firestore {
       let ws = get(/databases/$(database)/documents/workspaces/$(workspaceId));
       return isWorkspaceMember(workspaceId) && ws.data.users[request.auth.uid].role == 'admin';
     }
-    
-    /**
-     * @description Checks if an admin is removing a workspaceId from a user's profile.
-     * This is a specific rule to allow admins to clean up user profiles when removing them from a workspace.
-     */
-    function isAdminRemovingWorkspaceFromUser() {
-      // 1. Check that the only thing changing is the 'workspaceIds' array.
-      let isOnlyWorkspaceIdsChanged = request.resource.data.diff(resource.data).affectedKeys().hasOnly(['workspaceIds']);
-      
-      // 2. Check that the array is only getting smaller (an item is being removed).
-      let isRemoving = request.resource.data.workspaceIds.size() < resource.data.workspaceIds.size();
-
-      if (!isOnlyWorkspaceIdsChanged || !isRemoving) {
-        return false;
-      }
-      
-      // 3. Find the ID of the workspace that was removed.
-      let removedWorkspaceId = resource.data.workspaceIds.toSet().difference(request.resource.data.workspaceIds.toSet()).get(0);
-      
-      // 4. Verify the person making the request is an admin of that specific workspace.
-      return isWorkspaceAdmin(removedWorkspaceId);
-    }
-
 
     /**
      * @description Rules for user profile documents.
@@ -131,7 +108,7 @@ service cloud.firestore {
       allow get: if isSignedIn();
       allow list: if false;
       allow create: if isSignedIn() && isOwner(userId);
-      allow update: if isSignedIn() && (isOwner(userId) || isAdminRemovingWorkspaceFromUser());
+      allow update: if isSignedIn() && isOwner(userId);
       allow delete: if isSignedIn() && isOwner(userId);
     }
     

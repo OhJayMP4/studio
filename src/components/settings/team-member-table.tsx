@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Button } from "../ui/button";
 import { Trash2 } from "lucide-react";
-import { doc, updateDoc, writeBatch } from "firebase/firestore";
+import { doc, updateDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { DeleteDialog } from "../common/delete-dialog";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -49,42 +49,32 @@ export function TeamMemberTable() {
     };
 
     const handleRemoveUser = async (userIdToRemove: string, targetName: string | null) => {
-        if (!selectedWorkspace) return;
+        if (!selectedWorkspace || !firebaseApp) return;
 
-        const workspaceRef = doc(firestore, 'workspaces', selectedWorkspace.id);
-        const userRef = doc(firestore, 'users', userIdToRemove);
+        toast({ title: "Removing User..." });
 
         try {
-            const batch = writeBatch(firestore);
-
-            // 1. Remove user from the workspace document
-            batch.update(workspaceRef, {
-                memberIds: selectedWorkspace.memberIds.filter(id => id !== userIdToRemove),
-                [`users.${userIdToRemove}`]: undefined, // This requires dot notation for field deletion in update
-            });
-
-            // 2. Remove workspace from the user's document
-            batch.update(userRef, {
-                workspaceIds: selectedWorkspace.users[userIdToRemove] ? 
-                    (selectedWorkspace as any).workspaceIds?.filter((id: string) => id !== selectedWorkspace!.id) || [] : 
-                    undefined
-            });
+            const functions = getFunctions(firebaseApp);
+            const removeUserFromWorkspace = httpsCallable(functions, 'removeUserFromWorkspace');
             
-            await batch.commit();
+            await removeUserFromWorkspace({
+              workspaceId: selectedWorkspace.id,
+              userIdToRemove: userIdToRemove
+            });
 
             toast({
               title: "User Removed",
               description: `${targetName || 'The user'} has been removed from the workspace.`
             });
             
-          } catch (error: any) {
+        } catch (error: any) {
             console.error('Error removing user:', error);
             toast({
               variant: "destructive",
               title: "Failed to Remove User",
-              description: error.message || "An error occurred. Check security rules."
+              description: error.message || "An error occurred while removing the user."
             });
-          }
+        }
     };
 
     return (
