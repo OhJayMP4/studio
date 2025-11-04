@@ -21,7 +21,7 @@ import {
 import { AddTaskDialog } from '@/components/common/add-task-dialog';
 import { TaskItem } from '@/components/common/task-item';
 import { Progress } from '@/components/ui/progress';
-import { CheckCircle2, GripVertical, MoreVertical } from 'lucide-react';
+import { CheckCircle2, GripVertical, MoreVertical, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AddSaleDialog } from '@/components/common/add-sale-dialog';
 import { format } from 'date-fns';
@@ -481,6 +481,7 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
 function SalesProgress({ project, companyId }: { project: Project, companyId: string }) {
     const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
     const firestore = useFirestore();
+    const { toast } = useToast();
     const salesTarget = project.monetaryValue || 0;
     const salesAchieved = project.totalSalesValue || 0;
     const salesProgress = salesTarget > 0 ? Math.round((salesAchieved / salesTarget) * 100) : 0;
@@ -491,6 +492,63 @@ function SalesProgress({ project, companyId }: { project: Project, companyId: st
     }, [firestore, selectedWorkspace, companyId, project.id]);
 
     const { data: sales, isLoading } = useCollection<Sale>(salesQuery);
+    
+    const handleDeleteSale = async (saleToDelete: Sale) => {
+        if (!selectedWorkspace) return;
+
+        const projectRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', project.id);
+        const saleRef = doc(projectRef, 'sales', saleToDelete.id);
+
+        try {
+            await runTransaction(firestore, async (transaction) => {
+                const projectDoc = await transaction.get(projectRef);
+                if (!projectDoc.exists()) throw new Error("Project not found");
+                const currentProjectData = projectDoc.data() as Project;
+
+                // Delete the sale document
+                transaction.delete(saleRef);
+
+                // Recalculate project totals and progress
+                const newTotalSales = (currentProjectData.totalSalesValue || 0) - saleToDelete.value;
+                const salesTarget = currentProjectData.monetaryValue || 0;
+                const salesProgress = salesTarget > 0 ? Math.min(newTotalSales / salesTarget, 1) : 0;
+                
+                const silosSnapshot = await getDocs(collection(projectRef, 'silos'));
+                let totalTasks = 0;
+                let completedTasks = 0;
+                for (const siloDoc of silosSnapshot.docs) {
+                    const tasksSnapshot = await getDocs(collection(siloDoc.ref, 'tasks'));
+                    totalTasks += tasksSnapshot.size;
+                    tasksSnapshot.forEach(taskDoc => {
+                        if (taskDoc.data().completed) completedTasks++;
+                    });
+                }
+                const taskProgress = totalTasks > 0 ? (completedTasks / totalTasks) : 0;
+
+                const overallProgress = currentProjectData.hasMonetaryValue 
+                    ? (salesProgress * 0.5 + taskProgress * 0.5) * 100
+                    : taskProgress * 100;
+
+                // Update the project document
+                transaction.update(projectRef, { 
+                    totalSalesValue: newTotalSales,
+                    progress: Math.round(overallProgress)
+                });
+            });
+
+            toast({
+                title: 'Sale Deleted',
+                description: `The sale of R${saleToDelete.value.toLocaleString()} has been removed.`,
+            });
+        } catch (error: any) {
+            toast({
+                variant: 'destructive',
+                title: 'Deletion Failed',
+                description: error.message,
+            });
+        }
+    };
+
 
     return (
       <Accordion type="single" collapsible defaultValue="item-1" className="w-full">
@@ -522,21 +580,31 @@ function SalesProgress({ project, companyId }: { project: Project, companyId: st
                                 <TableRow>
                                     <TableHead>Date</TableHead>
                                     <TableHead>Source</TableHead>
-                                    <TableHead className="text-right">Amount (ZAR)</TableHead>
+                                    <TableHead className="text-right">Amount (R)</TableHead>
+                                    {isUserAdmin && <TableHead className="w-[50px] text-right">Actions</TableHead>}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {isLoading && <TableRow><TableCell colSpan={3} className="text-center">Loading sales...</TableCell></TableRow>}
+                                {isLoading && <TableRow><TableCell colSpan={isUserAdmin ? 4 : 3} className="text-center">Loading sales...</TableCell></TableRow>}
                                 {sales && sales.length > 0 ? (
                                     sales.map(sale => (
                                         <TableRow key={sale.id}>
                                             <TableCell>{format(new Date(sale.date), 'PPP')}</TableCell>
                                             <TableCell className="font-medium">{sale.source}</TableCell>
-                                            <TableCell className="text-right">{sale.value.toLocaleString()}</TableCell>
+                                            <TableCell className="text-right">R{sale.value.toLocaleString()}</TableCell>
+                                            {isUserAdmin && (
+                                                <TableCell className="text-right">
+                                                     <DeleteDialog onConfirm={() => handleDeleteSale(sale)} itemName={`sale of R${sale.value.toLocaleString()}`}>
+                                                        <Button variant="ghost" size="icon">
+                                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                                        </Button>
+                                                    </DeleteDialog>
+                                                </TableCell>
+                                            )}
                                         </TableRow>
                                     ))
                                 ) : (
-                                    !isLoading && <TableRow><TableCell colSpan={3} className="text-center h-24">No sales logged yet.</TableCell></TableRow>
+                                    !isLoading && <TableRow><TableCell colSpan={isUserAdmin ? 4 : 3} className="text-center h-24">No sales logged yet.</TableCell></TableRow>
                                 )}
                             </TableBody>
                         </Table>

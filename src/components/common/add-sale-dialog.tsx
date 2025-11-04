@@ -133,7 +133,7 @@ export function AddSaleDialog({ project, companyId, children }: AddSaleDialogPro
 
       toast({
         title: 'Sale Logged',
-        description: `A sale of ZAR ${data.value.toLocaleString()} has been logged.`,
+        description: `A sale of R${data.value.toLocaleString()} has been logged.`,
       });
       reset();
       setIsOpen(false);
@@ -162,7 +162,7 @@ export function AddSaleDialog({ project, companyId, children }: AddSaleDialogPro
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
-              <Label>Sale Value (ZAR)</Label>
+              <Label>Sale Value (R)</Label>
               <Input
                 id="value"
                 type="number"
