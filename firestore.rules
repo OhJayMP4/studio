@@ -19,6 +19,7 @@
  * - /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}: Sales data, accessible to workspace members.
  * - /invites/{inviteId}: Invitations to join workspaces, managed exclusively by the server.
  * - /notifications/{workspaceId}/activities/{activityId}: Notifications for workspace activity.
+ * - /presence/{workspaceId}/{userId}: Real-time user presence information.
  *
  * Key Security Decisions:
  * - User listing is explicitly disallowed to prevent enumeration.
@@ -246,7 +247,7 @@ service cloud.firestore {
      * @principle Ownership & Membership: Enforces user-only access to their task list, but allows workspace members to add to it.
      */
     match /user-tasks/{userId}/tasks/{taskId} {
-      allow get, list: if isSignedIn() && isOwner(userId);
+      allow get, list: if isSignedIn() && (isOwner(userId) || isWorkspaceAdmin(resource.data.workspaceId));
       allow create: if isWorkspaceMember(request.resource.data.workspaceId);
       allow update: if isSignedIn() && isOwner(userId);
       allow delete: if isSignedIn() && isOwner(userId);
@@ -277,7 +278,19 @@ service cloud.firestore {
       allow create, delete: if false;
       allow update: if isWorkspaceMember(workspaceId);
     }
+
+    /**
+     * @description Rules for user presence documents.
+     * @path /presence/{workspaceId}/{userId}
+     * @allow (read, list) Authenticated workspace member can see who is online.
+     * @allow (create, update) Authenticated user can update their own presence status within a workspace they are a member of.
+     * @deny (delete) Deletion is handled by a Cloud Function or server-side cleanup logic.
+     * @principle Membership & Ownership: Enforces that only members can see presence and users can only update their own status.
+     */
+    match /presence/{workspaceId}/{userId} {
+      allow read, list: if isWorkspaceMember(workspaceId);
+      allow create, update: if isOwner(userId) && isWorkspaceMember(workspaceId);
+      allow delete: if false;
+    }
   }
 }
-
-    

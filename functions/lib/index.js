@@ -570,7 +570,10 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
             tasksQuery.get(),
         ]);
         const userProfile = userSnap.exists ? Object.assign({ id: userSnap.id }, userSnap.data()) : { uid: userId, name: 'Unknown User' };
-        const tasks = tasksSnap.docs.map(doc => (Object.assign({ id: doc.id }, doc.data())));
+        const tasks = tasksSnap.docs.map(doc => {
+            const data = doc.data();
+            return Object.assign(Object.assign({}, data), { id: doc.id });
+        });
         reportData.push({
             user: userProfile,
             tasks: tasks.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()),

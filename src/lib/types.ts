@@ -100,7 +100,7 @@ export type Invite = {
 }
 
 export type Notification = {
-    id: string;
+    id:string;
     type: 'task_assigned' | 'task_completed' | 'silo_added' | 'project_added' | 'company_added' | 'sale_added' | 'task_deleted' | 'silo_deleted' | 'project_deleted' | 'company_deleted';
     actorUid: string;
     actorName: string;
@@ -126,4 +126,13 @@ export type Notification = {
     readBy: string[];
     isRelevantTo: string[];
 }
-    
+
+export type Presence = {
+    id: string;
+    lastSeen: any; // Firestore Timestamp
+    color: string;
+    user: {
+        name: string;
+        avatarUrl: string | null;
+    }
+}
