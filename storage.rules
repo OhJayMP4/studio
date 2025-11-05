@@ -6,9 +6,19 @@ service firebase.storage {
     match /workspaces/{workspaceId}/logo {
       allow read;
     }
+
+    // Allow public read access to user avatars
+    match /user-avatars/{userId} {
+      allow read;
+    }
     
     // Secure user uploads: only the authenticated user can write to their own upload path.
     match /user-uploads/{userId}/{allPaths=**} {
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+     // Secure user avatars: only the authenticated user can write to their own avatar path.
+    match /user-avatars/{userId} {
       allow write: if request.auth != null && request.auth.uid == userId;
     }
   }
