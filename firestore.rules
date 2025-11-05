@@ -244,6 +244,16 @@ service cloud.firestore {
           }
         }
       }
+      
+      /**
+       * @description Rules for workspace files metadata.
+       * @path /workspace-files/{workspaceId}/files/{fileId}
+       * @allow (read, list, create, update, delete) if the user is a member of the workspace.
+       * @principle Membership: Enforces that users can only manage files within their own workspaces.
+       */
+      match /files/{fileId} {
+        allow read, list, create, update, delete: if isWorkspaceMember(workspaceId);
+      }
     }
 
     /**
@@ -317,14 +327,7 @@ service cloud.firestore {
         allow create: if isSignedIn() && request.auth.uid == request.resource.data.uid;
     }
 
-    /**
-     * @description Rules for workspace files metadata.
-     * @path /workspace-files/{workspaceId}/files/{fileId}
-     * @allow (read, list, create, update, delete) if the user is a member of the workspace.
-     * @principle Membership: Enforces that users can only manage files within their own workspaces.
-     */
-    match /workspace-files/{workspaceId}/files/{fileId} {
-      allow read, list, create, update, delete: if isWorkspaceMember(workspaceId);
-    }
   }
 }
+
+    
