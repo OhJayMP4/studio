@@ -3,6 +3,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const defaultSidebarModules = [
+    { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', route: '/dashboard', hidden: false, order: 0 },
+    { id: 'companies', label: 'Companies', icon: 'Building', route: '/companies', hidden: false, order: 1 },
+    { id: 'reporting', label: 'Reporting', icon: 'BarChart', route: '/reporting', hidden: false, order: 2 },
+    { id: 'my-tasks', label: 'My Tasks', icon: 'ClipboardCheck', route: '/my-tasks', hidden: false, order: 3 },
+];
 admin.initializeApp();
 const db = admin.firestore();
 // Helper to get user info and workspace members
@@ -33,7 +39,7 @@ exports.onCommentCreate = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}/comments/{commentId}')
     .onCreate(async (snap, context) => {
     var _a, _b, _c;
-    const { workspaceId, companyId, projectId, taskId } = context.params;
+    const { workspaceId, companyId, projectId, siloId, taskId } = context.params;
     const commentData = snap.data();
     const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, commentData.createdBy);
     if (!actorName)
@@ -41,7 +47,7 @@ exports.onCommentCreate = functions.firestore
     const [companySnap, projectSnap, taskSnap] = await Promise.all([
         db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
         db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
-        db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/{siloId}/tasks/${taskId}`).get()
+        db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks/${taskId}`).get()
     ]);
     const companyName = ((_a = companySnap.data()) === null || _a === void 0 ? void 0 : _a.name) || '';
     const projectName = ((_b = projectSnap.data()) === null || _b === void 0 ? void 0 : _b.name) || '';
@@ -377,6 +383,8 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
         const workspaceId = inviteData.workspaceId;
         const workspaceRef = db.doc(`workspaces/${workspaceId}`);
         const userRef = db.doc(`users/${uid}`);
+        const prefsDocId = `${uid}-${workspaceId}`;
+        const prefsRef = db.doc(`user-workspace-prefs/${prefsDocId}`);
         await db.runTransaction(async (transaction) => {
             var _a;
             const workspaceDoc = await transaction.get(workspaceRef);
@@ -412,6 +420,13 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
             // Add workspace to the user's profile
             transaction.update(userRef, {
                 workspaceIds: admin.firestore.FieldValue.arrayUnion(workspaceId),
+            });
+            // Create default sidebar preferences for the user in this workspace
+            transaction.set(prefsRef, {
+                uid: uid,
+                workspaceId: workspaceId,
+                sidebarModules: defaultSidebarModules,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             });
             // Delete the used invite
             transaction.delete(inviteDoc.ref);
