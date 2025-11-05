@@ -2,7 +2,7 @@
 
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
-import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, getDoc, updateDoc } from 'firebase/firestore';
 import type { UserWorkspacePrefs, SidebarModule } from '@/lib/types';
 import { useEffect } from 'react';
 
@@ -60,7 +60,7 @@ export const useSidebarPrefs = () => {
     if (prefs.sidebarModules.some(m => m.id === moduleId)) {
       // Unhide if it exists but is hidden
       const newModules = prefs.sidebarModules.map(m => m.id === moduleId ? { ...m, hidden: false } : m);
-      await setDoc(prefsRef, { sidebarModules: newModules, updatedAt: serverTimestamp() }, { merge: true });
+      await updateDoc(prefsRef, { sidebarModules: newModules, updatedAt: serverTimestamp() });
     } else {
       // Add new module
       const newModule: SidebarModule = {
@@ -69,11 +69,22 @@ export const useSidebarPrefs = () => {
         hidden: false,
         order: prefs.sidebarModules.length,
       };
-      await setDoc(prefsRef, { sidebarModules: [...prefs.sidebarModules, newModule], updatedAt: serverTimestamp() }, { merge: true });
+      await updateDoc(prefsRef, { sidebarModules: [...prefs.sidebarModules, newModule], updatedAt: serverTimestamp() });
     }
   };
 
-  // Other functions like removeModule, reorderModules can be added here
+  const setModuleHidden = async (moduleId: string, hidden: boolean) => {
+    if (!prefsRef || !prefs) throw new Error("Preferences not loaded.");
+
+    const newModules = prefs.sidebarModules.map(m => 
+      m.id === moduleId ? { ...m, hidden } : m
+    );
+
+    await updateDoc(prefsRef, {
+      sidebarModules: newModules,
+      updatedAt: serverTimestamp(),
+    });
+  };
   
-  return { prefs, loading: isLoading, error, addModule };
+  return { prefs, loading: isLoading, error, addModule, setModuleHidden };
 };

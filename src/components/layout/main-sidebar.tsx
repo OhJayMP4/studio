@@ -1,4 +1,3 @@
-
 'use client';
 
 import {
@@ -8,29 +7,30 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarContent,
-  SidebarGroup,
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import {
   Settings,
   Plus,
+  X,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { UserNav } from "./user-nav";
 import { WorkspaceSwitcher } from "../common/workspace-switcher";
-import { MyTasksSidebarItem } from "./my-tasks-sidebar";
 import { Separator } from "../ui/separator";
 import { useSidebarPrefs } from "@/hooks/use-sidebar-prefs";
 import { AddModuleDialog } from "../sidebar/add-module-dialog";
 import { useState } from "react";
 import * as LucideIcons from 'lucide-react';
 import { Button } from "@/components/ui/button";
+import { RemoveModuleDialog } from "../sidebar/remove-module-dialog";
+import { cn } from "@/lib/utils";
 
 
 export default function MainSidebar() {
   const pathname = usePathname();
-  const { prefs, loading } = useSidebarPrefs();
+  const { prefs, loading, setModuleHidden } = useSidebarPrefs();
   const [isAddModuleOpen, setIsAddModuleOpen] = useState(false);
 
   const isActive = (path: string) => {
@@ -39,7 +39,6 @@ export default function MainSidebar() {
   
   const sortedModules = prefs?.sidebarModules?.filter(m => !m.hidden).sort((a, b) => a.order - b.order) || [];
   
-  // A map of icon names to components
   const Icon = ({ name, ...props }: { name: string } & LucideIcons.LucideProps) => {
       const LucideIcon = (LucideIcons as any)[name];
       if (!LucideIcon) {
@@ -63,13 +62,20 @@ export default function MainSidebar() {
                 </>
             ) : (
                 sortedModules.map(module => (
-                     <SidebarMenuItem key={module.id}>
+                     <SidebarMenuItem key={module.id} className="group/item">
                         <SidebarMenuButton tooltip={module.label} asChild isActive={isActive(module.route)}>
                           <Link href={module.route}>
                             <Icon name={module.icon} />
                             <span>{module.label}</span>
                           </Link>
                         </SidebarMenuButton>
+                         <RemoveModuleDialog module={module} onConfirm={() => setModuleHidden(module.id, true)}>
+                            <Button variant="ghost" size="icon" className={cn("absolute top-1/2 right-2 -translate-y-1/2 h-6 w-6 opacity-0 group-hover/item:opacity-100",
+                             "group-data-[collapsible=icon]:hidden"
+                            )}>
+                                <X className="h-4 w-4"/>
+                            </Button>
+                        </RemoveModuleDialog>
                       </SidebarMenuItem>
                 ))
             )}
