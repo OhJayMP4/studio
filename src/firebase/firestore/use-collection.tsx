@@ -58,14 +58,13 @@ export function useCollection<T = any>(
   type StateDataType = ResultItemType[] | null;
 
   const [data, setData] = useState<StateDataType>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true); // Start loading true
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
 
   useEffect(() => {
-    // If the query is not ready, set state to loading and return.
     if (!memoizedTargetRefOrQuery) {
       setData(null);
-      setIsLoading(true);
+      setIsLoading(true); // Set to true when there's no query
       setError(null);
       return;
     }
@@ -89,27 +88,29 @@ export function useCollection<T = any>(
         setIsLoading(false);
       },
       (err: FirestoreError) => {
+        // Determine the path from the query object for error reporting.
         const path: string =
           memoizedTargetRefOrQuery.type === 'collection'
             ? (memoizedTargetRefOrQuery as CollectionReference).path
             : (memoizedTargetRefOrQuery as unknown as InternalQuery)._query.path.canonicalString();
 
+        // Create the rich, contextual error.
         const contextualError = new FirestorePermissionError({
           operation: 'list',
           path,
         });
 
-        console.error("useCollection error:", contextualError);
+        // Set local component state to show an error if needed, but don't log here.
         setError(contextualError);
         setData(null);
         setIsLoading(false);
 
+        // Emit the error to the global listener, which will throw it for Next.js overlay.
         errorEmitter.emit('permission-error', contextualError);
       }
     );
 
-    // Cleanup function to unsubscribe from the listener when the component unmounts
-    // or when the query dependency changes.
+    // Cleanup function to unsubscribe from the listener.
     return () => unsubscribe();
   }, [memoizedTargetRefOrQuery]);
 
