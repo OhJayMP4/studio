@@ -2,9 +2,9 @@
 
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import type { UserWorkspacePrefs, SidebarModule } from '@/lib/types';
-import { usePathname } from 'next/navigation';
+import { useEffect } from 'react';
 
 export const availableModules: (Omit<SidebarModule, 'order' | 'route' | 'hidden'> & {description: string})[] = [
     { id: 'files', label: 'Files', icon: 'Folder', description: 'Workspace filing system with folders.' },
@@ -27,6 +27,29 @@ export const useSidebarPrefs = () => {
   const prefsRef = useMemoFirebase(() => docId ? doc(firestore, 'user-workspace-prefs', docId) : null, [firestore, docId]);
   
   const { data: prefs, isLoading, error } = useDoc<UserWorkspacePrefs>(prefsRef);
+
+  useEffect(() => {
+    if (!isLoading && !prefs && prefsRef && user && selectedWorkspace) {
+        const createDefaultPrefs = async () => {
+            try {
+                // Double check it doesn't exist before writing to avoid race conditions
+                const docSnap = await getDoc(prefsRef);
+                if (!docSnap.exists()) {
+                     await setDoc(prefsRef, {
+                        uid: user.uid,
+                        workspaceId: selectedWorkspace.id,
+                        sidebarModules: defaultSidebarModules,
+                        updatedAt: serverTimestamp(),
+                    });
+                }
+            } catch (e) {
+                console.error("Failed to create default sidebar preferences:", e);
+            }
+        };
+        createDefaultPrefs();
+    }
+  }, [isLoading, prefs, prefsRef, user, selectedWorkspace]);
+
 
   const addModule = async (moduleId: string) => {
     if (!prefsRef || !prefs || !selectedWorkspace) throw new Error("Preferences or workspace not loaded.");
@@ -54,5 +77,3 @@ export const useSidebarPrefs = () => {
   
   return { prefs, loading: isLoading, error, addModule };
 };
-
-    
