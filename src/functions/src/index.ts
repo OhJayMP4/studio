@@ -1,6 +1,8 @@
 'use server';
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import { Resend } from 'resend';
+import * as bcrypt from 'bcryptjs';
 
 interface UserTask {
     id: string;
@@ -19,6 +21,13 @@ interface UserTask {
     projectName: string;
     siloName: string;
 }
+
+const defaultSidebarModules = [
+    { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', route: '/dashboard', hidden: false, order: 0 },
+    { id: 'companies', label: 'Companies', icon: 'Building', route: '/companies', hidden: false, order: 1 },
+    { id: 'reporting', label: 'Reporting', icon: 'BarChart', route: '/reporting', hidden: false, order: 2 },
+    { id: 'my-tasks', label: 'My Tasks', icon: 'ClipboardCheck', route: '/my-tasks', hidden: false, order: 3 },
+]
 
 
 admin.initializeApp();
@@ -183,7 +192,7 @@ exports.onSaleCreate = functions.firestore
 exports.onTaskWrite = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
     .onWrite(async (change, context) => {
-        const { workspaceId, companyId, projectId, siloId, taskId } = context.params;
+        const { workspaceId, companyId, projectId, siloId } = context.params;
         
         const beforeData = change.before.data();
         const afterData = change.after.data();
@@ -348,7 +357,7 @@ exports.onTaskDelete = functions.firestore
 // Generate a simple random token
 const generateToken = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-}
+};
 
 exports.createInvite = functions.https.onCall(async (data, context) => {
     // 1. Auth Check
@@ -451,6 +460,10 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
     const workspaceId = inviteData.workspaceId;
     const workspaceRef = db.doc(`workspaces/${workspaceId}`);
     const userRef = db.doc(`users/${uid}`);
+    
+    const prefsDocId = `${uid}-${workspaceId}`;
+    const prefsRef = db.doc(`user-workspace-prefs/${prefsDocId}`);
+
 
     await db.runTransaction(async (transaction) => {
         const workspaceDoc = await transaction.get(workspaceRef);
@@ -491,6 +504,14 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
         // Add workspace to the user's profile
         transaction.update(userRef, {
           workspaceIds: admin.firestore.FieldValue.arrayUnion(workspaceId),
+        });
+
+        // Create default sidebar preferences for the user in this workspace
+        transaction.set(prefsRef, {
+            uid: uid,
+            workspaceId: workspaceId,
+            sidebarModules: defaultSidebarModules,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
         // Delete the used invite
@@ -737,4 +758,116 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
     }
 
     return reportData;
+});
+
+const generateVerificationCode = (length = 6) => {
+    let code = '';
+    for (let i = 0; i < length; i++) {
+        code += Math.floor(Math.random() * 10);
+    }
+    return code;
+};
+
+exports.sendVerificationEmail = functions.https.onCall(async (data, context) => {
+    const { email, name, password } = data;
+    if (!email || !name || !password) {
+        throw new functions.https.HttpsError('invalid-argument', 'Email, name, and password are required.');
+    }
+
+    try {
+        await admin.auth().getUserByEmail(email);
+        throw new functions.https.HttpsError('already-exists', 'A user with this email address already exists.');
+    } catch (error: any) {
+        if (error.code !== 'auth/user-not-found') {
+            throw error;
+        }
+    }
+
+    const resendApiKey = functions.config().resend?.api_key || process.env.RESEND_API_KEY;
+    if (!resendApiKey) {
+        console.error('Resend API key is not configured.');
+        throw new functions.https.HttpsError('internal', 'The server is not configured to send emails.');
+    }
+    
+    const code = generateVerificationCode();
+    const expires = Date.now() + 15 * 60 * 1000; // 15 minutes
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    await db.collection('email-verifications').doc(email).set({
+        email,
+        name,
+        password: hashedPassword,
+        code,
+        expires,
+    });
+
+    const resend = new Resend(resendApiKey);
+    try {
+        await resend.emails.send({
+            from: 'onboarding@saturnsync.com',
+            to: email,
+            subject: 'Your SaturnSync Verification Code',
+            html: `<div style="font-family: sans-serif; text-align: center; padding: 40px;">
+                     <h1 style="font-size: 24px;">Verify Your Email</h1>
+                     <p style="font-size: 16px; color: #555;">Your verification code is:</p>
+                     <p style="font-size: 32px; font-weight: bold; letter-spacing: 5px; margin: 20px 0;">${code}</p>
+                     <p style="font-size: 12px; color: #999;">This code will expire in 15 minutes.</p>
+                   </div>`,
+        });
+        return { success: true };
+    } catch (error) {
+        console.error('Failed to send verification email:', error);
+        throw new functions.https.HttpsError('internal', 'Failed to send verification email.');
+    }
+});
+
+
+exports.verifyEmailCode = functions.https.onCall(async (data, context) => {
+    const { email, code } = data;
+    if (!email || !code) {
+        throw new functions.https.HttpsError('invalid-argument', 'Email and code are required.');
+    }
+
+    const verificationRef = db.collection('email-verifications').doc(email);
+    const verificationDoc = await verificationRef.get();
+
+    if (!verificationDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'No verification process started for this email.');
+    }
+
+    const verificationData = verificationDoc.data()!;
+    if (verificationData.expires < Date.now()) {
+        await verificationRef.delete();
+        throw new functions.https.HttpsError('deadline-exceeded', 'The verification code has expired.');
+    }
+
+    if (verificationData.code !== code) {
+        throw new functions.https.HttpsError('invalid-argument', 'The verification code is incorrect.');
+    }
+
+    try {
+        const userRecord = await admin.auth().createUser({
+            email: verificationData.email,
+            password: verificationData.password, // This is the hashed password
+            displayName: verificationData.name,
+        });
+
+        await db.collection('users').doc(userRecord.uid).set({
+            uid: userRecord.uid,
+            email: userRecord.email,
+            name: userRecord.displayName,
+            avatarUrl: null,
+            workspaceIds: [],
+        });
+        
+        await verificationRef.delete();
+        const customToken = await admin.auth().createCustomToken(userRecord.uid);
+        
+        return { success: true, token: customToken };
+
+    } catch (error) {
+        console.error('Error creating user after verification:', error);
+        throw new functions.https.HttpsError('internal', 'An error occurred while creating your account.');
+    }
 });
