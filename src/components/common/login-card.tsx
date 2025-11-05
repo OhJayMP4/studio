@@ -33,6 +33,7 @@ export function LoginCard() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [authMode, setAuthMode] = useState<'signIn' | 'signUp'>('signIn');
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -43,16 +44,16 @@ export function LoginCard() {
     },
   });
 
-  const handleAuthAction = async (action: 'signIn' | 'signUp', data: FormValues) => {
+  const handleAuthAction = async (data: FormValues) => {
     setIsSubmitting(true);
     setAuthError(null);
     try {
       let userCredential;
       const redirectUrl = searchParams.get('redirect');
 
-      if (action === 'signUp') {
+      if (authMode === 'signUp') {
         if (!data.name) {
-            setAuthError('Name is required for new accounts.');
+            form.setError('name', { type: 'manual', message: 'Name is required for new accounts.' });
             setIsSubmitting(false);
             return;
         }
@@ -62,7 +63,6 @@ export function LoginCard() {
         if (user && data.name) {
           await updateProfile(user, { displayName: data.name });
 
-          // Create user profile document in Firestore
           const userRef = doc(firestore, "users", user.uid);
           await setDoc(userRef, {
               uid: user.uid,
@@ -112,25 +112,31 @@ export function LoginCard() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary">
             <Rocket className="h-8 w-8 text-primary-foreground" />
           </div>
-          <CardTitle className="font-headline text-3xl">SaturnSync</CardTitle>
-          <CardDescription>Sign in or create an account to continue</CardDescription>
+          <CardTitle className="font-headline text-3xl">
+            {authMode === 'signIn' ? 'Welcome Back' : 'Create an Account'}
+          </CardTitle>
+          <CardDescription>
+            {authMode === 'signIn' ? 'Sign in to continue to SaturnSync' : 'Fill in your details to get started'}
+          </CardDescription>
         </CardHeader>
         <FormProvider {...form}>
-          <form>
+          <form onSubmit={form.handleSubmit(handleAuthAction)}>
             <CardContent className="space-y-4">
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Name (for new accounts)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Your Name" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {authMode === 'signUp' && (
+                <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                    <FormItem>
+                        <FormLabel>Name</FormLabel>
+                        <FormControl>
+                        <Input placeholder="Your Name" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                    </FormItem>
+                    )}
+                />
+              )}
               <FormField
                 control={form.control}
                 name="email"
@@ -162,22 +168,21 @@ export function LoginCard() {
               )}
             </CardContent>
             <CardFooter className="flex flex-col gap-4">
-              <Button
-                type="button"
-                onClick={form.handleSubmit((data) => handleAuthAction('signIn', data))}
+               <Button
+                type="submit"
                 className="w-full"
                 disabled={isSubmitting}
               >
-                {isSubmitting ? 'Signing In...' : 'Sign In'}
+                {isSubmitting ? 'Submitting...' : (authMode === 'signIn' ? 'Sign In' : 'Create Account')}
               </Button>
-              <Button
+               <Button
                 type="button"
-                variant="outline"
-                onClick={form.handleSubmit((data) => handleAuthAction('signUp', data))}
-                className="w-full"
+                variant="link"
+                className="w-full text-muted-foreground"
                 disabled={isSubmitting}
+                onClick={() => setAuthMode(authMode === 'signIn' ? 'signUp' : 'signIn')}
               >
-                {isSubmitting ? 'Signing Up...' : 'Sign Up'}
+                {authMode === 'signIn' ? 'Don\'t have an account? Create one' : 'Already have an account? Sign In'}
               </Button>
             </CardFooter>
           </form>
