@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFirestore } from '@/firebase';
+import { useFirestore, useUser } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { doc, updateDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
@@ -58,6 +58,7 @@ interface EditProjectDialogProps {
 export function EditProjectDialog({ project, companyId, children }: EditProjectDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const firestore = useFirestore();
+  const { user } = useUser();
   const { selectedWorkspace } = useSelectedWorkspace();
   const { toast } = useToast();
 
@@ -85,12 +86,12 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
     }
   }, [isOpen, project, reset]);
 
-  const handleUpdateProject = async (data: FormValues) => {
-    if (!selectedWorkspace) {
+  const handleUpdateProject = (data: FormValues) => {
+    if (!selectedWorkspace || !user) {
         toast({
             variant: 'destructive',
             title: 'Error',
-            description: 'No workspace selected.',
+            description: 'No workspace selected or user not logged in.',
         });
         return;
     };
@@ -101,31 +102,34 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
         deadline: data.deadline.toISOString(),
         hasMonetaryValue: data.hasMonetaryValue,
         monetaryValue: data.hasMonetaryValue ? data.monetaryValue : null,
+        updatedBy: user.uid, // Add who updated the project
     };
 
-    try {
-      await updateDoc(projectRef, updatedData);
-      
-      toast({
-        title: 'Project Updated',
-        description: `The "${data.name}" project has been successfully updated.`,
-      });
-      setIsOpen(false);
-    } catch (error: any) {
-      console.error('Error updating project:', error);
-      
-      errorEmitter.emit('permission-error', new FirestorePermissionError({
-          path: projectRef.path,
-          operation: 'update',
-          requestResourceData: updatedData,
-      }));
+    // Use a non-blocking update with proper error handling
+    updateDoc(projectRef, updatedData)
+      .then(() => {
+          toast({
+            title: 'Project Updated',
+            description: `The "${data.name}" project has been successfully updated.`,
+          });
+          setIsOpen(false);
+      })
+      .catch((serverError) => {
+          // Emit the detailed error for the development overlay
+          const permissionError = new FirestorePermissionError({
+              path: projectRef.path,
+              operation: 'update',
+              requestResourceData: updatedData,
+          });
+          errorEmitter.emit('permission-error', permissionError);
 
-      toast({
-        variant: 'destructive',
-        title: 'Update Failed',
-        description: error.message || 'Could not update the project. Check your permissions.',
-      });
-    }
+          // Also show a user-friendly toast
+          toast({
+            variant: 'destructive',
+            title: 'Update Failed',
+            description: 'Could not update the project. Check your permissions or the console for more details.',
+          });
+    });
   };
 
   return (
