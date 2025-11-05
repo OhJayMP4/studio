@@ -90,6 +90,7 @@ export function UploadFileDialog({ currentPath }: UploadFileDialogProps) {
                   downloadURL,
                   uploadedBy: user.uid,
                   createdAt: serverTimestamp(),
+                  workspaceId: selectedWorkspace.id,
               });
               resolve();
             } catch (error) {

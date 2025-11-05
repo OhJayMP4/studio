@@ -178,4 +178,5 @@ export type WorkspaceFile = {
     downloadURL?: string;
     uploadedBy: string;
     createdAt: any; // Firestore Timestamp
+    workspaceId: string;
 };

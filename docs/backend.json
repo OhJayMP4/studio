@@ -668,6 +668,10 @@
           "type": "string",
           "format": "date-time",
           "description": "The timestamp when the item was created."
+        },
+        "workspaceId": {
+          "type": "string",
+          "description": "The ID of the workspace this file belongs to, for security rules."
         }
       },
       "required": [
@@ -676,7 +680,8 @@
         "fullPath",
         "parentPath",
         "uploadedBy",
-        "createdAt"
+        "createdAt",
+        "workspaceId"
       ]
     }
   },
