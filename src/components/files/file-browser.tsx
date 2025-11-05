@@ -56,8 +56,7 @@ export function FileBrowser() {
       collection(firestore, 'workspace-files'),
       where('workspaceId', '==', selectedWorkspace.id),
       where('parentPath', '==', currentPath),
-      orderBy('type', 'desc'), // folders first
-      orderBy('name', 'asc')
+      orderBy('name', 'asc') // Simplified sorting
     );
 
     const unsubscribe = onSnapshot(filesQuery,
@@ -66,7 +65,15 @@ export function FileBrowser() {
           id: doc.id,
           ...doc.data()
         } as WorkspaceFile & {id: string}));
-        setFiles(fileList);
+
+        // Sort on the client to put folders first
+        const sortedFileList = fileList.sort((a, b) => {
+          if (a.type === 'folder' && b.type === 'file') return -1;
+          if (a.type === 'file' && b.type === 'folder') return 1;
+          return a.name.localeCompare(b.name);
+        });
+
+        setFiles(sortedFileList);
         setLoading(false);
       },
       (error) => {
