@@ -247,7 +247,15 @@ service cloud.firestore {
     }
     
     match /workspace-files/{fileId} {
-      allow list: if request.query.filters.size() > 0 && request.query.filters[0].field == 'workspaceId' && isWorkspaceMember(request.query.filters[0].value);
+      // Correct rule for listing documents in a collection.
+      // It ensures that any 'list' query MUST contain a 'where' clause filtering by a workspaceId.
+      // Then, it checks if the user is a member of that specific workspaceId.
+      allow list: if request.query.filters.size() > 0 
+                  && request.query.filters[0].field == 'workspaceId'
+                  && isWorkspaceMember(request.query.filters[0].value);
+      
+      // Rules for individual document operations are simpler.
+      // They check the 'workspaceId' field on the document itself.
       allow get, write, delete: if isWorkspaceMember(resource.data.workspaceId);
     }
     
@@ -325,5 +333,3 @@ service cloud.firestore {
 
   }
 }
-
-    
