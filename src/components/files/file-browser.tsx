@@ -45,7 +45,8 @@ export function FileBrowser() {
   const filesQuery = useMemoFirebase(() => {
     if (!selectedWorkspace) return null;
     return query(
-      collection(firestore, 'workspace-files', selectedWorkspace.id, 'files'),
+      collection(firestore, 'workspace-files'),
+      where('workspaceId', '==', selectedWorkspace.id),
       where('parentPath', '==', currentPath),
       orderBy('type', 'desc'), // folders first
       orderBy('name', 'asc')
@@ -84,15 +85,15 @@ export function FileBrowser() {
             const fileRef = ref(storage, item.fullPath);
             await deleteObject(fileRef);
             // Delete metadata from Firestore
-            const metaRef = doc(firestore, 'workspace-files', selectedWorkspace.id, 'files', item.id);
+            const metaRef = doc(firestore, 'workspace-files', item.id);
             batch.delete(metaRef);
         } else {
             // It's a folder, so we need to recursively delete
             const folderPrefix = item.fullPath + '/';
-            const allFilesCollection = collection(firestore, 'workspace-files', selectedWorkspace.id, 'files');
+            const allFilesCollection = collection(firestore, 'workspace-files');
             
             // Query for all items inside this folder and subfolders
-            const itemsToDeleteQuery = query(allFilesCollection, where('fullPath', '>=', item.fullPath));
+            const itemsToDeleteQuery = query(allFilesCollection, where('workspaceId', '==', selectedWorkspace.id), where('fullPath', '>=', item.fullPath));
             const itemsToDeleteSnap = await getDocs(itemsToDeleteQuery);
             
             for (const docSnap of itemsToDeleteSnap.docs) {
@@ -203,3 +204,5 @@ export function FileBrowser() {
     </div>
   );
 }
+
+    

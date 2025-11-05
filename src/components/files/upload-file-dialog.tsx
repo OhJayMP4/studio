@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useCallback, useMemo } from 'react';
@@ -78,7 +79,7 @@ export function UploadFileDialog({ currentPath }: UploadFileDialogProps) {
           async () => {
             try {
               const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-              const fileMetaRef = doc(collection(firestore, 'workspace-files', selectedWorkspace.id, 'files'));
+              const fileMetaRef = doc(collection(firestore, 'workspace-files'));
               
               batch.set(fileMetaRef, {
                   type: 'file',
@@ -189,3 +190,5 @@ export function UploadFileDialog({ currentPath }: UploadFileDialogProps) {
     </Dialog>
   );
 }
+
+    

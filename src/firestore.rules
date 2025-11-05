@@ -246,17 +246,11 @@ service cloud.firestore {
       }
     }
     
-    match /workspace-files/{workspaceId} {
-      // This rule allows a query on the 'files' subcollection, but ONLY if the user is a member 
-      // of the parent workspace. The 'workspaceId' is available from the path, making the get() call valid.
-      allow list: if isWorkspaceMember(workspaceId);
-      
-      // This rule secures individual document access within the subcollection.
-      match /files/{fileId} {
-         allow get, write: if isWorkspaceMember(workspaceId);
-      }
+    match /workspace-files/{fileId} {
+      allow read, write: if request.auth != null
+                          && get(/databases/$(database)/documents/workspaces/$(request.resource.data.workspaceId)).data.users[request.auth.uid] != null;
     }
-    
+
     /**
      * @description Rules for denormalized user task documents.
      * @path /user-tasks/{userId}/tasks/{taskId}
@@ -330,3 +324,5 @@ service cloud.firestore {
 
   }
 }
+
+    

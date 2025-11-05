@@ -671,7 +671,7 @@
         },
         "workspaceId": {
           "type": "string",
-          "description": "The ID of the workspace this file belongs to, for security rules."
+          "description": "The ID of the workspace this file belongs to."
         }
       },
       "required": [
@@ -769,7 +769,7 @@
       },
       "description": "Stores user-specific sidebar preferences for a workspace."
     },
-    "/workspace-files/{workspaceId}/files/{fileId}": {
+    "/workspace-files/{fileId}": {
       "schema": {
         "$ref": "#/entities/WorkspaceFile"
       },
@@ -777,3 +777,5 @@
     }
   }
 }
+
+    
