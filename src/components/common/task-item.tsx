@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { updateTaskCompletion } from "@/lib/tasks";
+import { TaskDetailsDialog } from "./task-details-dialog";
 
 interface TaskItemProps {
     task: Task;
@@ -131,14 +132,15 @@ export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
                     checked={task.completed}
                     onCheckedChange={handleCheckChanged}
                 />
-                <label
-                    htmlFor={`task-${task.id}`}
-                    className={cn("text-sm font-medium leading-none", {
-                        "line-through text-muted-foreground": task.completed
-                    })}
-                >
-                    {task.title}
-                </label>
+                <TaskDetailsDialog task={task} path={path}>
+                    <button
+                        className={cn("text-sm font-medium leading-none text-left", {
+                            "line-through text-muted-foreground": task.completed
+                        })}
+                    >
+                        {task.title}
+                    </button>
+                </TaskDetailsDialog>
             </div>
             <div className="flex items-center gap-3">
                  <Badge variant={isOverdue ? "destructive" : (task.completed ? "secondary" : "outline")} className="hidden sm:inline-flex">
@@ -172,3 +174,4 @@ export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
         </div>
     )
 }
+    

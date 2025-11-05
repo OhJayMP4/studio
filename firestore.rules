@@ -1,4 +1,3 @@
-
 /**
  * @fileoverview Firestore Security Rules for the application.
  *
@@ -214,6 +213,17 @@ service cloud.firestore {
               allow create: if isWorkspaceMember(workspaceId);
               allow update: if isWorkspaceMember(workspaceId);
               allow delete: if isWorkspaceMember(workspaceId);
+
+               /**
+                 * @description Rules for comments on a task.
+                 * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}/comments/{commentId}
+                 * @allow (get, list, create) Any workspace member can read, list, and create comments.
+                 * @allow (update, delete) Only the comment author can update or delete their own comment.
+                 */
+                match /comments/{commentId} {
+                    allow get, list, create: if isWorkspaceMember(workspaceId);
+                    allow update, delete: if isWorkspaceMember(workspaceId) && isOwner(resource.data.createdBy);
+                }
             }
           }
           
@@ -246,11 +256,11 @@ service cloud.firestore {
      * @deny (update, delete) Non-owner attempts to update or delete tasks.
      * @principle Ownership & Membership: Enforces user-only access to their task list, but allows workspace members to add to it.
      */
-    match /user-tasks/{userId}/tasks/{taskId} {
-      allow get, list: if isSignedIn() && (isOwner(userId) || isWorkspaceAdmin(resource.data.workspaceId));
-      allow create: if isWorkspaceMember(request.resource.data.workspaceId);
-      allow update: if isSignedIn() && isOwner(userId);
-      allow delete: if isSignedIn() && isOwner(userId);
+     match /user-tasks/{userId}/tasks/{taskId} {
+        allow get, list: if isSignedIn() && isOwner(userId);
+        allow create: if isWorkspaceMember(request.resource.data.workspaceId);
+        allow update: if isSignedIn() && isOwner(userId);
+        allow delete: if isSignedIn() && isOwner(userId);
     }
 
     /**
@@ -294,3 +304,4 @@ service cloud.firestore {
     }
   }
 }
+    

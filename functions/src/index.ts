@@ -2,7 +2,6 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 
-// Define the type locally to make the function self-contained
 interface UserTask {
     id: string;
     originalTaskId: string;
@@ -53,6 +52,39 @@ const createNotification = async (workspaceId: string, notificationData: any) =>
 };
 
 // --- Notification Triggers ---
+
+exports.onCommentCreate = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}/comments/{commentId}')
+    .onCreate(async (snap, context) => {
+        const { workspaceId, companyId, projectId, taskId } = context.params;
+        const commentData = snap.data();
+        
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, commentData.createdBy);
+        if (!actorName) return;
+
+        const [companySnap, projectSnap, taskSnap] = await Promise.all([
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/{siloId}/tasks/${taskId}`).get()
+        ]);
+        
+        const companyName = companySnap.data()?.name || '';
+        const projectName = projectSnap.data()?.name || '';
+        const taskTitle = taskSnap.data()?.title || '';
+
+        await createNotification(workspaceId, {
+            type: 'comment_added',
+            actorUid: commentData.createdBy,
+            actorName,
+            target: { id: taskId, name: taskTitle, type: 'task', path: `/company/${companyId}/project/${projectId}` },
+            context: { 
+                companyName, 
+                projectName,
+                commentText: commentData.text,
+            },
+            isRelevantTo,
+        });
+    });
 
 // On Company Create
 exports.onCompanyCreate = functions.firestore
@@ -706,3 +738,4 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
 
     return reportData;
 });
+    

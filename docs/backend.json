@@ -263,6 +263,32 @@
         "createdBy"
       ]
     },
+    "Comment": {
+      "title": "Comment",
+      "type": "object",
+      "description": "A comment on a task.",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "createdBy": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "parentCommentId": {
+          "type": "string",
+          "description": "The ID of the parent comment, if this is a reply."
+        }
+      },
+      "required": [
+        "text",
+        "createdBy",
+        "createdAt"
+      ]
+    },
     "UserTask": {
       "title": "User Task",
       "type": "object",
@@ -416,7 +442,8 @@
             "task_deleted",
             "silo_deleted",
             "project_deleted",
-            "company_deleted"
+            "company_deleted",
+            "comment_added"
           ]
         },
         "actorUid": {
@@ -470,6 +497,9 @@
             },
             "siloName": {
               "type": "string"
+            },
+            "commentText": {
+                "type": "string"
             }
           }
         },
@@ -572,6 +602,12 @@
       },
       "description": "Stores the individual tasks within a silo."
     },
+    "/workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}/comments/{commentId}": {
+      "schema": {
+        "$ref": "#/entities/Comment"
+      },
+      "description": "Stores comments for a specific task."
+    },
     "/user-tasks/{userId}/tasks/{taskId}": {
       "schema": {
         "$ref": "#/entities/UserTask"
@@ -604,3 +640,4 @@
     }
   }
 }
+    

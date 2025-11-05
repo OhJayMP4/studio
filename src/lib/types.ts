@@ -64,6 +64,18 @@ export type Task = {
     updatedBy?: string;
 };
 
+export type Comment = {
+    id: string;
+    text: string;
+    createdBy: string;
+    createdAt: any; // Can be a server timestamp
+    parentCommentId?: string | null;
+    author?: {
+        name: string;
+        avatarUrl?: string | null;
+    }
+};
+
 export type UserTask = {
     id: string; // This will be the denormalized doc ID
     originalTaskId: string;
@@ -101,7 +113,7 @@ export type Invite = {
 
 export type Notification = {
     id:string;
-    type: 'task_assigned' | 'task_completed' | 'silo_added' | 'project_added' | 'company_added' | 'sale_added' | 'task_deleted' | 'silo_deleted' | 'project_deleted' | 'company_deleted';
+    type: 'task_assigned' | 'task_completed' | 'silo_added' | 'project_added' | 'company_added' | 'sale_added' | 'task_deleted' | 'silo_deleted' | 'project_deleted' | 'company_deleted' | 'comment_added';
     actorUid: string;
     actorName: string;
     target: {
@@ -118,6 +130,7 @@ export type Notification = {
         companyName?: string;
         projectName?: string;
         siloName?: string;
+        commentText?: string;
     };
     timestamp: {
         seconds: number;
@@ -136,3 +149,4 @@ export type Presence = {
         avatarUrl: string | null;
     }
 }
+    
