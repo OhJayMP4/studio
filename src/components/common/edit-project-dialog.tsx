@@ -86,7 +86,14 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
   }, [isOpen, project, reset]);
 
   const handleUpdateProject = async (data: FormValues) => {
-    if (!selectedWorkspace) return;
+    if (!selectedWorkspace) {
+        toast({
+            variant: 'destructive',
+            title: 'Error',
+            description: 'No workspace selected.',
+        });
+        return;
+    };
 
     const projectRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', project.id);
     const updatedData = {
@@ -94,7 +101,6 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
         deadline: data.deadline.toISOString(),
         hasMonetaryValue: data.hasMonetaryValue,
         monetaryValue: data.hasMonetaryValue ? data.monetaryValue : null,
-        workspaceId: selectedWorkspace.id, // Ensure workspaceId is included for security rules
     };
 
     try {
@@ -117,7 +123,7 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
       toast({
         variant: 'destructive',
         title: 'Update Failed',
-        description: error.message || 'Could not update the project.',
+        description: error.message || 'Could not update the project. Check your permissions.',
       });
     }
   };
