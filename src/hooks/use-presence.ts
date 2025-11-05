@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, serverTimestamp, setDoc, doc, Timestamp, onSnapshot } from 'firebase/firestore';
+import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
+import { collection, query, serverTimestamp, setDoc, doc, Timestamp, onSnapshot } from 'firebase/firestore';
 import type { Presence } from '@/lib/types';
 
 const PRESENCE_COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD'];
@@ -79,17 +79,24 @@ export const usePresence = () => {
         }
 
         setIsLoading(true);
-
-        const activeThreshold = new Date(Date.now() - ACTIVE_THRESHOLD);
         
         const q = query(
-            collection(firestore, `presence/${workspaceId}/users`),
-            where('lastSeen', '>', activeThreshold)
+            collection(firestore, `presence/${workspaceId}/users`)
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Presence));
-            setActiveUsers(users);
+            const now = Date.now();
+            const allUsers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Presence));
+            
+            const currentlyActiveUsers = allUsers.filter(presenceUser => {
+                if (presenceUser.lastSeen) {
+                    const lastSeenMillis = (presenceUser.lastSeen as Timestamp).toMillis();
+                    return (now - lastSeenMillis) < ACTIVE_THRESHOLD;
+                }
+                return false;
+            });
+            
+            setActiveUsers(currentlyActiveUsers);
             setIsLoading(false);
         }, (error) => {
             console.error("Error fetching presence:", error);
