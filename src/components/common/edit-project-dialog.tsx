@@ -33,17 +33,14 @@ const formSchema = z.object({
   name: z.string().min(1, 'Project name is required.'),
   deadline: z.date({ required_error: 'A deadline is required.' }),
   hasMonetaryValue: z.boolean().default(false),
-  monetaryValue: z.preprocess(
-    (a) => (a === '' || a === undefined ? undefined : parseFloat(String(a))),
-    z.number().positive('Value must be a positive number.').optional()
-  ),
+  monetaryValue: z.number().positive('Value must be a positive number.').optional().or(z.literal('')),
 }).refine(data => {
     if (data.hasMonetaryValue) {
-        return data.monetaryValue !== undefined && data.monetaryValue > 0;
+        return data.monetaryValue !== undefined && data.monetaryValue !== '' && Number(data.monetaryValue) > 0;
     }
     return true;
 }, {
-    message: 'Monetary value is required when the toggle is on.',
+    message: 'Monetary value is required and must be a positive number.',
     path: ['monetaryValue'],
 });
 
@@ -81,7 +78,7 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
         name: project.name,
         deadline: new Date(project.deadline),
         hasMonetaryValue: project.hasMonetaryValue,
-        monetaryValue: project.monetaryValue,
+        monetaryValue: project.monetaryValue || '',
       });
     }
   }, [isOpen, project, reset]);
@@ -98,12 +95,11 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
 
     const projectRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', project.id);
     
-    // THE FIX: Use `null` instead of `undefined` for Firestore fields.
     const updatedData = {
       name: data.name,
       deadline: data.deadline.toISOString(),
       hasMonetaryValue: data.hasMonetaryValue,
-      monetaryValue: data.hasMonetaryValue ? data.monetaryValue : null,
+      monetaryValue: data.hasMonetaryValue ? Number(data.monetaryValue) : null,
       updatedBy: user.uid,
     };
 
@@ -205,7 +201,7 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
             </div>
 
             <DialogFooter>
-                <Button type="submit" disabled={isSubmitting}>
+                <Button type="submit" form={formId} disabled={isSubmitting}>
                   {isSubmitting ? 'Saving...' : 'Save Changes'}
                 </Button>
             </DialogFooter>
