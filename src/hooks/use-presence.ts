@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, serverTimestamp, setDoc, doc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, serverTimestamp, setDoc, doc, Timestamp, onSnapshot } from 'firebase/firestore';
 import type { Presence } from '@/lib/types';
 
 const PRESENCE_COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD'];
@@ -17,14 +17,13 @@ export const usePresence = () => {
     const { user } = useUser();
     const firestore = useFirestore();
     const [userColor] = useState(() => getRandomColor());
-    const [activeThresholdTimestamp, setActiveThresholdTimestamp] = useState(() => Timestamp.fromMillis(Date.now() - ACTIVE_THRESHOLD));
 
     const workspaceId = selectedWorkspace?.id;
     const userId = user?.uid;
 
     // --- Write user's own presence ---
     useEffect(() => {
-        if (!workspaceId || !userId || !user?.displayName) return;
+        if (!workspaceId || !userId || !user?.displayName || !firestore) return;
 
         const presenceRef = doc(firestore, `presence/${workspaceId}/users/${userId}`);
         let heartbeatInterval: NodeJS.Timeout | null = null;
@@ -37,7 +36,7 @@ export const usePresence = () => {
                     name: user.displayName,
                     avatarUrl: user.photoURL || null,
                 }
-            }, { merge: true });
+            }, { merge: true }).catch(err => console.error("Presence update failed:", err));
         };
 
         const handleVisibilityChange = () => {
@@ -67,26 +66,39 @@ export const usePresence = () => {
         };
     }, [workspaceId, userId, userColor, firestore, user?.displayName, user?.photoURL]);
     
-     // --- Periodically update the active threshold for the query ---
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setActiveThresholdTimestamp(Timestamp.fromMillis(Date.now() - ACTIVE_THRESHOLD));
-        }, HEARTBEAT_INTERVAL); // Update threshold at the same rate as heartbeat
-
-        return () => clearInterval(interval);
-    }, []);
-
+    
     // --- Read presence data for the workspace ---
-    const activeUsersQuery = useMemoFirebase(() => {
-        if (!workspaceId) return null;
-        
-        return query(
-            collection(firestore, `presence/${workspaceId}/users`),
-            where('lastSeen', '>', activeThresholdTimestamp)
-        );
-    }, [firestore, workspaceId, activeThresholdTimestamp]);
+    const [activeUsers, setActiveUsers] = useState<Presence[] | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
 
-    const { data: activeUsers, isLoading } = useCollection<Presence>(activeUsersQuery);
+    useEffect(() => {
+        if (!workspaceId || !firestore) {
+            setActiveUsers(null);
+            setIsLoading(false);
+            return;
+        }
+
+        setIsLoading(true);
+
+        const activeThreshold = new Date(Date.now() - ACTIVE_THRESHOLD);
+        
+        const q = query(
+            collection(firestore, `presence/${workspaceId}/users`),
+            where('lastSeen', '>', activeThreshold)
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Presence));
+            setActiveUsers(users);
+            setIsLoading(false);
+        }, (error) => {
+            console.error("Error fetching presence:", error);
+            setIsLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [workspaceId, firestore]);
+
 
     return { activeUsers, isLoading, currentUser: user };
 };
