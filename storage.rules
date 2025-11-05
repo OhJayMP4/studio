@@ -1,7 +1,55 @@
+
+/**
+ * @fileoverview Firebase Storage Security Rules
+ *
+ * To fix the CORS error preventing file uploads, you must configure your
+ * Cloud Storage bucket to allow requests from your app's domain.
+ *
+ * Please follow these steps in a new terminal:
+ *
+ * 1. Install gsutil (if you haven't already):
+ *    - Follow the guide at: https://cloud.google.com/storage/docs/gsutil_install
+ *
+ * 2. Create a CORS configuration file named `cors.json`:
+ *    - Create a new file named `cors.json` and paste the following content into it:
+ *      [
+ *        {
+ *          "origin": ["*"],
+ *          "method": ["GET", "POST", "PUT", "DELETE"],
+ *          "responseHeader": ["Content-Type"],
+ *          "maxAgeSeconds": 3600
+ *        }
+ *      ]
+ *    - Note: For production, you should replace "*" with your app's actual domain
+ *      (e.g., "https://saturnsync.com") for better security.
+ *
+ * 3. Apply the configuration to your bucket:
+ *    - Run the following command, replacing `[YOUR_BUCKET_NAME]` with your
+ *      project's storage bucket name (e.g., `gs://studio-1397195000-3cb07.appspot.com`):
+ *
+ *      gsutil cors set cors.json gs://[YOUR_BUCKET_NAME]
+ *
+ * This configuration allows your web application to make requests to your
+ * Cloud Storage bucket, which will resolve the file upload error.
+ */
 rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    
+    // Workspace files
+    match /workspaces/{workspaceId}/files/{allPaths=**} {
+      allow read: if request.auth != null &&
+                     request.auth.uid in firestore.get(/databases/(default)/documents/workspaces/$(workspaceId)).data.users;
+      
+      allow write: if request.auth != null &&
+                      request.auth.uid in firestore.get(/databases/(default)/documents/workspaces/$(workspaceId)).data.users &&
+                      request.resource.size < 50 * 1024 * 1024;
+      
+      allow delete: if request.auth != null &&
+                       firestore.get(/databases/(default)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == 'admin';
+    }
+
     // Allow public read access to finalized workspace logos
     match /workspaces/{workspaceId}/logo {
       allow read;
@@ -21,10 +69,7 @@ service firebase.storage {
     match /user-avatars/{userId} {
       allow write: if request.auth != null && request.auth.uid == userId;
     }
-
-    // Allow workspace members to read and write files in their workspace's storage path.
-    match /workspaces/{workspaceId}/files/{allPaths=**} {
-      allow read, write: if request.auth != null && exists(/databases/$(database)/documents/workspaces/$(workspaceId)) && request.auth.uid in get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users;
-    }
   }
 }
+
+    

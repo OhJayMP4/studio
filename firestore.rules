@@ -246,17 +246,23 @@ service cloud.firestore {
       }
     }
     
+    /**
+     * @description Rules for workspace file metadata.
+     * @path /workspace-files/{fileId}
+     * @principle Query-based security: List operation is secured by checking the `workspaceId` in the query's where clause.
+     *            Document-specific operations check the `workspaceId` on the document itself.
+     */
     match /workspace-files/{fileId} {
-      // Correct rule for listing documents in a collection.
-      // It ensures that any 'list' query MUST contain a 'where' clause filtering by a workspaceId.
-      // Then, it checks if the user is a member of that specific workspaceId.
-      allow list: if request.query.filters.size() > 0 
-                  && request.query.filters[0].field == 'workspaceId'
-                  && isWorkspaceMember(request.query.filters[0].value);
-      
-      // Rules for individual document operations are simpler.
-      // They check the 'workspaceId' field on the document itself.
-      allow get, write, delete: if isWorkspaceMember(resource.data.workspaceId);
+      // Corrected `list` rule. It enforces that the query MUST contain a `where('workspaceId', '==', ...)` clause,
+      // and then verifies the user is a member of the workspace specified in that clause. This is the correct pattern.
+      allow list: if request.query.keys().hasAny(['workspaceId']) &&
+                     isWorkspaceMember(request.query.workspaceId);
+
+      // Rules for single document operations. These can use `get()` because they aren't authorizing a wide collection query.
+      allow get: if isWorkspaceMember(resource.data.workspaceId);
+      allow create: if request.resource.data.workspaceId is string && isWorkspaceMember(request.resource.data.workspaceId);
+      allow update: if isWorkspaceMember(resource.data.workspaceId);
+      allow delete: if isWorkspaceAdmin(resource.data.workspaceId);
     }
     
 
@@ -333,3 +339,5 @@ service cloud.firestore {
 
   }
 }
+
+    
