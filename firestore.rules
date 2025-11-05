@@ -104,7 +104,7 @@ service cloud.firestore {
     }
 
     match /email-verifications/{verificationId} {
-      allow read, write: if false; // Server-only access
+      allow read, write: if false; // This collection is no longer used
     }
 
     /**

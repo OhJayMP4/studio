@@ -12,9 +12,8 @@ import { Rocket } from 'lucide-react';
 import { useAuth, useFirebase } from '@/firebase';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { signInWithEmailAndPassword, signInWithCustomToken } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid email address.' }),
@@ -57,16 +56,25 @@ export function LoginCard() {
             return;
         }
 
-        const functions = getFunctions(firebaseApp);
-        const sendVerificationEmail = httpsCallable(functions, 'sendVerificationEmail');
+        const userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
+        await sendEmailVerification(userCredential.user);
         
-        await sendVerificationEmail({ email: data.email, name: data.name, password: data.password });
-
-        toast({ title: 'Verification Email Sent', description: "Check your inbox for a verification code." });
-        router.push(`/verify-email?email=${encodeURIComponent(data.email)}`);
+        toast({ title: 'Verification Email Sent', description: "Please check your inbox to verify your email address." });
+        router.push('/login?status=verification-sent');
 
       } else { // Sign in
-        await signInWithEmailAndPassword(auth, data.email, data.password);
+        const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
+        if (!userCredential.user.emailVerified) {
+          toast({
+            variant: 'destructive',
+            title: 'Email Not Verified',
+            description: 'Please verify your email before signing in. We can resend the verification link.',
+          });
+          sendEmailVerification(userCredential.user); // Resend verification email
+          setAuthError('Your email address has not been verified.');
+          return;
+        }
+
         toast({ title: 'Signed In', description: "You've been successfully signed in." });
         router.push(redirectUrl || '/dashboard');
       }
@@ -81,19 +89,15 @@ export function LoginCard() {
         case 'auth/wrong-password':
           friendlyMessage = 'Incorrect password. Please try again.';
           break;
-        case 'functions/already-exists':
         case 'auth/email-already-in-use':
           friendlyMessage = 'This email is already in use. Please sign in or use a different email.';
           break;
         case 'auth/invalid-email':
             friendlyMessage = 'The email address is not valid.';
             break;
-        case 'functions/invalid-argument':
-            friendlyMessage = 'Please ensure all fields are filled out correctly.';
-            break;
         default:
           console.error(firebaseError);
-          friendlyMessage = firebaseError.message; // Use the message from the function error
+          friendlyMessage = firebaseError.message;
           break;
       }
       setAuthError(friendlyMessage);
