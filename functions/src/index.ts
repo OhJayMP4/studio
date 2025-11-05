@@ -1,8 +1,6 @@
 'use server';
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import { Resend } from 'resend';
-import * as bcrypt from 'bcryptjs';
 
 interface UserTask {
     id: string;
@@ -350,6 +348,50 @@ exports.onTaskDelete = functions.firestore
             context: { companyName, projectName, siloName },
             isRelevantTo,
         });
+    });
+
+exports.onFileUpload = functions.firestore
+    .document('workspace-files/{fileId}')
+    .onCreate(async (snap, context) => {
+        const fileData = snap.data();
+        const { workspaceId, uploadedBy, fullPath } = fileData;
+        const fileId = context.params.fileId;
+
+        if (!workspaceId || !uploadedBy) {
+            console.log(`File ${fileId} is missing workspaceId or uploadedBy, deleting.`);
+            await snap.ref.delete();
+            return;
+        }
+
+        const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+        try {
+            const workspaceSnap = await workspaceRef.get();
+            if (!workspaceSnap.exists) {
+                throw new Error(`Workspace ${workspaceId} not found.`);
+            }
+
+            const workspaceData = workspaceSnap.data();
+            const isMember = workspaceData?.memberIds?.includes(uploadedBy);
+
+            if (!isMember) {
+                throw new Error(`User ${uploadedBy} is not a member of workspace ${workspaceId}.`);
+            }
+
+            console.log(`File ${fileId} uploaded by valid member ${uploadedBy}.`);
+
+        } catch (error) {
+            console.error(`Unauthorized file upload detected. Deleting file and metadata. Error:`, error);
+            
+            const storage = admin.storage();
+            const bucket = storage.bucket();
+            const file = bucket.file(fullPath);
+            
+            await Promise.all([
+                file.delete().catch(e => console.error(`Failed to delete file from storage: ${fullPath}`, e)),
+                snap.ref.delete().catch(e => console.error(`Failed to delete firestore doc: ${snap.ref.path}`, e))
+            ]);
+            console.log(`Cleaned up unauthorized file ${fileId} at path ${fullPath}.`);
+        }
     });
 
 
