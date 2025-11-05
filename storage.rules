@@ -5,10 +5,16 @@ service firebase.storage {
   match /b/{bucket}/o {
     
     // Workspace files
-    // This path is namespaced by workspaceId. Access is granted if the user is authenticated.
-    // The client application is responsible for ensuring a user can only access their own workspace files.
     match /workspaces/{workspaceId}/files/{allPaths=**} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null &&
+                     request.auth.uid in get(/databases/(default)/documents/workspaces/$(workspaceId)).data.users;
+      
+      allow write: if request.auth != null &&
+                      request.auth.uid in get(/databases/(default)/documents/workspaces/$(workspaceId)).data.users &&
+                      request.resource.size < 50 * 1024 * 1024;
+      
+      allow delete: if request.auth != null &&
+                       get(/databases/(default)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == 'admin';
     }
 
     // Allow public read access to finalized workspace logos

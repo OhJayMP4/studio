@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -56,7 +57,7 @@ export function FileBrowser() {
       collection(firestore, 'workspace-files'),
       where('workspaceId', '==', selectedWorkspace.id),
       where('parentPath', '==', currentPath),
-      orderBy('name', 'asc') // Simplified sorting
+      orderBy('name', 'asc')
     );
 
     const unsubscribe = onSnapshot(filesQuery,
@@ -65,8 +66,7 @@ export function FileBrowser() {
           id: doc.id,
           ...doc.data()
         } as WorkspaceFile & {id: string}));
-
-        // Sort on the client to put folders first
+        
         const sortedFileList = fileList.sort((a, b) => {
           if (a.type === 'folder' && b.type === 'file') return -1;
           if (a.type === 'file' && b.type === 'folder') return 1;
