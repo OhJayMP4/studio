@@ -2,35 +2,44 @@
 /**
  * @fileoverview Firebase Storage Security Rules
  *
+ * =======================================================================================
+ * 
+ *     ******   ACTION REQUIRED: FIX FOR FILE UPLOAD CORS ERROR   ******
+ *
  * To fix the CORS error preventing file uploads, you must configure your
  * Cloud Storage bucket to allow requests from your app's domain.
  *
- * Please follow these steps in a new terminal:
+ * Please follow these steps in a new terminal on your local machine:
  *
  * 1. Install gsutil (if you haven't already):
- *    - Follow the guide at: https://cloud.google.com/storage/docs/gsutil_install
+ *    - Follow the official guide at: https://cloud.google.com/storage/docs/gsutil_install
  *
  * 2. Create a CORS configuration file named `cors.json`:
- *    - Create a new file named `cors.json` and paste the following content into it:
+ *    - Create a new file on your computer named `cors.json`.
+ *    - Paste the following JSON content into it. This is a temporary, permissive
+ *      setting for development.
+ *
  *      [
  *        {
  *          "origin": ["*"],
  *          "method": ["GET", "POST", "PUT", "DELETE"],
- *          "responseHeader": ["Content-Type"],
+ *          "responseHeader": ["Content-Type", "x-goog-resumable"],
  *          "maxAgeSeconds": 3600
  *        }
  *      ]
- *    - Note: For production, you should replace "*" with your app's actual domain
- *      (e.g., "https://saturnsync.com") for better security.
  *
  * 3. Apply the configuration to your bucket:
- *    - Run the following command, replacing `[YOUR_BUCKET_NAME]` with your
- *      project's storage bucket name (e.g., `gs://studio-1397195000-3cb07.appspot.com`):
+ *    - Run the following command in your terminal, replacing `[YOUR_BUCKET_NAME]` with your
+ *      project's storage bucket name (it is: studio-1397195000-3cb07.appspot.com).
  *
- *      gsutil cors set cors.json gs://[YOUR_BUCKET_NAME]
+ *      gsutil cors set cors.json gs://studio-1397195000-3cb07.appspot.com
  *
- * This configuration allows your web application to make requests to your
- * Cloud Storage bucket, which will resolve the file upload error.
+ * 4. For Production:
+ *    - Once you deploy your app to a live URL (e.g., https://saturnsync.com), you MUST
+ *      update `cors.json` to be more secure. Change `"origin": ["*"]` to
+ *      `"origin": ["https://saturnsync.com"]` and re-run the `gsutil cors set` command.
+ *
+ * =======================================================================================
  */
 rules_version = '2';
 
@@ -71,5 +80,3 @@ service firebase.storage {
     }
   }
 }
-
-    
