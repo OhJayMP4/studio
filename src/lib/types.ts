@@ -167,4 +167,15 @@ export type UserWorkspacePrefs = {
   updatedAt?: any;
 };
 
-    
+export type WorkspaceFile = {
+    id: string;
+    type: 'file' | 'folder';
+    name: string;
+    fullPath: string; // storage path
+    parentPath: string;
+    size?: number;
+    mimeType?: string;
+    downloadURL?: string;
+    uploadedBy: string;
+    createdAt: any; // Firestore Timestamp
+};

@@ -464,7 +464,7 @@
             "type": {
               "type": "string"
             },
-             "path": {
+            "path": {
               "type": "string"
             }
           },
@@ -499,7 +499,7 @@
               "type": "string"
             },
             "commentText": {
-                "type": "string"
+              "type": "string"
             }
           }
         },
@@ -554,36 +554,130 @@
               "type": "string"
             }
           },
-          "required": ["name"]
+          "required": [
+            "name"
+          ]
         }
       },
-      "required": ["lastSeen", "color", "user"]
+      "required": [
+        "lastSeen",
+        "color",
+        "user"
+      ]
     },
-     "UserWorkspacePrefs": {
+    "UserWorkspacePrefs": {
       "title": "User Workspace Preferences",
       "description": "Stores user-specific sidebar preferences for a workspace.",
       "type": "object",
       "properties": {
-        "uid": { "type": "string" },
-        "workspaceId": { "type": "string" },
-        "updatedAt": { "type": "string", "format": "date-time" },
+        "uid": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
         "sidebarModules": {
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
-              "id": { "type": "string", "description": "Unique ID for the module (e.g., 'files')" },
-              "label": { "type": "string" },
-              "icon": { "type": "string", "description": "Lucide icon name" },
-              "route": { "type": "string" },
-              "hidden": { "type": "boolean" },
-              "order": { "type": "number" }
+              "id": {
+                "type": "string",
+                "description": "Unique ID for the module (e.g., 'files')"
+              },
+              "label": {
+                "type": "string"
+              },
+              "icon": {
+                "type": "string",
+                "description": "Lucide icon name"
+              },
+              "route": {
+                "type": "string"
+              },
+              "hidden": {
+                "type": "boolean"
+              },
+              "order": {
+                "type": "number"
+              }
             },
-            "required": ["id", "label", "icon", "route", "hidden", "order"]
+            "required": [
+              "id",
+              "label",
+              "icon",
+              "route",
+              "hidden",
+              "order"
+            ]
           }
         }
       },
-      "required": ["uid", "workspaceId", "sidebarModules"]
+      "required": [
+        "uid",
+        "workspaceId",
+        "sidebarModules"
+      ]
+    },
+    "WorkspaceFile": {
+      "title": "Workspace File",
+      "description": "Metadata for a file or folder within a workspace's file storage.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "file",
+            "folder"
+          ],
+          "description": "The type of the item."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the file or folder."
+        },
+        "fullPath": {
+          "type": "string",
+          "description": "The full path of the item in Firebase Storage, e.g., 'folder/subfolder/file.pdf'."
+        },
+        "parentPath": {
+          "type": "string",
+          "description": "The path of the parent folder. Root items have an empty string."
+        },
+        "size": {
+          "type": "number",
+          "description": "The size of the file in bytes. Not applicable for folders."
+        },
+        "mimeType": {
+          "type": "string",
+          "description": "The MIME type of the file. Not applicable for folders."
+        },
+        "downloadURL": {
+          "type": "string",
+          "description": "The public URL to download the file. Not applicable for folders."
+        },
+        "uploadedBy": {
+          "type": "string",
+          "description": "The UID of the user who uploaded the file or created the folder."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp when the item was created."
+        }
+      },
+      "required": [
+        "type",
+        "name",
+        "fullPath",
+        "parentPath",
+        "uploadedBy",
+        "createdAt"
+      ]
     }
   },
   "auth": {
@@ -658,7 +752,7 @@
       },
       "description": "Stores workspace activity notifications."
     },
-     "/presence/{workspaceId}/users/{userId}": {
+    "/presence/{workspaceId}/users/{userId}": {
       "schema": {
         "$ref": "#/entities/Presence"
       },
@@ -669,8 +763,12 @@
         "$ref": "#/entities/UserWorkspacePrefs"
       },
       "description": "Stores user-specific sidebar preferences for a workspace."
+    },
+    "/workspace-files/{workspaceId}/files/{fileId}": {
+      "schema": {
+        "$ref": "#/entities/WorkspaceFile"
+      },
+      "description": "Stores metadata for files and folders in a workspace."
     }
   }
 }
-
-    
