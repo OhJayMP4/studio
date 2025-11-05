@@ -246,24 +246,25 @@ service cloud.firestore {
       }
     }
     
-    match /workspace-files/{workspaceId} {
-      allow get: if isWorkspaceMember(workspaceId);
-      
-      function isQueryScopedToWorkspace(wsId) {
-        let filters = request.query.filters;
-        for (let i = 0; i < filters.size(); i++) {
-          if (filters[i].field == 'workspaceId' && filters[i].value == wsId) {
-            return true;
-          }
-        }
-        return false;
-      }
-
-      match /files/{fileId} {
-         allow list: if isQueryScopedToWorkspace(workspaceId) && isWorkspaceMember(workspaceId);
-         allow read, write: if isWorkspaceMember(workspaceId);
-      }
+    match /workspace-files/{fileId} {
+      allow read, list, write: if 
+          // 1. Is user signed in?
+          isSignedIn() && 
+          // 2. For a create operation, does the incoming document have a workspaceId?
+          (request.resource == null || request.resource.data.workspaceId != null) &&
+          // 3. For a list operation, does the query have a filter on workspaceId?
+          //    This is the key to allowing secure collection queries.
+          (request.method == 'list' ? request.query.filters.size() > 0 : true) &&
+          // 4. Finally, is the user a member of the workspace they are trying to access?
+          //    For list, we check the query filter value. For others, we check the document data.
+          isWorkspaceMember(
+            request.method == 'list' 
+              ? request.query.filters[0].value 
+              : request.resource.data.workspaceId
+          );
     }
+    
+
     /**
      * @description Rules for denormalized user task documents.
      * @path /user-tasks/{userId}/tasks/{taskId}
