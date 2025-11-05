@@ -4,12 +4,14 @@ import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
 import { doc, setDoc, serverTimestamp, getDoc, updateDoc } from 'firebase/firestore';
 import type { UserWorkspacePrefs, SidebarModule } from '@/lib/types';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 
 export const availableModules: (Omit<SidebarModule, 'order' | 'route' | 'hidden'> & {description: string})[] = [
     { id: 'files', label: 'Files', icon: 'Folder', description: 'Workspace filing system with folders.' },
     // Future modules can be added here
 ];
+
+const coreModuleIds = ['dashboard', 'companies', 'reporting', 'my-tasks'];
 
 const defaultSidebarModules: SidebarModule[] = [
     { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', route: '/dashboard', hidden: false, order: 0 },
@@ -26,10 +28,10 @@ export const useSidebarPrefs = () => {
   const docId = user && selectedWorkspace ? `${user.uid}-${selectedWorkspace.id}` : null;
   const prefsRef = useMemoFirebase(() => docId ? doc(firestore, 'user-workspace-prefs', docId) : null, [firestore, docId]);
   
-  const { data: prefs, isLoading, error } = useDoc<UserWorkspacePrefs>(prefsRef);
+  const { data: rawPrefs, isLoading, error } = useDoc<UserWorkspacePrefs>(prefsRef);
 
   useEffect(() => {
-    if (!isLoading && !prefs && prefsRef && user && selectedWorkspace) {
+    if (!isLoading && !rawPrefs && prefsRef && user && selectedWorkspace) {
         const createDefaultPrefs = async () => {
             try {
                 // Double check it doesn't exist before writing to avoid race conditions
@@ -48,7 +50,19 @@ export const useSidebarPrefs = () => {
         };
         createDefaultPrefs();
     }
-  }, [isLoading, prefs, prefsRef, user, selectedWorkspace]);
+  }, [isLoading, rawPrefs, prefsRef, user, selectedWorkspace]);
+  
+  const prefs = useMemo(() => {
+    if (!rawPrefs) return null;
+    // Self-healing: Ensure core modules are never hidden, regardless of DB state
+    const correctedModules = rawPrefs.sidebarModules.map(module => {
+        if (coreModuleIds.includes(module.id)) {
+            return { ...module, hidden: false };
+        }
+        return module;
+    });
+    return { ...rawPrefs, sidebarModules: correctedModules };
+  }, [rawPrefs]);
 
 
   const addModule = async (moduleId: string) => {
@@ -75,6 +89,10 @@ export const useSidebarPrefs = () => {
 
   const setModuleHidden = async (moduleId: string, hidden: boolean) => {
     if (!prefsRef || !prefs) throw new Error("Preferences not loaded.");
+    if (coreModuleIds.includes(moduleId)) {
+        console.warn("Attempted to hide a core module. This action is blocked.");
+        return;
+    }
 
     const newModules = prefs.sidebarModules.map(m => 
       m.id === moduleId ? { ...m, hidden } : m
