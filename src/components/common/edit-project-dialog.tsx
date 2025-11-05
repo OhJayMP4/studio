@@ -121,10 +121,11 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
           });
           errorEmitter.emit('permission-error', permissionError);
 
+          // This toast will be shown as a fallback. The primary error will be in the Next.js overlay.
           toast({
             variant: 'destructive',
             title: 'Update Failed',
-            description: 'Could not update the project. Check your permissions or the console for more details.',
+            description: 'You do not have permission to edit this project. Check the console for more details.',
           });
     });
   };
