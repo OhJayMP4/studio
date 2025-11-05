@@ -27,6 +27,7 @@ import { Calendar } from '../ui/calendar';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { Project } from '@/lib/types';
+import { errorEmitter, FirestorePermissionError } from '@/firebase';
 
 const formSchema = z.object({
   name: z.string().min(1, 'Project name is required.'),
@@ -87,15 +88,17 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
   const handleUpdateProject = async (data: FormValues) => {
     if (!selectedWorkspace) return;
 
-    try {
-      const projectRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', project.id);
-      await updateDoc(projectRef, {
+    const projectRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', project.id);
+    const updatedData = {
         name: data.name,
         deadline: data.deadline.toISOString(),
         hasMonetaryValue: data.hasMonetaryValue,
         monetaryValue: data.hasMonetaryValue ? data.monetaryValue : null,
-        workspaceId: selectedWorkspace.id, // Add workspaceId to satisfy security rules
-      });
+        workspaceId: selectedWorkspace.id, // Ensure workspaceId is included for security rules
+    };
+
+    try {
+      await updateDoc(projectRef, updatedData);
       
       toast({
         title: 'Project Updated',
@@ -104,6 +107,13 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
       setIsOpen(false);
     } catch (error: any) {
       console.error('Error updating project:', error);
+      
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: projectRef.path,
+          operation: 'update',
+          requestResourceData: updatedData,
+      }));
+
       toast({
         variant: 'destructive',
         title: 'Update Failed',
