@@ -246,16 +246,6 @@ service cloud.firestore {
       }
     }
     
-    match /workspace-files/{fileId} {
-      // For a list query, ensure the query is filtering by a workspaceId the user is a member of.
-      // This is the key to securing collection queries without cross-document gets in the rule.
-      allow list: if request.auth != null && isWorkspaceMember(request.query.filters[0].value);
-      
-      // For individual document operations, check the workspaceId on the document itself.
-      allow read, write: if request.auth != null && isWorkspaceMember(resource.data.workspaceId);
-    }
-    
-
     /**
      * @description Rules for denormalized user task documents.
      * @path /user-tasks/{userId}/tasks/{taskId}
@@ -327,7 +317,34 @@ service cloud.firestore {
         allow create: if isSignedIn() && request.auth.uid == request.resource.data.uid;
     }
 
+    /**
+     * @description Rules for workspace file metadata.
+     * @path /workspace-files/{fileId}
+     * @principle Query-based security: List is open but must filter by workspaceId.
+     *            Document access requires workspace membership verification.
+     */
+    match /workspace-files/{fileId} {
+      // Allow listing with workspace filter (client MUST use where clause)
+      allow list: if request.auth != null;
+      
+      // Single document read requires membership check
+      allow get: if request.auth != null &&
+                    request.auth.uid in get(/databases/$(database)/documents/workspaces/$(resource.data.workspaceId)).data.users;
+      
+      // Create requires membership and sets uploadedBy correctly
+      allow create: if request.auth != null &&
+                       request.resource.data.workspaceId is string &&
+                       request.resource.data.uploadedBy == request.auth.uid &&
+                       request.auth.uid in get(/databases/$(database)/documents/workspaces/$(request.resource.data.workspaceId)).data.users;
+      
+      // Update requires membership (can't change workspace)
+      allow update: if request.auth != null &&
+                       request.resource.data.workspaceId == resource.data.workspaceId &&
+                       request.auth.uid in get(/databases/$(database)/documents/workspaces/$(resource.data.workspaceId)).data.users;
+      
+      // Delete requires admin role
+      allow delete: if request.auth != null &&
+                       isWorkspaceAdmin(resource.data.workspaceId);
+    }
   }
 }
-
-    

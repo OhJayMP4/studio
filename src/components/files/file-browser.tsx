@@ -1,10 +1,10 @@
 
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, orderBy, deleteDoc, doc, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, query, where, orderBy, deleteDoc, doc, getDocs, writeBatch, onSnapshot } from 'firebase/firestore';
 import { getStorage, ref, deleteObject } from "firebase/storage";
 import {
   Table,
@@ -23,12 +23,11 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Button } from '@/components/ui/button';
-import { Folder, File as FileIcon, MoreVertical, Trash2 } from 'lucide-react';
+import { Folder, File as FileIcon, Trash2 } from 'lucide-react';
 import { Skeleton } from '../ui/skeleton';
 import { format } from 'date-fns';
 import { bytesToSize } from '@/lib/files';
 import { UploadFileDialog } from './upload-file-dialog';
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '../ui/dropdown-menu';
 import { DeleteDialog } from '../common/delete-dialog';
 import { useToast } from '@/hooks/use-toast';
 import type { WorkspaceFile } from '@/lib/types';
@@ -40,20 +39,49 @@ export function FileBrowser() {
   const { toast } = useToast();
 
   const [currentPath, setCurrentPath] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [files, setFiles] = useState<(WorkspaceFile & {id: string})[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const filesQuery = useMemoFirebase(() => {
-    if (!selectedWorkspace) return null;
-    return query(
+  useEffect(() => {
+    if (!selectedWorkspace?.id || !firestore) {
+      setFiles([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    const filesQuery = query(
       collection(firestore, 'workspace-files'),
       where('workspaceId', '==', selectedWorkspace.id),
       where('parentPath', '==', currentPath),
       orderBy('type', 'desc'), // folders first
       orderBy('name', 'asc')
     );
-  }, [firestore, selectedWorkspace, currentPath]);
 
-  const { data: files, isLoading: filesLoading } = useCollection<WorkspaceFile>(filesQuery);
+    const unsubscribe = onSnapshot(filesQuery,
+      (snapshot) => {
+        const fileList = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as WorkspaceFile & {id: string}));
+        setFiles(fileList);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error loading files:", error);
+        toast({
+          variant: 'destructive',
+          title: 'Error Loading Files',
+          description: error.message
+        });
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [selectedWorkspace?.id, firestore, currentPath, toast]);
 
   const breadcrumbParts = useMemo(() => {
     if (currentPath === '') return [];
@@ -75,31 +103,26 @@ export function FileBrowser() {
 
   const handleDeleteItem = async (item: WorkspaceFile) => {
     if (!selectedWorkspace) return;
-    setIsLoading(true);
+    setIsDeleting(true);
     const storage = getStorage();
     const batch = writeBatch(firestore);
 
     try {
         if (item.type === 'file') {
-            // Delete file from Storage
             const fileRef = ref(storage, item.fullPath);
             await deleteObject(fileRef);
-            // Delete metadata from Firestore
             const metaRef = doc(firestore, 'workspace-files', item.id);
             batch.delete(metaRef);
         } else {
-            // It's a folder, so we need to recursively delete
-            const folderPrefix = item.fullPath + '/';
             const allFilesCollection = collection(firestore, 'workspace-files');
             
-            // Query for all items inside this folder and subfolders
             const itemsToDeleteQuery = query(allFilesCollection, where('workspaceId', '==', selectedWorkspace.id), where('fullPath', '>=', item.fullPath));
             const itemsToDeleteSnap = await getDocs(itemsToDeleteQuery);
             
             for (const docSnap of itemsToDeleteSnap.docs) {
                 const docData = docSnap.data() as WorkspaceFile;
                 if (docData.fullPath.startsWith(item.fullPath)) {
-                    batch.delete(docSnap.ref); // Delete metadata
+                    batch.delete(docSnap.ref);
                     if (docData.type === 'file') {
                         const fileRef = ref(storage, docData.fullPath);
                         await deleteObject(fileRef).catch(e => console.warn(`Could not delete ${docData.fullPath}: ${e.message}`));
@@ -113,7 +136,7 @@ export function FileBrowser() {
     } catch (error: any) {
         toast({ variant: 'destructive', title: "Deletion failed", description: error.message });
     } finally {
-        setIsLoading(false);
+        setIsDeleting(false);
     }
   };
 
@@ -162,7 +185,7 @@ export function FileBrowser() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filesLoading || isLoading ? (
+            {loading ? (
               [...Array(3)].map((_, i) => (
                 <TableRow key={i}>
                   <TableCell><Skeleton className="h-5 w-32" /></TableCell>
@@ -184,7 +207,7 @@ export function FileBrowser() {
                   <TableCell className="hidden md:table-cell text-muted-foreground">{item.size ? bytesToSize(item.size) : '--'}</TableCell>
                    <TableCell>
                         <DeleteDialog onConfirm={() => handleDeleteItem(item)} itemName={item.name}>
-                            <Button variant="ghost" size="icon">
+                            <Button variant="ghost" size="icon" disabled={isDeleting}>
                                 <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
                         </DeleteDialog>
@@ -204,5 +227,3 @@ export function FileBrowser() {
     </div>
   );
 }
-
-    
