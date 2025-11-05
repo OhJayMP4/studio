@@ -1,5 +1,37 @@
 {
   "entities": {
+    "EmailVerification": {
+      "title": "Email Verification",
+      "type": "object",
+      "description": "Stores temporary data for email verification.",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "code": {
+          "type": "string"
+        },
+        "expires": {
+          "type": "number",
+          "description": "Unix timestamp when the code expires."
+        },
+        "name": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string",
+          "description": "Encrypted password, to be used after verification."
+        }
+      },
+      "required": [
+        "email",
+        "code",
+        "expires",
+        "name",
+        "password"
+      ]
+    },
     "UserProfile": {
       "title": "User Profile",
       "type": "object",
@@ -691,6 +723,12 @@
     ]
   },
   "firestore": {
+    "/email-verifications/{verificationId}": {
+      "schema": {
+        "$ref": "#/entities/EmailVerification"
+      },
+      "description": "Stores temporary data for email verification. Server-only access."
+    },
     "/users/{userId}": {
       "schema": {
         "$ref": "#/entities/UserProfile"
@@ -777,5 +815,3 @@
     }
   }
 }
-
-    

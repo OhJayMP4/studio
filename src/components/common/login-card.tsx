@@ -9,12 +9,12 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Rocket } from 'lucide-react';
-import { useAuth, useFirestore } from '@/firebase';
+import { useAuth, useFirebase } from '@/firebase';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { signInWithEmailAndPassword, signInWithCustomToken } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid email address.' }),
@@ -27,7 +27,7 @@ type FormValues = z.infer<typeof formSchema>;
 
 export function LoginCard() {
   const auth = useAuth();
-  const firestore = useFirestore();
+  const { firebaseApp } = useFirebase();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
@@ -48,7 +48,6 @@ export function LoginCard() {
     setIsSubmitting(true);
     setAuthError(null);
     try {
-      let userCredential;
       const redirectUrl = searchParams.get('redirect');
 
       if (authMode === 'signUp') {
@@ -57,28 +56,20 @@ export function LoginCard() {
             setIsSubmitting(false);
             return;
         }
-        userCredential = await createUserWithEmailAndPassword(auth, data.email, data.password);
-        const user = userCredential.user;
 
-        if (user && data.name) {
-          await updateProfile(user, { displayName: data.name });
+        const functions = getFunctions(firebaseApp);
+        const sendVerificationEmail = httpsCallable(functions, 'sendVerificationEmail');
+        
+        await sendVerificationEmail({ email: data.email, name: data.name, password: data.password });
 
-          const userRef = doc(firestore, "users", user.uid);
-          await setDoc(userRef, {
-              uid: user.uid,
-              email: user.email,
-              name: data.name,
-              avatarUrl: user.photoURL,
-              workspaceIds: []
-          }, { merge: true });
-        }
-        toast({ title: 'Account Created', description: "You've been successfully signed up." });
-      } else {
-        userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
+        toast({ title: 'Verification Email Sent', description: "Check your inbox for a verification code." });
+        router.push(`/verify-email?email=${encodeURIComponent(data.email)}`);
+
+      } else { // Sign in
+        await signInWithEmailAndPassword(auth, data.email, data.password);
         toast({ title: 'Signed In', description: "You've been successfully signed in." });
+        router.push(redirectUrl || '/dashboard');
       }
-      
-      router.push(redirectUrl || '/dashboard');
 
     } catch (error) {
       const firebaseError = error as FirebaseError;
@@ -90,14 +81,19 @@ export function LoginCard() {
         case 'auth/wrong-password':
           friendlyMessage = 'Incorrect password. Please try again.';
           break;
+        case 'functions/already-exists':
         case 'auth/email-already-in-use':
           friendlyMessage = 'This email is already in use. Please sign in or use a different email.';
           break;
         case 'auth/invalid-email':
             friendlyMessage = 'The email address is not valid.';
             break;
+        case 'functions/invalid-argument':
+            friendlyMessage = 'Please ensure all fields are filled out correctly.';
+            break;
         default:
           console.error(firebaseError);
+          friendlyMessage = firebaseError.message; // Use the message from the function error
           break;
       }
       setAuthError(friendlyMessage);
@@ -173,16 +169,24 @@ export function LoginCard() {
                 className="w-full"
                 disabled={isSubmitting}
               >
-                {isSubmitting ? 'Submitting...' : (authMode === 'signIn' ? 'Sign In' : 'Create Account')}
+                {isSubmitting
+                  ? 'Submitting...'
+                  : authMode === 'signIn'
+                  ? 'Sign In'
+                  : 'Create Account'}
               </Button>
                <Button
                 type="button"
                 variant="link"
                 className="w-full text-muted-foreground"
                 disabled={isSubmitting}
-                onClick={() => setAuthMode(authMode === 'signIn' ? 'signUp' : 'signIn')}
+                onClick={() => {
+                  setAuthMode(authMode === 'signIn' ? 'signUp' : 'signIn');
+                  setAuthError(null);
+                  form.reset();
+                }}
               >
-                {authMode === 'signIn' ? 'Don\'t have an account? Create one' : 'Already have an account? Sign In'}
+                {authMode === 'signIn' ? "Don't have an account? Create one" : 'Already have an account? Sign In'}
               </Button>
             </CardFooter>
           </form>

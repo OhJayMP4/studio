@@ -103,6 +103,10 @@ service cloud.firestore {
       return isWorkspaceMember(workspaceId) && ws.data.users[request.auth.uid].role == 'admin';
     }
 
+    match /email-verifications/{verificationId} {
+      allow read, write: if false; // Server-only access
+    }
+
     /**
      * @description Rules for user profile documents.
      * @path /users/{userId}
