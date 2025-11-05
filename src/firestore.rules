@@ -247,15 +247,13 @@ service cloud.firestore {
     }
     
     match /workspace-files/{workspaceId} {
-      // Allow reading the parent document if it ever exists, not used now
-      allow get: if isWorkspaceMember(workspaceId);
+      // This rule allows a query on the 'files' subcollection, but ONLY if the user is a member 
+      // of the parent workspace. The 'workspaceId' is available from the path, making the get() call valid.
+      allow list: if isWorkspaceMember(workspaceId);
       
-      // Allow listing the 'files' subcollection IF the query is correctly scoped
-      allow list: if isWorkspaceMember(workspaceId) && request.query.filters.size() > 0;
-
+      // This rule secures individual document access within the subcollection.
       match /files/{fileId} {
-         // Allow individual file read/write access to members of the workspace
-         allow read, write: if isWorkspaceMember(workspaceId);
+         allow get, write: if isWorkspaceMember(workspaceId);
       }
     }
     
@@ -332,5 +330,3 @@ service cloud.firestore {
 
   }
 }
-
-    

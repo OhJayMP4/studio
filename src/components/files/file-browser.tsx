@@ -46,7 +46,6 @@ export function FileBrowser() {
     if (!selectedWorkspace) return null;
     return query(
       collection(firestore, 'workspace-files', selectedWorkspace.id, 'files'),
-      where('workspaceId', '==', selectedWorkspace.id), // Required by security rules
       where('parentPath', '==', currentPath),
       orderBy('type', 'desc'), // folders first
       orderBy('name', 'asc')
@@ -204,5 +203,3 @@ export function FileBrowser() {
     </div>
   );
 }
-
-    
