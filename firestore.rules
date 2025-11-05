@@ -304,17 +304,17 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-     /**
+    /**
      * @description Rules for user-specific workspace preferences.
      * @path /user-workspace-prefs/{docId}
-     * @allow read, write: if the user is the owner of the preferences document.
+     * @allow (read, write) if the user is the owner of the preferences document.
+     * @allow (create) if the user is creating their own preferences document.
+     * @principle Ownership: Enforces that users can only manage their own sidebar settings.
      */
     match /user-workspace-prefs/{docId} {
-        allow read, write: if isSignedIn() && request.auth.uid == resource.data.uid;
+        allow read: if isSignedIn() && request.auth.uid == docId.split('-')[0];
+        allow write: if isSignedIn() && request.auth.uid == resource.data.uid;
         allow create: if isSignedIn() && request.auth.uid == request.resource.data.uid;
     }
   }
 }
-
-
-    
