@@ -98,11 +98,12 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
 
     const projectRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', project.id);
     
-    const updatedData: Partial<Project> & { updatedBy: string } = {
+    // THE FIX: Use `null` instead of `undefined` for Firestore fields.
+    const updatedData = {
       name: data.name,
       deadline: data.deadline.toISOString(),
       hasMonetaryValue: data.hasMonetaryValue,
-      monetaryValue: data.hasMonetaryValue ? data.monetaryValue : undefined,
+      monetaryValue: data.hasMonetaryValue ? data.monetaryValue : null,
       updatedBy: user.uid,
     };
 
@@ -116,12 +117,15 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
       })
       .catch((serverError) => {
         console.error("Update failed:", serverError);
+        // Create and emit a detailed error for debugging.
         const permissionError = new FirestorePermissionError({
           path: projectRef.path,
           operation: 'update',
           requestResourceData: updatedData,
         });
         errorEmitter.emit('permission-error', permissionError);
+        
+        // Also show a user-friendly toast.
         toast({
           variant: 'destructive',
           title: 'Update Failed',
@@ -136,74 +140,76 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-            <DialogTitle>Edit Project</DialogTitle>
-            <DialogDescription>
-              Update the details for "{project.name}".
-            </DialogDescription>
-        </DialogHeader>
-        
-        <form id={formId} onSubmit={handleSubmit(handleUpdateProject)} className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Project Name</Label>
-              <Input id="name" {...register('name')} />
-              {errors.name && <p className="text-sm text-destructive mt-1">{errors.name.message}</p>}
-            </div>
-
-            <Controller
-              name="deadline"
-              control={control}
-              render={({ field }) => (
+        <form id={formId} onSubmit={handleSubmit(handleUpdateProject)}>
+            <DialogHeader>
+                <DialogTitle>Edit Project</DialogTitle>
+                <DialogDescription>
+                  Update the details for "{project.name}".
+                </DialogDescription>
+            </DialogHeader>
+            
+            <div className="grid gap-4 py-4">
                 <div className="space-y-2">
-                    <Label>Deadline</Label>
-                    <Popover>
-                        <PopoverTrigger asChild>
-                        <Button
-                            variant={"outline"}
-                            className={cn("w-full justify-start text-left font-normal",!field.value && "text-muted-foreground")}
-                        >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
-                        </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                            <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
-                        </PopoverContent>
-                    </Popover>
-                    {errors.deadline && <p className="text-sm text-destructive mt-1">{errors.deadline.message}</p>}
+                  <Label htmlFor="name">Project Name</Label>
+                  <Input id="name" {...register('name')} />
+                  {errors.name && <p className="text-sm text-destructive mt-1">{errors.name.message}</p>}
                 </div>
-              )}
-            />
 
-            <div className="flex items-center justify-between space-y-2">
-                <div className='space-y-0.5'>
-                    <Label htmlFor="hasMonetaryValue">Has Monetary Value?</Label>
-                    <p className='text-xs text-muted-foreground'>Does this project have a budget or contract value?</p>
+                <Controller
+                  name="deadline"
+                  control={control}
+                  render={({ field }) => (
+                    <div className="space-y-2">
+                        <Label>Deadline</Label>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                            <Button
+                                variant={"outline"}
+                                className={cn("w-full justify-start text-left font-normal",!field.value && "text-muted-foreground")}
+                            >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                            </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                                <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                            </PopoverContent>
+                        </Popover>
+                        {errors.deadline && <p className="text-sm text-destructive mt-1">{errors.deadline.message}</p>}
+                    </div>
+                  )}
+                />
+
+                <div className="flex items-center justify-between space-y-2">
+                    <div className='space-y-0.5'>
+                        <Label htmlFor="hasMonetaryValue">Has Monetary Value?</Label>
+                        <p className='text-xs text-muted-foreground'>Does this project have a budget or contract value?</p>
+                    </div>
+                  <Controller
+                    name="hasMonetaryValue"
+                    control={control}
+                    render={({ field }) => (
+                        <Switch id="hasMonetaryValue" checked={field.value} onCheckedChange={field.onChange} />
+                    )}
+                  />
                 </div>
-              <Controller
-                name="hasMonetaryValue"
-                control={control}
-                render={({ field }) => (
-                    <Switch id="hasMonetaryValue" checked={field.value} onCheckedChange={field.onChange} />
+                 {errors.hasMonetaryValue && <p className="text-sm text-destructive mt-1">{errors.hasMonetaryValue.message}</p>}
+
+                {hasMonetaryValue && (
+                  <div className="space-y-2">
+                    <Label htmlFor="monetaryValue">Monetary Value (ZAR)</Label>
+                    <Input id="monetaryValue" type="number" {...register('monetaryValue')} />
+                    {errors.monetaryValue && <p className="text-sm text-destructive mt-1">{errors.monetaryValue.message}</p>}
+                  </div>
                 )}
-              />
             </div>
-             {errors.hasMonetaryValue && <p className="text-sm text-destructive mt-1">{errors.hasMonetaryValue.message}</p>}
 
-            {hasMonetaryValue && (
-              <div className="space-y-2">
-                <Label htmlFor="monetaryValue">Monetary Value (ZAR)</Label>
-                <Input id="monetaryValue" type="number" {...register('monetaryValue')} />
-                {errors.monetaryValue && <p className="text-sm text-destructive mt-1">{errors.monetaryValue.message}</p>}
-              </div>
-            )}
+            <DialogFooter>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? 'Saving...' : 'Save Changes'}
+                </Button>
+            </DialogFooter>
         </form>
-
-        <DialogFooter>
-            <Button type="submit" form={formId} disabled={isSubmitting}>
-              {isSubmitting ? 'Saving...' : 'Save Changes'}
-            </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
