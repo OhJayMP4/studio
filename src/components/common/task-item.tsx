@@ -2,11 +2,12 @@
 
 import { useFirestore, useMemoFirebase } from "@/firebase";
 import { useSelectedWorkspace } from "@/app/(main)/layout";
-import { Task, UserProfile } from "@/lib/types";
-import { doc, deleteDoc } from "firebase/firestore";
+import { Task, UserProfile, Comment } from "@/lib/types";
+import { doc, deleteDoc, collection, query, getDocs } from "firebase/firestore";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Checkbox } from "../ui/checkbox";
 import { useDoc } from "@/firebase/firestore/use-doc";
+import { useCollection } from "@/firebase/firestore/use-collection";
 import { Badge } from "../ui/badge";
 import { format, isPast, isToday } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -94,6 +95,13 @@ export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
     const assigneeRef = useMemoFirebase(() => {
         return task.assigneeId ? doc(firestore, 'users', task.assigneeId) : null;
     }, [firestore, task.assigneeId]);
+    
+    const commentsQuery = useMemoFirebase(() => {
+        return query(collection(firestore, `${path}/comments`));
+    }, [firestore, path]);
+    
+    const { data: comments } = useCollection<Comment>(commentsQuery);
+    const hasComments = comments && comments.length > 0;
 
     const { data: assignee } = useDoc<UserProfile>(assigneeRef);
 
@@ -134,11 +142,12 @@ export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
                 />
                 <TaskDetailsDialog task={task} path={path}>
                     <button
-                        className={cn("text-sm font-medium leading-none text-left", {
+                        className={cn("text-sm font-medium leading-none text-left flex items-center gap-2", {
                             "line-through text-muted-foreground": task.completed
                         })}
                     >
-                        {task.title}
+                        <span>{task.title}</span>
+                         {hasComments && <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />}
                     </button>
                 </TaskDetailsDialog>
             </div>
