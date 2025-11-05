@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { useSidebarPrefs, availableModules } from '@/hooks/use-sidebar-prefs';
 import * as LucideIcons from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import type { SidebarModule } from '@/lib/types';
 
 interface AddModuleDialogProps {
   open: boolean;
@@ -28,7 +29,7 @@ export function AddModuleDialog({ open, onOpenChange }: AddModuleDialogProps) {
       await addModule(moduleId);
       toast({
         title: 'Module Added',
-        description: `The ${moduleId} module has been added to your sidebar.`,
+        description: `The module has been added to your sidebar.`,
       });
       onOpenChange(false);
     } catch (error: any) {
@@ -48,8 +49,31 @@ export function AddModuleDialog({ open, onOpenChange }: AddModuleDialogProps) {
       return <LucideIcon {...props} />;
   };
 
-  const currentModuleIds = prefs?.sidebarModules.map(m => m.id) || [];
-  const modulesToShow = availableModules.filter(m => !currentModuleIds.includes(m.id));
+  const getModulesToShow = (): (Omit<SidebarModule, 'order' | 'route' | 'hidden'> & {description: string})[] => {
+    if (!prefs) return [];
+    
+    // Get IDs of all modules currently in user's prefs (visible or hidden)
+    const currentModuleIds = prefs.sidebarModules.map(m => m.id);
+    
+    // Get modules that are in prefs but are marked as hidden
+    const hiddenButInPrefs = prefs.sidebarModules
+        .filter(m => m.hidden)
+        .map(m => {
+            const available = availableModules.find(am => am.id === m.id);
+            return available ? available : null;
+        }).filter(Boolean) as (Omit<SidebarModule, 'order' | 'route' | 'hidden'> & {description: string})[];
+        
+    // Get modules from the master list that have never been added to prefs
+    const neverAdded = availableModules.filter(m => !currentModuleIds.includes(m.id));
+    
+    // Combine them, ensuring no duplicates
+    const modulesToShowMap = new Map();
+    [...hiddenButInPrefs, ...neverAdded].forEach(m => modulesToShowMap.set(m.id, m));
+    
+    return Array.from(modulesToShowMap.values());
+  };
+  
+  const modulesToShow = getModulesToShow();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -84,5 +108,3 @@ export function AddModuleDialog({ open, onOpenChange }: AddModuleDialogProps) {
     </Dialog>
   );
 }
-
-    
