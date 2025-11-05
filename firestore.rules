@@ -247,19 +247,18 @@ service cloud.firestore {
     }
     
     /**
-     * @description Rules for workspace files metadata.
-     * @path /workspace-files/{workspaceId}/files/{fileId=**}
-     * @allow (read, write) if the user is a member of the workspace.
+     * @description Rules for workspace files metadata. This is the correct pattern for securing subcollection queries.
+     * @path /workspace-files/{workspaceId}
      * @principle Membership: Enforces that users can only manage files within their own workspaces.
      */
     match /workspace-files/{workspaceId} {
-        // This rule allows a query on the subcollection, but it can't check other documents.
-        // Therefore, we must denormalize the workspaceId onto the file documents themselves.
+        // This rule allows a query on the subcollection `files`.
+        // It's evaluated based on the parent document's `workspaceId`, which is allowed for `list` operations.
         allow list: if isWorkspaceMember(workspaceId);
 
+        // This rule secures direct access to a specific file or folder document.
         match /files/{fileId} {
-             // For single doc reads/writes, we can still use the isWorkspaceMember function
-            allow get, write: if isWorkspaceMember(workspaceId);
+             allow get, write: if isWorkspaceMember(workspaceId);
         }
     }
 
