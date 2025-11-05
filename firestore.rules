@@ -247,16 +247,8 @@ service cloud.firestore {
     }
     
     match /workspace-files/{fileId} {
-      // For a LIST query, enforce that the query includes a filter on a workspace the user is a member of.
-      // This is the key to securing collection queries without a cross-document get in the rule itself.
-      allow list: if request.query.filters.size() > 0 &&
-                   request.query.filters[0].field == 'workspaceId' &&
-                   isWorkspaceMember(request.query.filters[0].value);
-
-      // For individual GET/WRITE operations, check the workspaceId on the document itself.
-      allow get: if isWorkspaceMember(resource.data.workspaceId);
-      allow create: if isWorkspaceMember(request.resource.data.workspaceId);
-      allow update, delete: if isWorkspaceMember(resource.data.workspaceId);
+      allow list: if request.query.filters.size() > 0 && request.query.filters[0].field == 'workspaceId' && isWorkspaceMember(request.query.filters[0].value);
+      allow get, write, delete: if isWorkspaceMember(resource.data.workspaceId);
     }
     
 
