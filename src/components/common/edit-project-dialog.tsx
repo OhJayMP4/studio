@@ -86,48 +86,47 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
     }
   }, [isOpen, project, reset]);
 
-  const handleUpdateProject = (data: FormValues) => {
+  const handleUpdateProject = async (data: FormValues) => {
     if (!selectedWorkspace || !user) {
-        toast({
-            variant: 'destructive',
-            title: 'Error',
-            description: 'No workspace selected or user not logged in.',
-        });
-        return;
-    };
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'No workspace selected or user not logged in.',
+      });
+      return;
+    }
 
     const projectRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', project.id);
     const updatedData = {
-        name: data.name,
-        deadline: data.deadline.toISOString(),
-        hasMonetaryValue: data.hasMonetaryValue,
-        monetaryValue: data.hasMonetaryValue ? data.monetaryValue : null,
-        updatedBy: user.uid,
+      name: data.name,
+      deadline: data.deadline.toISOString(),
+      hasMonetaryValue: data.hasMonetaryValue,
+      monetaryValue: data.hasMonetaryValue ? data.monetaryValue : null,
+      updatedBy: user.uid,
     };
 
     updateDoc(projectRef, updatedData)
       .then(() => {
-          toast({
-            title: 'Project Updated',
-            description: `The "${data.name}" project has been successfully updated.`,
-          });
-          setIsOpen(false);
+        toast({
+          title: 'Project Updated',
+          description: `The "${data.name}" project has been successfully updated.`,
+        });
+        setIsOpen(false);
       })
       .catch((serverError) => {
-          const permissionError = new FirestorePermissionError({
-              path: projectRef.path,
-              operation: 'update',
-              requestResourceData: updatedData,
-          });
-          errorEmitter.emit('permission-error', permissionError);
-
-          // This toast will be shown as a fallback. The primary error will be in the Next.js overlay.
-          toast({
-            variant: 'destructive',
-            title: 'Update Failed',
-            description: 'You do not have permission to edit this project. Check the console for more details.',
-          });
-    });
+        const permissionError = new FirestorePermissionError({
+          path: projectRef.path,
+          operation: 'update',
+          requestResourceData: updatedData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        // This toast is a fallback. The main error appears in the dev overlay.
+        toast({
+          variant: 'destructive',
+          title: 'Update Failed',
+          description: 'You do not have permission to edit this project. Check the developer console for more details.',
+        });
+      });
   };
 
   return (
