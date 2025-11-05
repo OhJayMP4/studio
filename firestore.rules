@@ -247,7 +247,7 @@ service cloud.firestore {
     }
     
     match /workspace-files/{workspaceId} {
-        // This rule allows a query on the subcollection `files`.
+        // This rule allows a query on the subcollection `files`, but only if the user is a member.
         // It's evaluated based on the parent document's `workspaceId`, which is allowed for `list` operations.
         allow list: if isWorkspaceMember(workspaceId);
 
@@ -329,5 +329,3 @@ service cloud.firestore {
 
   }
 }
-
-    
