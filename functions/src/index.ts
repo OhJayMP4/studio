@@ -20,6 +20,13 @@ interface UserTask {
     siloName: string;
 }
 
+const defaultSidebarModules = [
+    { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', route: '/dashboard', hidden: false, order: 0 },
+    { id: 'companies', label: 'Companies', icon: 'Building', route: '/companies', hidden: false, order: 1 },
+    { id: 'reporting', label: 'Reporting', icon: 'BarChart', route: '/reporting', hidden: false, order: 2 },
+    { id: 'my-tasks', label: 'My Tasks', icon: 'ClipboardCheck', route: '/my-tasks', hidden: false, order: 3 },
+]
+
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -56,7 +63,7 @@ const createNotification = async (workspaceId: string, notificationData: any) =>
 exports.onCommentCreate = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}/comments/{commentId}')
     .onCreate(async (snap, context) => {
-        const { workspaceId, companyId, projectId, taskId } = context.params;
+        const { workspaceId, companyId, projectId, siloId, taskId } = context.params;
         const commentData = snap.data();
         
         const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, commentData.createdBy);
@@ -65,7 +72,7 @@ exports.onCommentCreate = functions.firestore
         const [companySnap, projectSnap, taskSnap] = await Promise.all([
             db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
             db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
-            db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/{siloId}/tasks/${taskId}`).get()
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks/${taskId}`).get()
         ]);
         
         const companyName = companySnap.data()?.name || '';
@@ -451,6 +458,10 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
     const workspaceId = inviteData.workspaceId;
     const workspaceRef = db.doc(`workspaces/${workspaceId}`);
     const userRef = db.doc(`users/${uid}`);
+    
+    const prefsDocId = `${uid}-${workspaceId}`;
+    const prefsRef = db.doc(`user-workspace-prefs/${prefsDocId}`);
+
 
     await db.runTransaction(async (transaction) => {
         const workspaceDoc = await transaction.get(workspaceRef);
@@ -491,6 +502,14 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
         // Add workspace to the user's profile
         transaction.update(userRef, {
           workspaceIds: admin.firestore.FieldValue.arrayUnion(workspaceId),
+        });
+
+        // Create default sidebar preferences for the user in this workspace
+        transaction.set(prefsRef, {
+            uid: uid,
+            workspaceId: workspaceId,
+            sidebarModules: defaultSidebarModules,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
         // Delete the used invite
@@ -738,4 +757,5 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
 
     return reportData;
 });
+
     

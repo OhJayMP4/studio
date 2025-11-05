@@ -150,3 +150,21 @@ export type Presence = {
     }
 }
     
+export type SidebarModule = {
+  id: string;
+  label: string;
+  icon: string;
+  route: string;
+  hidden: boolean;
+  order: number;
+};
+
+export type UserWorkspacePrefs = {
+  id?: string;
+  uid: string;
+  workspaceId: string;
+  sidebarModules: SidebarModule[];
+  updatedAt?: any;
+};
+
+    

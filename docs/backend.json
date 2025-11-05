@@ -558,6 +558,32 @@
         }
       },
       "required": ["lastSeen", "color", "user"]
+    },
+     "UserWorkspacePrefs": {
+      "title": "User Workspace Preferences",
+      "description": "Stores user-specific sidebar preferences for a workspace.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "workspaceId": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "sidebarModules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string", "description": "Unique ID for the module (e.g., 'files')" },
+              "label": { "type": "string" },
+              "icon": { "type": "string", "description": "Lucide icon name" },
+              "route": { "type": "string" },
+              "hidden": { "type": "boolean" },
+              "order": { "type": "number" }
+            },
+            "required": ["id", "label", "icon", "route", "hidden", "order"]
+          }
+        }
+      },
+      "required": ["uid", "workspaceId", "sidebarModules"]
     }
   },
   "auth": {
@@ -637,7 +663,14 @@
         "$ref": "#/entities/Presence"
       },
       "description": "Stores real-time user presence information for a workspace."
+    },
+    "/user-workspace-prefs/{docId}": {
+      "schema": {
+        "$ref": "#/entities/UserWorkspacePrefs"
+      },
+      "description": "Stores user-specific sidebar preferences for a workspace."
     }
   }
 }
+
     
