@@ -246,11 +246,6 @@ service cloud.firestore {
       }
     }
     
-    /**
-     * @description Rules for workspace files metadata. This is the correct pattern for securing subcollection queries.
-     * @path /workspace-files/{workspaceId}
-     * @principle Membership: Enforces that users can only manage files within their own workspaces.
-     */
     match /workspace-files/{workspaceId} {
         // This rule allows a query on the subcollection `files`.
         // It's evaluated based on the parent document's `workspaceId`, which is allowed for `list` operations.
@@ -261,7 +256,6 @@ service cloud.firestore {
              allow get, write: if isWorkspaceMember(workspaceId);
         }
     }
-
     /**
      * @description Rules for denormalized user task documents.
      * @path /user-tasks/{userId}/tasks/{taskId}
@@ -335,3 +329,5 @@ service cloud.firestore {
 
   }
 }
+
+    

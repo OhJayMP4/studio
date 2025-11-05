@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -45,6 +46,7 @@ export function FileBrowser() {
     if (!selectedWorkspace) return null;
     return query(
       collection(firestore, 'workspace-files', selectedWorkspace.id, 'files'),
+      where('workspaceId', '==', selectedWorkspace.id),
       where('parentPath', '==', currentPath),
       orderBy('type', 'desc'), // folders first
       orderBy('name', 'asc')
@@ -202,3 +204,5 @@ export function FileBrowser() {
     </div>
   );
 }
+
+    
