@@ -131,7 +131,7 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild onClick={() => setIsOpen(true)}>{children}</DialogTrigger>
+      <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <form onSubmit={handleSubmit(handleUpdateProject)}>
           <DialogHeader>
