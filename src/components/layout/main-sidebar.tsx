@@ -47,6 +47,8 @@ export default function MainSidebar() {
       return <LucideIcon {...props} />;
   };
 
+  const coreModuleIds = ['dashboard', 'companies', 'reporting', 'my-tasks'];
+
   return (
     <Sidebar>
       <SidebarHeader>
@@ -69,13 +71,15 @@ export default function MainSidebar() {
                             <span>{module.label}</span>
                           </Link>
                         </SidebarMenuButton>
-                         <RemoveModuleDialog module={module} onConfirm={() => setModuleHidden(module.id, true)}>
-                            <Button variant="ghost" size="icon" className={cn("absolute top-1/2 right-2 -translate-y-1/2 h-6 w-6 opacity-0 group-hover/item:opacity-100",
-                             "group-data-[collapsible=icon]:hidden"
-                            )}>
-                                <X className="h-4 w-4"/>
-                            </Button>
-                        </RemoveModuleDialog>
+                        {!coreModuleIds.includes(module.id) && (
+                            <RemoveModuleDialog module={module} onConfirm={() => setModuleHidden(module.id, true)}>
+                                <Button variant="ghost" size="icon" className={cn("absolute top-1/2 right-2 -translate-y-1/2 h-6 w-6 opacity-0 group-hover/item:opacity-100",
+                                "group-data-[collapsible=icon]:hidden"
+                                )}>
+                                    <X className="h-4 w-4"/>
+                                </Button>
+                            </RemoveModuleDialog>
+                        )}
                       </SidebarMenuItem>
                 ))
             )}
