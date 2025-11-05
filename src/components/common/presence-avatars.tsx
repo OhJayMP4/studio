@@ -19,13 +19,15 @@ export function PresenceAvatars() {
             </div>
         );
     }
-
-    if (!activeUsers || activeUsers.length <= 1) {
-        return null; // Don't show anything if only the current user is active
-    }
     
     // Filter out the current user from the list to avoid showing their own avatar to them.
-    const otherUsers = activeUsers.filter(u => u.id !== currentUser?.uid);
+    const otherUsers = activeUsers ? activeUsers.filter(u => u.id !== currentUser?.uid) : [];
+
+    // Don't show anything if no other users are active
+    if (!otherUsers || otherUsers.length === 0) {
+        return null;
+    }
+    
     const visibleUsers = otherUsers.slice(0, MAX_AVATARS_SHOWN);
     const hiddenUsersCount = otherUsers.length - visibleUsers.length;
 
