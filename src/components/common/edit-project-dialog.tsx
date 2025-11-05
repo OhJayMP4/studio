@@ -102,10 +102,9 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
         deadline: data.deadline.toISOString(),
         hasMonetaryValue: data.hasMonetaryValue,
         monetaryValue: data.hasMonetaryValue ? data.monetaryValue : null,
-        updatedBy: user.uid, // Add who updated the project
+        updatedBy: user.uid,
     };
 
-    // Use a non-blocking update with proper error handling
     updateDoc(projectRef, updatedData)
       .then(() => {
           toast({
@@ -115,7 +114,6 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
           setIsOpen(false);
       })
       .catch((serverError) => {
-          // Emit the detailed error for the development overlay
           const permissionError = new FirestorePermissionError({
               path: projectRef.path,
               operation: 'update',
@@ -123,7 +121,6 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
           });
           errorEmitter.emit('permission-error', permissionError);
 
-          // Also show a user-friendly toast
           toast({
             variant: 'destructive',
             title: 'Update Failed',
