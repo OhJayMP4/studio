@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFirestore, useUser } from '@/firebase';
+import { useFirestore, useUser, errorEmitter, FirestorePermissionError } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { doc, updateDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
@@ -27,7 +27,7 @@ import { Calendar } from '../ui/calendar';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { Project } from '@/lib/types';
-import { errorEmitter, FirestorePermissionError } from '@/firebase';
+
 
 const formSchema = z.object({
   name: z.string().min(1, 'Project name is required.'),
@@ -97,11 +97,12 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
     }
 
     const projectRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', project.id);
-    const updatedData = {
+    
+    const updatedData: Partial<Project> & { updatedBy: string } = {
       name: data.name,
       deadline: data.deadline.toISOString(),
       hasMonetaryValue: data.hasMonetaryValue,
-      monetaryValue: data.hasMonetaryValue ? data.monetaryValue : null,
+      monetaryValue: data.hasMonetaryValue ? data.monetaryValue : undefined,
       updatedBy: user.uid,
     };
 
@@ -114,33 +115,35 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
         setIsOpen(false);
       })
       .catch((serverError) => {
+        console.error("Update failed:", serverError);
         const permissionError = new FirestorePermissionError({
           path: projectRef.path,
           operation: 'update',
           requestResourceData: updatedData,
         });
         errorEmitter.emit('permission-error', permissionError);
-        // This toast is a fallback. The main error appears in the dev overlay.
         toast({
           variant: 'destructive',
           title: 'Update Failed',
-          description: 'You do not have permission to edit this project. Check the developer console for more details.',
+          description: serverError.message || 'You might not have permission to edit this project.',
         });
       });
   };
+
+  const formId = `edit-project-form-${project.id}`;
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
-        <form onSubmit={handleSubmit(handleUpdateProject)}>
-          <DialogHeader>
+        <DialogHeader>
             <DialogTitle>Edit Project</DialogTitle>
             <DialogDescription>
               Update the details for "{project.name}".
             </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
+        </DialogHeader>
+        
+        <form id={formId} onSubmit={handleSubmit(handleUpdateProject)} className="grid gap-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="name">Project Name</Label>
               <Input id="name" {...register('name')} />
@@ -194,13 +197,13 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
                 {errors.monetaryValue && <p className="text-sm text-destructive mt-1">{errors.monetaryValue.message}</p>}
               </div>
             )}
-          </div>
-          <DialogFooter>
-            <Button type="submit" disabled={isSubmitting}>
+        </form>
+
+        <DialogFooter>
+            <Button type="submit" form={formId} disabled={isSubmitting}>
               {isSubmitting ? 'Saving...' : 'Save Changes'}
             </Button>
-          </DialogFooter>
-        </form>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
