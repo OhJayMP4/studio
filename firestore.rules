@@ -1,3 +1,4 @@
+
 /**
  * @fileoverview Firestore Security Rules for the application.
  *
@@ -215,12 +216,12 @@ service cloud.firestore {
               allow delete: if isWorkspaceMember(workspaceId);
 
                /**
-                 * @description Rules for comments on a task.
-                 * @path /workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}/comments/{commentId}
+                 * @description Rules for comments on a task and nested replies.
+                 * @path /workspaces/{workspaceId}/.../tasks/{taskId}/comments/{commentId=**}
                  * @allow (get, list, create) Any workspace member can read, list, and create comments.
                  * @allow (update, delete) Only the comment author can update or delete their own comment.
                  */
-                match /comments/{commentId} {
+                match /comments/{commentId=**} {
                     allow get, list, create: if isWorkspaceMember(workspaceId);
                     allow update, delete: if isWorkspaceMember(workspaceId) && isOwner(resource.data.createdBy);
                 }
@@ -304,4 +305,5 @@ service cloud.firestore {
     }
   }
 }
+
     
