@@ -499,6 +499,35 @@
         "readBy",
         "isRelevantTo"
       ]
+    },
+    "Presence": {
+      "title": "Presence",
+      "description": "Represents a user's real-time presence in a workspace.",
+      "type": "object",
+      "properties": {
+        "lastSeen": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The last time the user was active."
+        },
+        "color": {
+          "type": "string",
+          "description": "The color associated with the user's presence."
+        },
+        "user": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "avatarUrl": {
+              "type": "string"
+            }
+          },
+          "required": ["name"]
+        }
+      },
+      "required": ["lastSeen", "color", "user"]
     }
   },
   "auth": {
@@ -566,6 +595,12 @@
         "$ref": "#/entities/Notification"
       },
       "description": "Stores workspace activity notifications."
+    },
+     "/presence/{workspaceId}/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/Presence"
+      },
+      "description": "Stores real-time user presence information for a workspace."
     }
   }
 }

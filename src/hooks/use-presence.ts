@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, serverTimestamp, setDoc, doc, Timestamp } from 'firebase/firestore';
@@ -27,7 +27,7 @@ export const usePresence = () => {
     useEffect(() => {
         if (!workspaceId || !userId || !user?.displayName) return;
 
-        const presenceRef = doc(firestore, `presence/${workspaceId}/${userId}`);
+        const presenceRef = doc(firestore, `presence/${workspaceId}/users/${userId}`);
         let heartbeatInterval: NodeJS.Timeout | null = null;
 
         const updatePresence = () => {
@@ -67,8 +67,6 @@ export const usePresence = () => {
             if (heartbeatInterval) {
                 clearInterval(heartbeatInterval);
             }
-            // Optional: You could add a function here to set the user offline in Firestore
-            // For simplicity, we rely on the `lastSeen` timestamp becoming old.
         };
     }, [workspaceId, userId, userColor, firestore, user?.displayName, user?.photoURL]);
 
@@ -80,15 +78,12 @@ export const usePresence = () => {
         const oneMinuteAgo = Timestamp.fromMillis(Date.now() - ACTIVE_THRESHOLD);
         
         return query(
-            collection(firestore, `presence/${workspaceId}`),
+            collection(firestore, `presence/${workspaceId}/users`),
             where('lastSeen', '>', oneMinuteAgo)
         );
     }, [firestore, workspaceId]);
 
-    const { data: activeUsers, isLoading } = useCollection<Presence>(activeUsersQuery, {
-      // This is a short-lived query, so we don't need to listen for long.
-      // Re-querying every few seconds would also be an option instead of a persistent listener.
-    });
+    const { data: activeUsers, isLoading } = useCollection<Presence>(activeUsersQuery);
 
     return { activeUsers, isLoading, currentUser: user };
 };
