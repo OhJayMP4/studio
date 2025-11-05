@@ -7,7 +7,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Button } from '../ui/button';
-import { Bell, Check, CheckSquare, Folder, Box, Building, UserPlus, FileText, CheckCircle2, Trash2 } from 'lucide-react';
+import { Bell, Check, CheckSquare, Folder, Box, Building, UserPlus, FileText, CheckCircle2, Trash2, MessageSquare } from 'lucide-react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, orderBy, limit, writeBatch, doc, arrayUnion, updateDoc } from 'firebase/firestore';
@@ -87,6 +87,7 @@ const getIcon = (type: Notification['type']) => {
         case 'project_added': return <Folder className="h-4 w-4 text-muted-foreground" />;
         case 'company_added': return <Building className="h-4 w-4 text-muted-foreground" />;
         case 'sale_added': return <FileText className="h-4 w-4 text-muted-foreground" />;
+        case 'comment_added': return <MessageSquare className="h-4 w-4 text-muted-foreground" />;
         case 'task_deleted':
         case 'silo_deleted':
         case 'project_deleted':
@@ -97,6 +98,9 @@ const getIcon = (type: Notification['type']) => {
 }
 
 const getNotificationText = (n: Notification) => {
+    const commentText = n.context?.commentText;
+    const truncatedComment = commentText && commentText.length > 50 ? `${commentText.substring(0, 50)}...` : commentText;
+
     switch (n.type) {
         case 'company_added':
             return <><span className="font-semibold">{n.actorName}</span> added a new company: <span className="font-semibold">{n.target.name}</span></>;
@@ -118,6 +122,8 @@ const getNotificationText = (n: Notification) => {
             return <><span className="font-semibold">{n.actorName}</span> deleted the silo: <span className="font-semibold">{n.target.name}</span></>;
         case 'task_deleted':
             return <><span className="font-semibold">{n.actorName}</span> deleted the task: <span className="font-semibold">{n.target.name}</span></>;
+        case 'comment_added':
+            return <><span className="font-semibold">{n.actorName}</span> commented on <span className="font-semibold">{n.target.name}</span>: <span className="italic text-muted-foreground">"{truncatedComment}"</span></>;
         default:
             return 'New activity';
     }

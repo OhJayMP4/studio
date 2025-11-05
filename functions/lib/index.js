@@ -29,6 +29,36 @@ const createNotification = async (workspaceId, notificationData) => {
     }
 };
 // --- Notification Triggers ---
+exports.onCommentCreate = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}/comments/{commentId}')
+    .onCreate(async (snap, context) => {
+    var _a, _b, _c;
+    const { workspaceId, companyId, projectId, taskId } = context.params;
+    const commentData = snap.data();
+    const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, commentData.createdBy);
+    if (!actorName)
+        return;
+    const [companySnap, projectSnap, taskSnap] = await Promise.all([
+        db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
+        db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
+        db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/{siloId}/tasks/${taskId}`).get()
+    ]);
+    const companyName = ((_a = companySnap.data()) === null || _a === void 0 ? void 0 : _a.name) || '';
+    const projectName = ((_b = projectSnap.data()) === null || _b === void 0 ? void 0 : _b.name) || '';
+    const taskTitle = ((_c = taskSnap.data()) === null || _c === void 0 ? void 0 : _c.title) || '';
+    await createNotification(workspaceId, {
+        type: 'comment_added',
+        actorUid: commentData.createdBy,
+        actorName,
+        target: { id: taskId, name: taskTitle, type: 'task', path: `/company/${companyId}/project/${projectId}` },
+        context: {
+            companyName,
+            projectName,
+            commentText: commentData.text,
+        },
+        isRelevantTo,
+    });
+});
 // On Company Create
 exports.onCompanyCreate = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}')

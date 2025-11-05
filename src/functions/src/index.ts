@@ -1,8 +1,25 @@
-
 'use server';
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import { UserTask } from "@/lib/types";
+
+interface UserTask {
+    id: string;
+    originalTaskId: string;
+    workspaceId: string;
+    companyId: string;
+    projectId: string;
+    siloId: string;
+    title: string;
+    description?: string;
+    completed: boolean;
+    dueDate: string;
+    priority: 'low' | 'medium' | 'high';
+    assigneeId: string;
+    companyName: string;
+    projectName: string;
+    siloName: string;
+}
+
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -35,6 +52,39 @@ const createNotification = async (workspaceId: string, notificationData: any) =>
 };
 
 // --- Notification Triggers ---
+
+exports.onCommentCreate = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}/comments/{commentId}')
+    .onCreate(async (snap, context) => {
+        const { workspaceId, companyId, projectId, siloId, taskId } = context.params;
+        const commentData = snap.data();
+        
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, commentData.createdBy);
+        if (!actorName) return;
+
+        const [companySnap, projectSnap, taskSnap] = await Promise.all([
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
+            db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks/${taskId}`).get()
+        ]);
+        
+        const companyName = companySnap.data()?.name || '';
+        const projectName = projectSnap.data()?.name || '';
+        const taskTitle = taskSnap.data()?.title || '';
+
+        await createNotification(workspaceId, {
+            type: 'comment_added',
+            actorUid: commentData.createdBy,
+            actorName,
+            target: { id: taskId, name: taskTitle, type: 'task', path: `/company/${companyId}/project/${projectId}` },
+            context: { 
+                companyName, 
+                projectName,
+                commentText: commentData.text,
+            },
+            isRelevantTo,
+        });
+    });
 
 // On Company Create
 exports.onCompanyCreate = functions.firestore
@@ -133,7 +183,7 @@ exports.onSaleCreate = functions.firestore
 exports.onTaskWrite = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
     .onWrite(async (change, context) => {
-        const { workspaceId, companyId, projectId, siloId } = context.params;
+        const { workspaceId, companyId, projectId, siloId, taskId } = context.params;
         
         const beforeData = change.before.data();
         const afterData = change.after.data();
@@ -672,7 +722,13 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
         ]);
 
         const userProfile = userSnap.exists ? { id: userSnap.id, ...userSnap.data() } : { uid: userId, name: 'Unknown User' };
-        const tasks = tasksSnap.docs.map(doc => ({ id: doc.id, ...(doc.data() as UserTask) }));
+        const tasks = tasksSnap.docs.map(doc => {
+            const taskData = doc.data() as UserTask;
+            return {
+                ...taskData,
+                id: doc.id,
+            };
+        });
 
         reportData.push({
             user: userProfile,
