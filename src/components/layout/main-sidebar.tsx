@@ -25,6 +25,7 @@ import { useSidebarPrefs } from "@/hooks/use-sidebar-prefs";
 import { AddModuleDialog } from "../sidebar/add-module-dialog";
 import { useState } from "react";
 import * as LucideIcons from 'lucide-react';
+import { Button } from "@/components/ui/button";
 
 
 export default function MainSidebar() {
@@ -99,5 +100,3 @@ export default function MainSidebar() {
     </Sidebar>
   );
 }
-
-    
