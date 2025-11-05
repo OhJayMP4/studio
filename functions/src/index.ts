@@ -783,9 +783,9 @@ exports.sendVerificationEmail = functions.https.onCall(async (data, context) => 
         }
     }
 
-    const resendApiKey = functions.config().resend?.api_key || process.env.RESEND_API_KEY;
+    const resendApiKey = process.env.RESEND_API_KEY;
     if (!resendApiKey) {
-        console.error('Resend API key is not configured.');
+        console.error('Resend API key is not configured in environment variables.');
         throw new functions.https.HttpsError('internal', 'The server is not configured to send emails.');
     }
     

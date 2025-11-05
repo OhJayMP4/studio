@@ -7,6 +7,7 @@ import { UserPlus } from "lucide-react";
 import { useUser, useFirebase } from "@/firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { sendInviteEmail } from "@/ai/flows/send-invite-email-flow";
+import { useState } from "react";
 
 // Basic email validation
 const validateEmail = (email: string) => {
@@ -18,6 +19,7 @@ export function InviteMemberButton() {
     const { user } = useUser();
     const { toast } = useToast();
     const { firebaseApp } = useFirebase();
+    const [isInviting, setIsInviting] = useState(false);
 
     const handleInvite = async () => {
         if (!selectedWorkspace) {
@@ -52,6 +54,7 @@ export function InviteMemberButton() {
             return;
         }
         
+        setIsInviting(true);
         try {
             toast({
                 title: "Creating Invitation...",
@@ -75,24 +78,16 @@ export function InviteMemberButton() {
                 });
 
                 // Now call the Genkit flow to send the email
-                const emailResult = await sendInviteEmail({
+                await sendInviteEmail({
                     email,
                     workspaceName: data.workspaceName,
                     joinUrl: data.joinUrl,
                 });
 
-                if (emailResult.success) {
-                    toast({
-                        title: "Invitation Sent!",
-                        description: `An invitation has been sent to ${email}.`,
-                    });
-                } else {
-                     toast({
-                        variant: 'destructive',
-                        title: "Email Failed to Send",
-                        description: `The invite was created, but the email could not be sent. You can share this link manually: ${data.joinUrl}`,
-                    });
-                }
+                toast({
+                    title: "Invitation Sent!",
+                    description: `An invitation has been sent to ${email}.`,
+                });
 
             } else {
                 throw new Error("The createInvite function failed to return the necessary data.");
@@ -106,13 +101,15 @@ export function InviteMemberButton() {
                 title: "Failed to Send Invite",
                 description: message,
             });
+        } finally {
+            setIsInviting(false);
         }
     };
 
     return (
-        <Button onClick={handleInvite}>
+        <Button onClick={handleInvite} disabled={isInviting}>
             <UserPlus className="mr-2 h-4 w-4" />
-            Invite Member
+            {isInviting ? 'Sending...' : 'Invite Member'}
         </Button>
     )
 }

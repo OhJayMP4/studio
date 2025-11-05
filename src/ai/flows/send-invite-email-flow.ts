@@ -23,10 +23,10 @@ const sendInviteEmailFlow = ai.defineFlow(
     const resendApiKey = process.env.RESEND_API_KEY;
     
     if (!resendApiKey) {
-        console.warn(
+        console.error(
             'RESEND_API_KEY is not set in environment variables. Cannot send email.'
         );
-        return { success: false };
+        throw new Error('The email server is not configured.');
     }
     
     const resend = new Resend(resendApiKey);
@@ -57,7 +57,8 @@ const sendInviteEmailFlow = ai.defineFlow(
       return { success: true };
     } catch (error) {
       console.error('Error sending email via Resend:', error);
-      return { success: false };
+      // Re-throw the error so the calling function can handle it
+      throw new Error('Failed to send invitation email.');
     }
   }
 );
