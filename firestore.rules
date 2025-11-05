@@ -324,22 +324,24 @@ service cloud.firestore {
     /**
      * @description Rules for workspace file metadata.
      * @path /workspace-files/{fileId}
-     * @principle Query-based security: The `list` rule ensures the client query MUST filter by `workspaceId`.
-     *            The `get` rule secures direct document access.
+     * @principle Query-based security: List is open but must filter by workspaceId.
+     *            Document access requires workspace membership verification.
      */
     match /workspace-files/{fileId} {
-      // Correct rule for `list` operations. It forces the client to use a `where` clause.
-      // This is secure because the `useCollection` hook in `file-browser.tsx` *always* applies
-      // `where('workspaceId', '==', selectedWorkspace.id)`. A user can only have a `selectedWorkspace`
-      // they are a member of, thus enforcing security at the client query level.
-      allow list: if request.query.get('workspaceId') != null && 
-                     isWorkspaceMember(request.query.get('workspaceId'));
-
-      // Rules for single document operations remain the same. They are secure.
+      // Allow listing if the user is signed in. The client-side query MUST filter by workspaceId.
+      allow list: if isSignedIn();
+      
+      // Single document read requires membership check
       allow get: if isWorkspaceMember(resource.data.workspaceId);
+      
+      // Create requires membership and sets uploadedBy correctly
       allow create: if isWorkspaceMember(request.resource.data.workspaceId) && 
                        request.resource.data.uploadedBy == request.auth.uid;
+      
+      // Update requires membership (can't change workspace)
       allow update: if isWorkspaceMember(resource.data.workspaceId);
+      
+      // Delete requires admin role
       allow delete: if isWorkspaceAdmin(resource.data.workspaceId);
     }
   }

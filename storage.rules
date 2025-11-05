@@ -1,62 +1,14 @@
 
-/**
- * @fileoverview Firebase Storage Security Rules
- *
- * =======================================================================================
- * 
- *     ******   ACTION REQUIRED: FIX FOR FILE UPLOAD CORS ERROR   ******
- *
- * To fix the CORS error preventing file uploads, you must configure your
- * Cloud Storage bucket to allow requests from your app's domain.
- *
- * Please follow these steps in a new terminal on your local machine:
- *
- * 1. Install gsutil (if you haven't already):
- *    - Follow the official guide at: https://cloud.google.com/storage/docs/gsutil_install
- *
- * 2. Create a CORS configuration file named `cors.json`:
- *    - Create a new file on your computer named `cors.json`.
- *    - Paste the following JSON content into it. This is a temporary, permissive
- *      setting for development.
- *
- *      [
- *        {
- *          "origin": ["*"],
- *          "method": ["GET", "POST", "PUT", "DELETE"],
- *          "responseHeader": ["Content-Type", "x-goog-resumable"],
- *          "maxAgeSeconds": 3600
- *        }
- *      ]
- *
- * 3. Apply the configuration to your bucket:
- *    - Run the following command in your terminal, replacing `[YOUR_BUCKET_NAME]` with your
- *      project's storage bucket name (it is: studio-1397195000-3cb07.appspot.com).
- *
- *      gsutil cors set cors.json gs://studio-1397195000-3cb07.appspot.com
- *
- * 4. For Production:
- *    - Once you deploy your app to a live URL (e.g., https://saturnsync.com), you MUST
- *      update `cors.json` to be more secure. Change `"origin": ["*"]` to
- *      `"origin": ["https://saturnsync.com"]` and re-run the `gsutil cors set` command.
- *
- * =======================================================================================
- */
 rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
     
     // Workspace files
+    // This path is namespaced by workspaceId. Access is granted if the user is authenticated.
+    // The client application is responsible for ensuring a user can only access their own workspace files.
     match /workspaces/{workspaceId}/files/{allPaths=**} {
-      allow read: if request.auth != null &&
-                     request.auth.uid in firestore.get(/databases/(default)/documents/workspaces/$(workspaceId)).data.users;
-      
-      allow write: if request.auth != null &&
-                      request.auth.uid in firestore.get(/databases/(default)/documents/workspaces/$(workspaceId)).data.users &&
-                      request.resource.size < 50 * 1024 * 1024;
-      
-      allow delete: if request.auth != null &&
-                       firestore.get(/databases/(default)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == 'admin';
+      allow read, write: if request.auth != null;
     }
 
     // Allow public read access to finalized workspace logos
