@@ -7,7 +7,7 @@ import { Skeleton } from "../ui/skeleton";
 import { cn } from "@/lib/utils";
 
 export function PresenceAvatars() {
-    const { activeUsers, isLoading, currentUser } = usePresence();
+    const { activeUsers, isLoading } = usePresence();
     const MAX_AVATARS_SHOWN = 4;
 
     if (isLoading) {
@@ -20,18 +20,14 @@ export function PresenceAvatars() {
         );
     }
     
-    // Filter out the current user from the list to avoid showing their own avatar to them.
-    const otherUsers = activeUsers ? activeUsers.filter(u => u.id !== currentUser?.uid) : [];
-
-    // Don't show anything if no other users are active
-    if (!otherUsers || otherUsers.length === 0) {
+    if (!activeUsers || activeUsers.length === 0) {
         return null;
     }
     
-    const visibleUsers = otherUsers.slice(0, MAX_AVATARS_SHOWN);
-    const hiddenUsersCount = otherUsers.length - visibleUsers.length;
+    const visibleUsers = activeUsers.slice(0, MAX_AVATARS_SHOWN);
+    const hiddenUsersCount = activeUsers.length - visibleUsers.length;
 
-    const tooltipText = "Active: " + otherUsers.map(u => u.user.name).join(', ');
+    const tooltipText = "Active: " + activeUsers.map(u => u.user.name).join(', ');
 
     return (
         <TooltipProvider>
