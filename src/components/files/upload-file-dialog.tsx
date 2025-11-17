@@ -15,11 +15,10 @@ import {
 } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
-import { useUser } from '@/firebase/auth/use-user';
+import { useUser, useFirebase } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { collection, addDoc, serverTimestamp, writeBatch, doc } from 'firebase/firestore';
-import { useFirestore } from '@/firebase';
+import { getStorage, ref, uploadBytesResumable } from 'firebase/storage';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { UploadCloud, File as FileIcon, X } from 'lucide-react';
 import { bytesToSize } from '@/lib/files';
 
@@ -36,7 +35,7 @@ export function UploadFileDialog({ currentPath }: UploadFileDialogProps) {
   const { toast } = useToast();
   const { user } = useUser();
   const { selectedWorkspace } = useSelectedWorkspace();
-  const firestore = useFirestore();
+  const { firebaseApp } = useFirebase();
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     setFiles(prev => [...prev, ...acceptedFiles]);
@@ -52,18 +51,20 @@ export function UploadFileDialog({ currentPath }: UploadFileDialogProps) {
   }
 
   const handleUpload = async () => {
-    if (!user || !selectedWorkspace || files.length === 0) return;
+    if (!user || !selectedWorkspace || files.length === 0 || !firebaseApp) return;
 
     setIsUploading(true);
     setUploadProgress({});
 
-    const storage = getStorage();
-    const batch = writeBatch(firestore);
+    const storage = getStorage(firebaseApp);
+    const functions = getFunctions(firebaseApp);
+    const finalizeFileUpload = httpsCallable(functions, 'finalizeFileUpload');
 
     const uploadPromises = files.map(file => {
       return new Promise<void>((resolve, reject) => {
-        const filePath = currentPath ? `${currentPath}/${file.name}` : file.name;
-        const storageRef = ref(storage, `workspaces/${selectedWorkspace.id}/files/${filePath}`);
+        // 1. Upload to a temporary, user-specific path
+        const tempFilePath = `user-uploads/${user.uid}/${file.name}`;
+        const storageRef = ref(storage, tempFilePath);
         const uploadTask = uploadBytesResumable(storageRef, file);
 
         uploadTask.on('state_changed',
@@ -73,28 +74,24 @@ export function UploadFileDialog({ currentPath }: UploadFileDialogProps) {
           },
           (error) => {
             console.error(`Upload failed for ${file.name}:`, error);
-            toast({ variant: 'destructive', title: `Upload failed for ${file.name}` });
+            toast({ variant: 'destructive', title: `Upload failed for ${file.name}`, description: error.message });
             reject(error);
           },
           async () => {
             try {
-              const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-              const fileMetaRef = doc(collection(firestore, 'workspace-files'));
-              
-              batch.set(fileMetaRef, {
-                  type: 'file',
-                  name: file.name,
-                  fullPath: storageRef.fullPath,
-                  parentPath: currentPath,
-                  size: file.size,
-                  mimeType: file.type,
-                  downloadURL,
-                  uploadedBy: user.uid,
-                  createdAt: serverTimestamp(),
-                  workspaceId: selectedWorkspace.id,
+              // 2. After upload, call the Cloud Function to move the file and create metadata
+              await finalizeFileUpload({
+                workspaceId: selectedWorkspace.id,
+                tempFilePath: tempFilePath,
+                targetParentPath: currentPath,
+                fileName: file.name,
+                fileSize: file.size,
+                mimeType: file.type,
               });
               resolve();
             } catch (error) {
+              console.error(`Finalization failed for ${file.name}:`, error);
+              toast({ variant: 'destructive', title: `Processing failed for ${file.name}`, description: (error as any).message });
               reject(error);
             }
           }
@@ -104,13 +101,12 @@ export function UploadFileDialog({ currentPath }: UploadFileDialogProps) {
 
     try {
         await Promise.all(uploadPromises);
-        await batch.commit();
         toast({ title: 'Upload successful', description: `${files.length} file(s) have been uploaded.` });
         setFiles([]);
         setIsOpen(false);
     } catch (error) {
-        console.error("Error during final upload step:", error);
-        toast({ variant: 'destructive', title: 'Upload failed', description: 'An error occurred during the final upload step.' });
+        // Errors are already toasted inside the promises, just log the aggregate failure.
+        console.error("One or more uploads failed.", error);
     } finally {
         setIsUploading(false);
     }
@@ -190,5 +186,3 @@ export function UploadFileDialog({ currentPath }: UploadFileDialogProps) {
     </Dialog>
   );
 }
-
-    

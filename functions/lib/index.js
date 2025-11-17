@@ -298,6 +298,43 @@ exports.onTaskDelete = functions.firestore
         isRelevantTo,
     });
 });
+exports.onFileUpload = functions.firestore
+    .document('workspace-files/{fileId}')
+    .onCreate(async (snap, context) => {
+    var _a;
+    const fileData = snap.data();
+    const { workspaceId, uploadedBy, fullPath } = fileData;
+    const fileId = context.params.fileId;
+    if (!workspaceId || !uploadedBy) {
+        console.log(`File ${fileId} is missing workspaceId or uploadedBy, deleting.`);
+        await snap.ref.delete();
+        return;
+    }
+    const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+    try {
+        const workspaceSnap = await workspaceRef.get();
+        if (!workspaceSnap.exists) {
+            throw new Error(`Workspace ${workspaceId} not found.`);
+        }
+        const workspaceData = workspaceSnap.data();
+        const isMember = (_a = workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.memberIds) === null || _a === void 0 ? void 0 : _a.includes(uploadedBy);
+        if (!isMember) {
+            throw new Error(`User ${uploadedBy} is not a member of workspace ${workspaceId}.`);
+        }
+        console.log(`File ${fileId} uploaded by valid member ${uploadedBy}.`);
+    }
+    catch (error) {
+        console.error(`Unauthorized file upload detected. Deleting file and metadata. Error:`, error);
+        const storage = admin.storage();
+        const bucket = storage.bucket();
+        const file = bucket.file(fullPath);
+        await Promise.all([
+            file.delete().catch(e => console.error(`Failed to delete file from storage: ${fullPath}`, e)),
+            snap.ref.delete().catch(e => console.error(`Failed to delete firestore doc: ${snap.ref.path}`, e))
+        ]);
+        console.log(`Cleaned up unauthorized file ${fileId} at path ${fullPath}.`);
+    }
+});
 // Generate a simple random token
 const generateToken = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
