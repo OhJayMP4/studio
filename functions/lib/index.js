@@ -663,4 +663,55 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
     }
     return reportData;
 });
+exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
+    var _a;
+    // 1. Auth Check
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'You must be logged in to upload files.');
+    }
+    const uid = context.auth.uid;
+    const { workspaceId, tempFilePath, targetParentPath, fileName, fileSize, mimeType } = data;
+    if (!workspaceId || !tempFilePath || !fileName || !fileSize || !mimeType) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing required file information.');
+    }
+    // 2. Permission Check (Is user a member of the workspace?)
+    const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+    const workspaceDoc = await workspaceRef.get();
+    if (!workspaceDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Workspace not found.');
+    }
+    const workspaceData = workspaceDoc.data();
+    if (!((_a = workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.memberIds) === null || _a === void 0 ? void 0 : _a.includes(uid))) {
+        throw new functions.https.HttpsError('permission-denied', 'You are not a member of this workspace.');
+    }
+    // 3. Move the file in Cloud Storage
+    const bucket = admin.storage().bucket();
+    const tempFile = bucket.file(tempFilePath);
+    const finalName = targetParentPath ? `${targetParentPath}/${fileName}` : fileName;
+    const finalFilePath = `workspaces/${workspaceId}/files/${finalName}`;
+    const finalFile = bucket.file(finalFilePath);
+    try {
+        await tempFile.move(finalFile);
+        const [metadata] = await finalFile.getMetadata();
+        const downloadURL = metadata.mediaLink;
+        // 4. Create the Firestore document for the new file
+        await db.collection('workspace-files').add({
+            type: 'file',
+            name: fileName,
+            fullPath: finalFile.name,
+            parentPath: targetParentPath,
+            size: fileSize,
+            mimeType: mimeType,
+            downloadURL: downloadURL,
+            uploadedBy: uid,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            workspaceId: workspaceId,
+        });
+        return { success: true, url: downloadURL };
+    }
+    catch (error) {
+        console.error("Error finalizing file upload:", error);
+        throw new functions.https.HttpsError('internal', 'Failed to process the uploaded file.');
+    }
+});
 //# sourceMappingURL=index.js.map

@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -32,6 +31,7 @@ import { UploadFileDialog } from './upload-file-dialog';
 import { DeleteDialog } from '../common/delete-dialog';
 import { useToast } from '@/hooks/use-toast';
 import type { WorkspaceFile } from '@/lib/types';
+import { CreateFolderDialog } from './create-folder-dialog';
 
 
 export function FileBrowser() {
@@ -178,7 +178,10 @@ export function FileBrowser() {
             ))}
           </BreadcrumbList>
         </Breadcrumb>
-        <UploadFileDialog currentPath={currentPath} />
+        <div className="flex gap-2">
+            <CreateFolderDialog currentPath={currentPath} />
+            <UploadFileDialog currentPath={currentPath} />
+        </div>
       </div>
 
       <div className="border rounded-md">

@@ -1,8 +1,7 @@
+
 'use server';
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-import { Resend } from 'resend';
-import * as bcrypt from 'bcryptjs';
 
 interface UserTask {
     id: string;
@@ -804,114 +803,106 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
     return reportData;
 });
 
-const generateVerificationCode = (length = 6) => {
-    let code = '';
-    for (let i = 0; i < length; i++) {
-        code += Math.floor(Math.random() * 10);
+exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
+    // 1. Auth Check
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'You must be logged in to upload files.');
     }
-    return code;
-};
+    const uid = context.auth.uid;
+    const { workspaceId, tempFilePath, targetParentPath, fileName, fileSize, mimeType } = data;
 
-exports.sendVerificationEmail = functions.https.onCall(async (data, context) => {
-    const { email, name, password } = data;
-    if (!email || !name || !password) {
-        throw new functions.https.HttpsError('invalid-argument', 'Email, name, and password are required.');
+    if (!workspaceId || !tempFilePath || !fileName || !fileSize || !mimeType) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing required file information.');
     }
+
+    // 2. Permission Check (Is user a member of the workspace?)
+    const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+    const workspaceDoc = await workspaceRef.get();
+    if (!workspaceDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Workspace not found.');
+    }
+    const workspaceData = workspaceDoc.data();
+    if (!workspaceData?.memberIds?.includes(uid)) {
+        throw new functions.https.HttpsError('permission-denied', 'You are not a member of this workspace.');
+    }
+
+    // 3. Move the file in Cloud Storage
+    const bucket = admin.storage().bucket();
+    const tempFile = bucket.file(tempFilePath);
+
+    const finalName = targetParentPath ? `${targetParentPath}/${fileName}` : fileName;
+    const finalFilePath = `workspaces/${workspaceId}/files/${finalName}`;
+    const finalFile = bucket.file(finalFilePath);
 
     try {
-        await admin.auth().getUserByEmail(email);
-        throw new functions.https.HttpsError('already-exists', 'A user with this email address already exists.');
-    } catch (error: any) {
-        if (error.code !== 'auth/user-not-found') {
-            throw error;
-        }
-    }
+        await tempFile.move(finalFile);
 
-    const resendApiKey = functions.config().resend?.api_key || process.env.RESEND_API_KEY;
-    if (!resendApiKey) {
-        console.error('Resend API key is not configured.');
-        throw new functions.https.HttpsError('internal', 'The server is not configured to send emails.');
-    }
-    
-    const code = generateVerificationCode();
-    const expires = Date.now() + 15 * 60 * 1000; // 15 minutes
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+        // Make the file public and get its URL
+        await finalFile.makePublic();
+        const publicUrl = finalFile.publicUrl();
 
-    await db.collection('email-verifications').doc(email).set({
-        email,
-        name,
-        password: hashedPassword,
-        code,
-        expires,
-    });
-
-    const resend = new Resend(resendApiKey);
-    try {
-        await resend.emails.send({
-            from: 'onboarding@saturnsync.com',
-            to: email,
-            subject: 'Your SaturnSync Verification Code',
-            html: `<div style="font-family: sans-serif; text-align: center; padding: 40px;">
-                     <h1 style="font-size: 24px;">Verify Your Email</h1>
-                     <p style="font-size: 16px; color: #555;">Your verification code is:</p>
-                     <p style="font-size: 32px; font-weight: bold; letter-spacing: 5px; margin: 20px 0;">${code}</p>
-                     <p style="font-size: 12px; color: #999;">This code will expire in 15 minutes.</p>
-                   </div>`,
+        // 4. Create the Firestore document for the new file
+        await db.collection('workspace-files').add({
+            type: 'file',
+            name: fileName,
+            fullPath: finalFile.name,
+            parentPath: targetParentPath,
+            size: fileSize,
+            mimeType: mimeType,
+            downloadURL: publicUrl,
+            uploadedBy: uid,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            workspaceId: workspaceId,
         });
-        return { success: true };
+
+        return { success: true, url: publicUrl };
+
     } catch (error) {
-        console.error('Failed to send verification email:', error);
-        throw new functions.https.HttpsError('internal', 'Failed to send verification email.');
+        console.error("Error finalizing file upload:", error);
+        throw new functions.https.HttpsError('internal', 'Failed to process the uploaded file.');
     }
 });
 
 
-exports.verifyEmailCode = functions.https.onCall(async (data, context) => {
-    const { email, code } = data;
-    if (!email || !code) {
-        throw new functions.https.HttpsError('invalid-argument', 'Email and code are required.');
+exports.createFolder = functions.https.onCall(async (data, context) => {
+    // 1. Auth Check
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'You must be logged in to create a folder.');
+    }
+    const uid = context.auth.uid;
+    const { workspaceId, parentPath, folderName } = data;
+    
+    if (!workspaceId || folderName === undefined || parentPath === undefined) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing required folder information.');
     }
 
-    const verificationRef = db.collection('email-verifications').doc(email);
-    const verificationDoc = await verificationRef.get();
-
-    if (!verificationDoc.exists) {
-        throw new functions.https.HttpsError('not-found', 'No verification process started for this email.');
+    // 2. Permission Check
+    const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+    const workspaceDoc = await workspaceRef.get();
+    if (!workspaceDoc.exists()) {
+        throw new functions.https.HttpsError('not-found', 'Workspace not found.');
+    }
+    const workspaceData = workspaceDoc.data();
+    if (!workspaceData?.memberIds?.includes(uid)) {
+        throw new functions.https.HttpsError('permission-denied', 'You are not a member of this workspace.');
     }
 
-    const verificationData = verificationDoc.data()!;
-    if (verificationData.expires < Date.now()) {
-        await verificationRef.delete();
-        throw new functions.https.HttpsError('deadline-exceeded', 'The verification code has expired.');
-    }
-
-    if (verificationData.code !== code) {
-        throw new functions.https.HttpsError('invalid-argument', 'The verification code is incorrect.');
-    }
-
+    // 3. Create Firestore document for the folder
+    const fullPath = parentPath ? `${parentPath}/${folderName}` : folderName;
+    
     try {
-        const userRecord = await admin.auth().createUser({
-            email: verificationData.email,
-            password: verificationData.password, // This is the hashed password
-            displayName: verificationData.name,
+        await db.collection('workspace-files').add({
+            type: 'folder',
+            name: folderName,
+            fullPath: fullPath,
+            parentPath: parentPath,
+            uploadedBy: uid,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            workspaceId: workspaceId,
         });
-
-        await db.collection('users').doc(userRecord.uid).set({
-            uid: userRecord.uid,
-            email: userRecord.email,
-            name: userRecord.displayName,
-            avatarUrl: null,
-            workspaceIds: [],
-        });
-        
-        await verificationRef.delete();
-        const customToken = await admin.auth().createCustomToken(userRecord.uid);
-        
-        return { success: true, token: customToken };
-
+        return { success: true };
     } catch (error) {
-        console.error('Error creating user after verification:', error);
-        throw new functions.https.HttpsError('internal', 'An error occurred while creating your account.');
+        console.error("Error creating folder:", error);
+        throw new functions.https.HttpsError('internal', 'Failed to create the folder in the database.');
     }
 });
