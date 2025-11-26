@@ -44,9 +44,9 @@ export function CreateFolderDialog({ currentPath }: CreateFolderDialogProps) {
     
     setIsLoading(true);
     try {
-      const functions = getFunctions(firebaseApp);
-      const createFolder = httpsCallable(functions, 'createFolder');
-      await createFolder({
+      const functions = getFunctions(firebaseApp, 'us-central1');
+      const createFolderFn = httpsCallable(functions, 'createFolder');
+      await createFolderFn({
         workspaceId: selectedWorkspace.id,
         parentPath: currentPath,
         folderName: folderName.trim(),
