@@ -609,7 +609,7 @@ exports.finalizeWorkspaceLogo = functions.https.onCall(async (data, context) => 
 
         // Make the file public
         await finalFile.makePublic();
-        const publicUrl = finalFile.publicUrl();
+        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${finalFilePath}`;
 
         // 4. Update the Firestore document with the new public URL
         await workspaceRef.update({
@@ -893,7 +893,7 @@ exports.createFolder = functions.https.onCall(async (data, context) => {
     const fullPath = parentPath ? `${parentPath}/${folderName}` : folderName;
     
     try {
-        await db.collection('workspace-files').add({
+        const folderDocRef = await db.collection('workspace-files').add({
             type: 'folder',
             name: folderName,
             fullPath: fullPath,
@@ -902,11 +902,9 @@ exports.createFolder = functions.https.onCall(async (data, context) => {
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             workspaceId: workspaceId,
         });
-        return { success: true };
+        return { success: true, folderId: folderDocRef.id };
     } catch (error) {
         console.error("Error creating folder:", error);
         throw new functions.https.HttpsError('internal', 'Failed to create the folder in the database.');
     }
 });
-
-    

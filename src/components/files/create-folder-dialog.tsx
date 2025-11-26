@@ -56,6 +56,7 @@ export function CreateFolderDialog({ currentPath }: CreateFolderDialogProps) {
       setFolderName('');
       setIsOpen(false);
     } catch (error: any) {
+      console.error("Error creating folder: ", error);
       toast({ variant: 'destructive', title: 'Failed to create folder', description: error.message });
     } finally {
       setIsLoading(false);
