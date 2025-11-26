@@ -908,3 +908,5 @@ exports.createFolder = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('internal', 'Failed to create the folder in the database.');
     }
 });
+
+    

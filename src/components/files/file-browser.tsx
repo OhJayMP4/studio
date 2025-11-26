@@ -3,9 +3,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useFirebase, useFirestore } from '@/firebase';
 import { collection, query, where, orderBy, deleteDoc, doc, getDocs, writeBatch, onSnapshot } from 'firebase/firestore';
-import { getStorage, ref, deleteObject } from "firebase/storage";
+import { getStorage, ref, deleteObject, getDownloadURL } from "firebase/storage";
 import {
   Table,
   TableBody,
@@ -37,6 +37,7 @@ import { CreateFolderDialog } from './create-folder-dialog';
 export function FileBrowser() {
   const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
+  const { firebaseApp } = useFirebase();
   const { toast } = useToast();
 
   const [currentPath, setCurrentPath] = useState('');
@@ -100,18 +101,30 @@ export function FileBrowser() {
     setCurrentPath(newPath);
   };
   
-  const handleItemClick = (item: WorkspaceFile) => {
-      if (item.type === 'folder') {
-          setCurrentPath(item.fullPath);
-      } else if (item.downloadURL) {
-          window.open(item.downloadURL, '_blank');
-      }
+  const handleItemClick = async (item: WorkspaceFile) => {
+    if (item.type === 'folder') {
+        setCurrentPath(item.fullPath);
+    } else if (item.fullPath && firebaseApp) {
+        try {
+            const storage = getStorage(firebaseApp);
+            const fileRef = ref(storage, item.fullPath);
+            const url = await getDownloadURL(fileRef);
+            window.open(url, '_blank', 'noopener,noreferrer');
+        } catch (error: any) {
+            console.error("Failed to get download URL", error);
+            toast({
+                variant: 'destructive',
+                title: 'Could not open file',
+                description: 'Please try again or contact support.'
+            })
+        }
+    }
   }
 
   const handleDeleteItem = async (item: WorkspaceFile) => {
-    if (!selectedWorkspace) return;
+    if (!selectedWorkspace || !firebaseApp) return;
     setIsDeleting(true);
-    const storage = getStorage();
+    const storage = getStorage(firebaseApp);
     const batch = writeBatch(firestore);
 
     try {
@@ -237,3 +250,5 @@ export function FileBrowser() {
     </div>
   );
 }
+
+    
