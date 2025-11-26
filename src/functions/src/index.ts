@@ -836,10 +836,12 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
 
     try {
         await tempFile.move(finalFile);
-
-        // Make the file public and get its URL
+        
+        // Make the file public before getting metadata
         await finalFile.makePublic();
-        const publicUrl = finalFile.publicUrl();
+
+        const [metadata] = await finalFile.getMetadata();
+        const downloadURL = metadata.mediaLink;
 
         // 4. Create the Firestore document for the new file
         await db.collection('workspace-files').add({
@@ -849,13 +851,13 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
             parentPath: targetParentPath,
             size: fileSize,
             mimeType: mimeType,
-            downloadURL: publicUrl,
+            downloadURL: downloadURL,
             uploadedBy: uid,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             workspaceId: workspaceId,
         });
 
-        return { success: true, url: publicUrl };
+        return { success: true, url: downloadURL };
 
     } catch (error) {
         console.error("Error finalizing file upload:", error);
