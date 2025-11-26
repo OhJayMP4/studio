@@ -837,11 +837,11 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
     try {
         await tempFile.move(finalFile);
         
-        // Make the file public
-        await finalFile.makePublic();
-
-        // Construct the public URL manually
-        const downloadURL = `https://storage.googleapis.com/${bucket.name}/${encodeURIComponent(finalFile.name)}`;
+        // Generate a signed URL with a long expiration
+        const [downloadURL] = await finalFile.getSignedUrl({
+            action: 'read',
+            expires: '03-09-2491' // A very long time in the future
+        });
 
         // 4. Create the Firestore document for the new file
         await db.collection('workspace-files').add({

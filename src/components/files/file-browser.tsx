@@ -23,7 +23,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Button } from '@/components/ui/button';
-import { Folder, File as FileIcon, Trash2 } from 'lucide-react';
+import { Folder, File as FileIcon, Trash2, FileQuestion, FileText } from 'lucide-react';
 import { Skeleton } from '../ui/skeleton';
 import { format } from 'date-fns';
 import { bytesToSize } from '@/lib/files';
@@ -32,6 +32,38 @@ import { DeleteDialog } from '../common/delete-dialog';
 import { useToast } from '@/hooks/use-toast';
 import type { WorkspaceFile } from '@/lib/types';
 import { CreateFolderDialog } from './create-folder-dialog';
+import Image from 'next/image';
+
+
+function FilePreview({ file }: { file: WorkspaceFile }) {
+    const renderPreview = () => {
+        if (file.mimeType?.startsWith('image/')) {
+            return (
+                <Image
+                    src={file.downloadURL!}
+                    alt={`Preview of ${file.name}`}
+                    width={48}
+                    height={48}
+                    className="w-full h-full object-cover"
+                />
+            );
+        }
+        if (file.mimeType === 'application/pdf') {
+            return <FileText className="h-6 w-6 text-muted-foreground" />;
+        }
+        return <FileQuestion className="h-6 w-6 text-muted-foreground" />;
+    };
+
+    return (
+        <div className="w-12 h-12 rounded overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
+            {file.downloadURL ? (
+                renderPreview()
+            ) : (
+                <FileQuestion className="h-6 w-6 text-muted-foreground" />
+            )}
+        </div>
+    );
+}
 
 
 export function FileBrowser() {
@@ -104,20 +136,8 @@ export function FileBrowser() {
   const handleItemClick = async (item: WorkspaceFile) => {
     if (item.type === 'folder') {
         setCurrentPath(item.fullPath);
-    } else if (item.fullPath && firebaseApp) {
-        try {
-            const storage = getStorage(firebaseApp);
-            const fileRef = ref(storage, item.fullPath);
-            const url = await getDownloadURL(fileRef);
-            window.open(url, '_blank', 'noopener,noreferrer');
-        } catch (error: any) {
-            console.error("Failed to get download URL", error);
-            toast({
-                variant: 'destructive',
-                title: 'Could not open file',
-                description: 'Please try again or contact support.'
-            })
-        }
+    } else if (item.downloadURL) {
+        window.open(item.downloadURL, '_blank', 'noopener,noreferrer');
     }
   }
 
@@ -221,8 +241,8 @@ export function FileBrowser() {
               files.map((item) => (
                 <TableRow key={item.id} className="cursor-pointer" onDoubleClick={() => handleItemClick(item)}>
                   <TableCell className="font-medium">
-                    <button className="flex items-center gap-2 text-left" onClick={() => handleItemClick(item)}>
-                      {item.type === 'folder' ? <Folder className="h-4 w-4 text-amber-500" /> : <FileIcon className="h-4 w-4" />}
+                     <button className="flex items-center gap-4 text-left" onClick={() => handleItemClick(item)}>
+                       {item.type === 'folder' ? <Folder className="h-6 w-6 text-amber-500" /> : <FilePreview file={item} />}
                       <span>{item.name}</span>
                     </button>
                   </TableCell>

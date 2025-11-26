@@ -1,3 +1,4 @@
+
 export type UserProfile = {
   uid: string;
   name: string | null;
@@ -180,3 +181,5 @@ export type WorkspaceFile = {
     createdAt: any; // Firestore Timestamp
     workspaceId: string;
 };
+
+    
