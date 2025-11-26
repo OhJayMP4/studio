@@ -9,10 +9,9 @@ service firebase.storage {
       allow read;
     }
 
-    // Allow authenticated users to read files in workspaces they belong to.
-    // Writes are handled by the Cloud Function which moves files from a temp location.
+    // Shared drive files inside workspaces
     match /workspaces/{workspaceId}/files/{allPaths=**} {
-       allow read: if request.auth != null;
+      allow read, write: if request.auth != null;
     }
 
     // Allow public read access to user avatars
@@ -27,5 +26,3 @@ service firebase.storage {
     }
   }
 }
-
-    
