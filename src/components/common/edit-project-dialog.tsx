@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -33,16 +34,20 @@ const formSchema = z.object({
   name: z.string().min(1, 'Project name is required.'),
   deadline: z.date({ required_error: 'A deadline is required.' }),
   hasMonetaryValue: z.boolean().default(false),
-  monetaryValue: z.number().positive('Value must be a positive number.').optional().or(z.literal('')),
+  monetaryValue: z.preprocess(
+    (a) => (a === '' || a === undefined ? undefined : parseFloat(String(a))),
+    z.number().positive('Value must be a positive number.').optional()
+  ),
 }).refine(data => {
     if (data.hasMonetaryValue) {
-        return data.monetaryValue !== undefined && data.monetaryValue !== '' && Number(data.monetaryValue) > 0;
+        return data.monetaryValue !== undefined && Number(data.monetaryValue) > 0;
     }
     return true;
 }, {
     message: 'Monetary value is required and must be a positive number.',
     path: ['monetaryValue'],
 });
+
 
 type FormValues = z.infer<typeof formSchema>;
 
@@ -78,7 +83,7 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
         name: project.name,
         deadline: new Date(project.deadline),
         hasMonetaryValue: project.hasMonetaryValue,
-        monetaryValue: project.monetaryValue || '',
+        monetaryValue: project.monetaryValue,
       });
     }
   }, [isOpen, project, reset]);
