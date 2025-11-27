@@ -37,7 +37,7 @@ function ArchivedProjectsList() {
     const firestore = useFirestore();
 
     const archivedProjectsQuery = useMemoFirebase(() => {
-        if (!selectedWorkspace) return null;
+        if (!selectedWorkspace?.id) return null;
         return query(
             collectionGroup(firestore, 'projects'),
             where('workspaceId', '==', selectedWorkspace.id),
@@ -53,14 +53,20 @@ function ArchivedProjectsList() {
         return [...new Set(projects.map(p => p.companyId))];
     }, [projects]);
 
-    const { data: companies, isLoading: isLoadingCompanies } = useDocs(companyIds.map(id => `workspaces/${selectedWorkspace?.id}/companies/${id}`));
+    // Construct full paths for useDocs
+    const companyPaths = useMemo(() => {
+        if (!selectedWorkspace?.id || companyIds.length === 0) return [];
+        return companyIds.map(id => `workspaces/${selectedWorkspace.id}/companies/${id}`);
+    }, [companyIds, selectedWorkspace?.id]);
+
+    const { data: companies, isLoading: isLoadingCompanies } = useDocs(companyPaths);
 
     const companyNameMap = useMemo(() => {
         if (!companies) return new Map<string, string>();
         return new Map(companies.map(c => [c.id, c.name]));
     }, [companies]);
 
-    const isLoading = isLoadingProjects || isLoadingCompanies;
+    const isLoading = isLoadingProjects || (companyIds.length > 0 && isLoadingCompanies);
 
     if (isLoading) {
         return (
