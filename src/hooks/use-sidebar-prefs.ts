@@ -8,6 +8,7 @@ import { useEffect, useMemo } from 'react';
 
 export const availableModules: (Omit<SidebarModule, 'order' | 'route' | 'hidden'> & {description: string})[] = [
     { id: 'files', label: 'Files', icon: 'Folder', description: 'Workspace filing system with folders.' },
+    { id: 'archive', label: 'Archive', icon: 'Archive', description: 'View all archived projects.' },
     // Future modules can be added here
 ];
 
