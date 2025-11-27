@@ -1,3 +1,4 @@
+
 "use strict";
 'use server';
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -509,7 +510,7 @@ exports.finalizeWorkspaceLogo = functions.https.onCall(async (data, context) => 
         await tempFile.move(finalFile);
         // Make the file public
         await finalFile.makePublic();
-        const publicUrl = finalFile.publicUrl();
+        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${finalFilePath}`;
         // 4. Update the Firestore document with the new public URL
         await workspaceRef.update({
             logoUrl: publicUrl
@@ -692,8 +693,10 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
     const finalFile = bucket.file(finalFilePath);
     try {
         await tempFile.move(finalFile);
-        const [metadata] = await finalFile.getMetadata();
-        const downloadURL = metadata.mediaLink;
+        // Make the file public to get a consistent URL
+        await finalFile.makePublic();
+        // Construct the public URL
+        const downloadURL = `https://storage.googleapis.com/${bucket.name}/${finalFile.name}`;
         // 4. Create the Firestore document for the new file
         await db.collection('workspace-files').add({
             type: 'file',
@@ -714,4 +717,46 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('internal', 'Failed to process the uploaded file.');
     }
 });
+exports.createFolder = functions.region("us-central1").https.onCall(async (data, context) => {
+    var _a;
+    // 1. Auth Check
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'You must be logged in to create a folder.');
+    }
+    const uid = context.auth.uid;
+    const { workspaceId, parentPath, folderName } = data;
+    if (!workspaceId || folderName === undefined || parentPath === undefined) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing required folder information.');
+    }
+    // 2. Permission Check
+    const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+    const workspaceDoc = await workspaceRef.get();
+    if (!workspaceDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'Workspace not found.');
+    }
+    const workspaceData = workspaceDoc.data();
+    if (!workspaceData || !((_a = workspaceData.memberIds) === null || _a === void 0 ? void 0 : _a.includes(uid))) {
+        throw new functions.https.HttpsError('permission-denied', 'You are not a member of this workspace.');
+    }
+    // 3. Create Firestore document for the folder
+    const fullPath = parentPath ? `${parentPath}/${folderName}` : folderName;
+    try {
+        const folderDocRef = await db.collection('workspace-files').add({
+            type: 'folder',
+            name: folderName,
+            fullPath: fullPath,
+            parentPath: parentPath,
+            uploadedBy: uid,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            workspaceId: workspaceId,
+        });
+        return { success: true, folderId: folderDocRef.id };
+    }
+    catch (error) {
+        console.error("Error creating folder:", error);
+        throw new functions.https.HttpsError('internal', 'Failed to create the folder in the database.');
+    }
+});
 //# sourceMappingURL=index.js.map
+
+    

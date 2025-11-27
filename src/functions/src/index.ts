@@ -1,7 +1,7 @@
 
 'use server';
-import * as functions from "firebase-functions";
-import * as admin from "firebase-admin";
+import *functions from "firebase-functions";
+import *admin from "firebase-admin";
 
 interface UserTask {
     id: string;
@@ -837,9 +837,10 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
     try {
         await tempFile.move(finalFile);
         
-        // Generate a signed URL with a long expiration
+        // Make the file public to get a consistent URL
         await finalFile.makePublic();
 
+        // Construct the public URL
         const downloadURL = `https://storage.googleapis.com/${bucket.name}/${finalFile.name}`;
 
         // 4. Create the Firestore document for the new file
@@ -884,7 +885,7 @@ exports.createFolder = functions.region("us-central1").https.onCall(async (data,
         throw new functions.https.HttpsError('not-found', 'Workspace not found.');
     }
     const workspaceData = workspaceDoc.data();
-    if (!workspaceData?.memberIds?.includes(uid)) {
+    if (!workspaceData || !workspaceData.memberIds?.includes(uid)) {
         throw new functions.https.HttpsError('permission-denied', 'You are not a member of this workspace.');
     }
 
@@ -907,3 +908,6 @@ exports.createFolder = functions.region("us-central1").https.onCall(async (data,
         throw new functions.https.HttpsError('internal', 'Failed to create the folder in the database.');
     }
 });
+
+
+    
