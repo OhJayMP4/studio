@@ -324,27 +324,22 @@ service cloud.firestore {
      *            Document access requires workspace membership verification.
      */
     match /workspace-files/{fileId} {
-      // Allow listing with workspace filter (client MUST use where clause)
-      allow list: if request.auth != null;
+      // Allow listing if the user is signed in. The client-side query MUST filter by workspaceId.
+      allow list: if isSignedIn();
       
       // Single document read requires membership check
-      allow get: if request.auth != null &&
-                    request.auth.uid in get(/databases/$(database)/documents/workspaces/$(resource.data.workspaceId)).data.users;
+      allow get: if isWorkspaceMember(resource.data.workspaceId);
       
       // Create requires membership and sets uploadedBy correctly
-      allow create: if request.auth != null &&
-                       request.resource.data.workspaceId is string &&
+      allow create: if isSignedIn() && 
                        request.resource.data.uploadedBy == request.auth.uid &&
-                       request.auth.uid in get(/databases/$(database)/documents/workspaces/$(request.resource.data.workspaceId)).data.users;
+                       request.auth.uid in get(/databases/$(database)/documents/workspaces/$(request.resource.data.workspaceId)).data.memberIds;
       
       // Update requires membership (can't change workspace)
-      allow update: if request.auth != null &&
-                       request.resource.data.workspaceId == resource.data.workspaceId &&
-                       request.auth.uid in get(/databases/$(database)/documents/workspaces/$(resource.data.workspaceId)).data.users;
+      allow update: if isWorkspaceMember(resource.data.workspaceId);
       
       // Delete requires admin role
-      allow delete: if request.auth != null &&
-                       isWorkspaceAdmin(resource.data.workspaceId);
+      allow delete: if isWorkspaceAdmin(resource.data.workspaceId);
     }
   }
 }
