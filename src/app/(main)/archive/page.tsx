@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collectionGroup, query, where, orderBy } from "firebase/firestore";
-import type { Project } from "@/lib/types";
+import type { Project, Company } from "@/lib/types";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -37,14 +37,14 @@ function ArchivedProjectsList() {
     const firestore = useFirestore();
 
     const archivedProjectsQuery = useMemoFirebase(() => {
-        if (!selectedWorkspace?.id) return null;
+        if (!selectedWorkspace?.id || !firestore) return null;
         return query(
             collectionGroup(firestore, 'projects'),
             where('workspaceId', '==', selectedWorkspace.id),
             where('status', '==', 'archived'),
             orderBy('archivedAt', 'desc')
         );
-    }, [firestore, selectedWorkspace]);
+    }, [firestore, selectedWorkspace?.id]);
 
     const { data: projects, isLoading: isLoadingProjects } = useCollection<Project>(archivedProjectsQuery);
 
@@ -53,20 +53,20 @@ function ArchivedProjectsList() {
         return [...new Set(projects.map(p => p.companyId))];
     }, [projects]);
 
-    // Construct full paths for useDocs
     const companyPaths = useMemo(() => {
         if (!selectedWorkspace?.id || companyIds.length === 0) return [];
         return companyIds.map(id => `workspaces/${selectedWorkspace.id}/companies/${id}`);
     }, [companyIds, selectedWorkspace?.id]);
 
-    const { data: companies, isLoading: isLoadingCompanies } = useDocs(companyPaths);
+    const { data: companies, isLoading: isLoadingCompanies } = useDocs<Company>(companyPaths);
 
     const companyNameMap = useMemo(() => {
         if (!companies) return new Map<string, string>();
         return new Map(companies.map(c => [c.id, c.name]));
     }, [companies]);
 
-    const isLoading = isLoadingProjects || (companyIds.length > 0 && isLoadingCompanies);
+    // Overall loading is true if projects query is running, or if we have projects but are still fetching company names.
+    const isLoading = isLoadingProjects || (projects && companyIds.length > 0 && isLoadingCompanies);
 
     if (isLoading) {
         return (
@@ -123,8 +123,8 @@ function ArchivedProjectsList() {
                              <TableCell>{companyNameMap.get(project.companyId) || '...'}</TableCell>
                             <TableCell>
                                 {project.archivedAt ? (
-                                    <span title={format(project.archivedAt.toDate(), 'PPpp')}>
-                                        {formatDistanceToNow(project.archivedAt.toDate(), { addSuffix: true })}
+                                    <span title={project.archivedAt?.toDate ? format(project.archivedAt.toDate(), 'PPpp') : ''}>
+                                        {project.archivedAt?.toDate ? formatDistanceToNow(project.archivedAt.toDate(), { addSuffix: true }) : 'N/A'}
                                     </span>
                                 ) : 'N/A'}
                             </TableCell>
