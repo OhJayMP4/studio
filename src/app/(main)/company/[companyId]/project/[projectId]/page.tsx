@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useSelectedWorkspace } from '@/app/(main)/layout';
@@ -7,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
 import type { Company, Project, Sale, Silo, Task } from '@/lib/types';
-import { collection, doc, query, orderBy, getDocs, runTransaction, deleteDoc, writeBatch, addDoc } from 'firebase/firestore';
+import { collection, doc, query, orderBy, getDocs, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
@@ -65,8 +66,20 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 
 
-async function updateProjectProgress(firestore: any, workspaceId: string, companyId: string, projectId: string) {
+async function updateProjectProgress(firestore: any, workspaceId: string, companyId: string, projectId: string, toast?: any, isUserAdmin?: boolean) {
     const projectRef = doc(firestore, 'workspaces', workspaceId, 'companies', companyId, 'projects', projectId);
+
+    const handleArchive = async () => {
+        try {
+            await updateDoc(projectRef, {
+                status: 'archived',
+                archivedAt: serverTimestamp(),
+            });
+            toast({ title: "Project Archived", description: "The project has been moved to the archive." });
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: 'Error Archiving Project', description: error.message });
+        }
+    };
 
     // Perform reads outside of the transaction
     const silosCollection = collection(projectRef, 'silos');
@@ -95,16 +108,33 @@ async function updateProjectProgress(firestore: any, workspaceId: string, compan
 
         const taskProgress = totalTasks > 0 ? (completedTasks / totalTasks) : 0;
         
-        // Use existing sales data from the project doc
         const salesTarget = projectData.monetaryValue || 0;
         const currentSales = projectData.totalSalesValue || 0;
         const salesProgress = salesTarget > 0 ? Math.min(currentSales / salesTarget, 1) : 0;
 
-        const overallProgress = projectData.hasMonetaryValue 
+        const newOverallProgress = Math.round(projectData.hasMonetaryValue 
             ? (salesProgress * 0.5 + taskProgress * 0.5) * 100
-            : taskProgress * 100;
+            : taskProgress * 100);
 
-        transaction.update(projectRef, { progress: Math.round(overallProgress) });
+        const updates: any = { progress: newOverallProgress };
+        
+        // Check for project completion
+        if (newOverallProgress === 100 && projectData.status === 'active') {
+            updates.status = 'completed';
+            updates.completedAt = serverTimestamp();
+            if (toast && isUserAdmin) {
+                 setTimeout(() => {
+                    toast({
+                        title: 'Project Completed!',
+                        description: 'This project has reached 100% completion.',
+                        action: <Button onClick={handleArchive}>Archive Now</Button>,
+                        duration: 10000,
+                    });
+                }, 500);
+            }
+        }
+        
+        transaction.update(projectRef, updates);
     });
 }
 
@@ -226,8 +256,9 @@ const priorityOrder = { high: 3, medium: 2, low: 1 };
 
 function SortableSiloItem({ silo, companyId, projectId }: { silo: Silo; companyId: string; projectId: string }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: silo.id, data: { type: 'Silo' } });
-    const { selectedWorkspace } = useSelectedWorkspace();
+    const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
     const firestore = useFirestore();
+    const { toast } = useToast();
     
     const tasksQuery = useMemoFirebase(() => {
         if (!selectedWorkspace) return null;
@@ -250,9 +281,9 @@ function SortableSiloItem({ silo, companyId, projectId }: { silo: Silo; companyI
 
     useEffect(() => {
         if (selectedWorkspace && !rawTasksLoading) {
-            updateProjectProgress(firestore, selectedWorkspace.id, companyId, projectId);
+            updateProjectProgress(firestore, selectedWorkspace.id, companyId, projectId, toast, isUserAdmin);
         }
-    }, [rawTasks, rawTasksLoading, firestore, selectedWorkspace, companyId, projectId]);
+    }, [rawTasks, rawTasksLoading, firestore, selectedWorkspace, companyId, projectId, toast, isUserAdmin]);
 
     const completedTasks = rawTasks?.filter(t => t.completed).length || 0;
     const totalTasks = rawTasks?.length || 0;
@@ -643,8 +674,9 @@ export default function ProjectPage() {
   const params = useParams();
   const companyId = params.companyId as string;
   const projectId = params.projectId as string;
-  const { selectedWorkspace } = useSelectedWorkspace();
+  const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
   const firestore = useFirestore();
+  const { toast } = useToast();
 
   const projectRef = useMemoFirebase(() => {
     if (!selectedWorkspace || !companyId || !projectId) return null;
@@ -673,9 +705,9 @@ export default function ProjectPage() {
   // Initial progress calculation on load
   useEffect(() => {
     if (selectedWorkspace && !isLoading && project) {
-        updateProjectProgress(firestore, selectedWorkspace.id, companyId, projectId);
+        updateProjectProgress(firestore, selectedWorkspace.id, companyId, projectId, toast, isUserAdmin);
     }
-  }, [firestore, selectedWorkspace, companyId, projectId, isLoading, project]);
+  }, [firestore, selectedWorkspace, companyId, projectId, isLoading, project, toast, isUserAdmin]);
 
   if (isLoading || !project || !company) {
     return (

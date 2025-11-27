@@ -1,8 +1,9 @@
+
 'use client';
 
 import { useDoc, useFirestore, useMemoFirebase } from "@/firebase";
 import type { Workspace, Project, Task } from "@/lib/types";
-import { collection, doc, getDocs } from "firebase/firestore";
+import { collection, doc, getDocs, query, where } from "firebase/firestore";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
@@ -66,7 +67,8 @@ export default function LiveReportPage() {
 
                 for (const companyDoc of companiesSnapshot.docs) {
                     const projectsRef = collection(companyDoc.ref, 'projects');
-                    const projectsSnapshot = await getDocs(projectsRef);
+                    const projectsQuery = query(projectsRef, where('status', '!=', 'archived'));
+                    const projectsSnapshot = await getDocs(projectsQuery);
                     
                     for (const projectDoc of projectsSnapshot.docs) {
                         allProjects.push({ id: projectDoc.id, ...projectDoc.data() } as Project);

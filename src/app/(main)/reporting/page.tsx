@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
@@ -46,7 +47,7 @@ export default function ReportingPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-headline">Reporting for {selectedWorkspace.name}</h1>
-        <p className="text-muted-foreground">Generate reports for your workspace.</p>
+        <p className="text-muted-foreground">Generate reports for your workspace. Archived projects are excluded from these reports.</p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -57,7 +58,7 @@ export default function ReportingPage() {
                     Printable Workspace Summary
                 </CardTitle>
                 <CardDescription>
-                    Generate a detailed, table-based report of all companies, projects, and tasks. Ideal for printing or saving as a PDF for offline review.
+                    Generate a detailed, table-based report of all active and completed companies, projects, and tasks. Ideal for printing or saving as a PDF.
                 </CardDescription>
             </CardHeader>
             <CardContent>

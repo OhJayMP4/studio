@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -18,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFirestore, useUser } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { addDoc, collection } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { CalendarIcon, PlusCircle } from 'lucide-react';
 import { Switch } from '../ui/switch';
@@ -97,6 +98,9 @@ export function AddProjectDialog({ companyId, children }: AddProjectDialogProps)
         companyId: companyId,
         workspaceId: selectedWorkspace.id,
         createdBy: user.uid,
+        status: 'active',
+        completedAt: null,
+        archivedAt: null,
       });
       
       toast({

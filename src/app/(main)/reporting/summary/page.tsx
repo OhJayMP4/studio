@@ -1,8 +1,9 @@
+
 'use client';
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { useFirestore } from "@/firebase";
 import { Company, Project, Silo, Task, UserProfile } from "@/lib/types";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, where } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { format } from 'date-fns';
 import { Progress } from "@/components/ui/progress";
@@ -52,7 +53,8 @@ export default function SummaryReportPage() {
                     const company = { id: companyDoc.id, ...companyDoc.data() } as Company;
                     
                     const projectsRef = collection(companyDoc.ref, 'projects');
-                    const projectsSnap = await getDocs(projectsRef);
+                    const projectsQuery = query(projectsRef, where('status', '!=', 'archived'));
+                    const projectsSnap = await getDocs(projectsQuery);
 
                     const projectsData = await Promise.all(projectsSnap.docs.map(async (projectDoc) => {
                         const project = { id: projectDoc.id, ...projectDoc.data() } as Project;
