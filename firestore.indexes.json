@@ -48,6 +48,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "workspace-files",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "workspaceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fullPath",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

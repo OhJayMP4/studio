@@ -1,4 +1,3 @@
-
 "use strict";
 'use server';
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -758,5 +757,3 @@ exports.createFolder = functions.region("us-central1").https.onCall(async (data,
     }
 });
 //# sourceMappingURL=index.js.map
-
-    
