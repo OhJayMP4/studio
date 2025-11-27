@@ -1,3 +1,4 @@
+
 'use client';
 import { collection, doc, writeBatch, getDoc, Firestore } from "firebase/firestore";
 import type { Company, Project, Silo, Task, Workspace } from "./types";
@@ -7,7 +8,7 @@ interface AddTaskParams {
     companyId: string;
     projectId: string;
     siloId: string;
-    taskData: Omit<Task, 'id' | 'description'> & { description?: string, createdBy: string };
+    taskData: Omit<Task, 'id' | 'description' | 'workspaceId'> & { description?: string, createdBy: string };
 }
 
 export async function addTask(firestore: Firestore, params: AddTaskParams) {
@@ -40,7 +41,7 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
     const siloData = siloSnap.data() as Silo;
     
     // 2. Create the original task
-    batch.set(taskRef, {...taskData, projectId});
+    batch.set(taskRef, {...taskData, projectId, workspaceId});
 
     // 3. SECURITY CHECK: Verify assignee is a member of the workspace before denormalizing
     if (workspaceData.users && workspaceData.users[taskData.assigneeId]) {

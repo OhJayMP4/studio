@@ -103,10 +103,6 @@ service cloud.firestore {
       return isWorkspaceMember(workspaceId) && ws.data.users[request.auth.uid].role == 'admin';
     }
 
-    match /email-verifications/{verificationId} {
-      allow read, write: if false; // This collection is no longer used
-    }
-
     /**
      * @description Rules for user profile documents.
      * @path /users/{userId}
@@ -126,18 +122,19 @@ service cloud.firestore {
       allow delete: if isSignedIn() && isOwner(userId);
     }
     
-    // Global collection group queries for search functionality
-    match /{path=**}/tasks/{taskId} {
-      allow read: if isWorkspaceMember(get(/databases/$(database)/documents/workspaces/$(resource.data.workspaceId)).id);
-    }
-     match /{path=**}/silos/{siloId} {
-       allow read: if isWorkspaceMember(get(/databases/$(database)/documents/$(path)).data.workspaceId);
-    }
-     match /{path=**}/projects/{projectId} {
+    // --- Global Collection Group Queries ---
+    // These rules allow cross-project searches (e.g., in GlobalSearch, Archive)
+    // but are secured by checking if the user is a member of the item's workspace.
+    match /{path=**}/companies/{companyId} {
       allow read: if isWorkspaceMember(resource.data.workspaceId);
     }
-    
-    match /{path=**}/companies/{companyId} {
+    match /{path=**}/projects/{projectId} {
+      allow read: if isWorkspaceMember(resource.data.workspaceId);
+    }
+    match /{path=**}/silos/{siloId} {
+      allow read: if isWorkspaceMember(resource.data.workspaceId);
+    }
+    match /{path=**}/tasks/{taskId} {
       allow read: if isWorkspaceMember(resource.data.workspaceId);
     }
 
@@ -200,7 +197,7 @@ service cloud.firestore {
            */
           match /silos/{siloId} {
             allow get, list: if isWorkspaceMember(workspaceId);
-            allow create: if isWorkspaceMember(workspaceId);
+            allow create: if isWorkspaceMember(workspaceId) && request.resource.data.workspaceId == workspaceId;
             allow update: if isWorkspaceMember(workspaceId);
             allow delete: if isWorkspaceMember(workspaceId);
 
@@ -215,7 +212,7 @@ service cloud.firestore {
              */
             match /tasks/{taskId} {
               allow get, list: if isWorkspaceMember(workspaceId);
-              allow create: if isWorkspaceMember(workspaceId);
+              allow create: if isWorkspaceMember(workspaceId) && request.resource.data.workspaceId == workspaceId;
               allow update: if isWorkspaceMember(workspaceId);
               allow delete: if isWorkspaceMember(workspaceId);
 
@@ -348,7 +345,3 @@ service cloud.firestore {
     }
   }
 }
-
-    
-
-    

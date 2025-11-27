@@ -53,6 +53,7 @@ export type Silo = {
     name: string;
     order: number;
     createdBy: string;
+    workspaceId: string;
 };
 
 export type Task = {
@@ -64,6 +65,7 @@ export type Task = {
     priority: 'low' | 'medium' | 'high';
     assigneeId: string;
     projectId: string; 
+    workspaceId: string;
     createdBy: string;
     updatedBy?: string;
 };
@@ -184,5 +186,3 @@ export type WorkspaceFile = {
     createdAt: any; // Firestore Timestamp
     workspaceId: string;
 };
-
-    

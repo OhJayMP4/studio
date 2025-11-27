@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -71,6 +72,7 @@ export function AddSiloDialog({ companyId, projectId, children }: AddSiloDialogP
         name: data.name,
         order: order,
         createdBy: user.uid,
+        workspaceId: selectedWorkspace.id,
       });
       
       toast({
