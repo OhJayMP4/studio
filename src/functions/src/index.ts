@@ -865,7 +865,7 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
 });
 
 
-exports.createFolder = functions.https.onCall(async (data, context) => {
+exports.createFolder = functions.region("us-central1").https.onCall(async (data, context) => {
     // 1. Auth Check
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'You must be logged in to create a folder.');
@@ -880,7 +880,7 @@ exports.createFolder = functions.https.onCall(async (data, context) => {
     // 2. Permission Check
     const workspaceRef = db.doc(`workspaces/${workspaceId}`);
     const workspaceDoc = await workspaceRef.get();
-    if (!workspaceDoc.exists()) {
+    if (!workspaceDoc.exists) {
         throw new functions.https.HttpsError('not-found', 'Workspace not found.');
     }
     const workspaceData = workspaceDoc.data();
