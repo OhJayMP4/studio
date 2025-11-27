@@ -1,7 +1,7 @@
 
 'use server';
-import *functions from "firebase-functions";
-import *admin from "firebase-admin";
+import * as functions from "firebase-functions";
+import * as admin from "firebase-admin";
 
 interface UserTask {
     id: string;
@@ -908,6 +908,3 @@ exports.createFolder = functions.region("us-central1").https.onCall(async (data,
         throw new functions.https.HttpsError('internal', 'Failed to create the folder in the database.');
     }
 });
-
-
-    
