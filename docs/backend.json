@@ -695,6 +695,80 @@
         "createdAt",
         "workspaceId"
       ]
+    },
+    "SocialPost": {
+      "title": "Social Media Post",
+      "description": "A social media post to be scheduled and published.",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "workspaceId": { "type": "string" },
+        "createdByUserId": { "type": "string" },
+        "scheduledAt": { "type": "string", "format": "date-time" },
+        "platforms": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["facebook", "instagram", "linkedin", "x"] }
+        },
+        "captionDefault": { "type": "string" },
+        "captionFacebook": { "type": "string" },
+        "captionInstagram": { "type": "string" },
+        "captionLinkedin": { "type": "string" },
+        "captionX": { "type": "string" },
+        "media": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "fileUrl": { "type": "string" },
+              "fileType": { "type": "string", "enum": ["image", "video"] }
+            },
+            "required": ["fileUrl", "fileType"]
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "pending_approval", "approved", "scheduled", "published", "failed", "rejected"]
+        },
+        "rejectionReason": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "companyId",
+        "workspaceId",
+        "createdByUserId",
+        "scheduledAt",
+        "platforms",
+        "captionDefault",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SocialAccount": {
+      "title": "Social Media Account",
+      "description": "A connected social media account for a company.",
+      "type": "object",
+      "properties": {
+        "companyId": { "type": "string" },
+        "workspaceId": { "type": "string" },
+        "platform": { "type": "string", "enum": ["facebook", "instagram", "linkedin", "x"] },
+        "accountName": { "type": "string" },
+        "accountId": { "type": "string" },
+        "accessToken": { "type": "string" },
+        "refreshToken": { "type": "string" },
+        "status": { "type": "string", "enum": ["connected", "expired", "revoked"] },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "companyId",
+        "workspaceId",
+        "platform",
+        "accountName",
+        "accountId",
+        "accessToken",
+        "status"
+      ]
     }
   },
   "auth": {
@@ -786,6 +860,18 @@
         "$ref": "#/entities/WorkspaceFile"
       },
       "description": "Stores metadata for files and folders in a workspace."
+    },
+    "/workspaces/{workspaceId}/companies/{companyId}/socialPosts/{postId}": {
+      "schema": {
+        "$ref": "#/entities/SocialPost"
+      },
+      "description": "Stores social media posts for a specific company."
+    },
+    "/workspaces/{workspaceId}/companies/{companyId}/socialAccounts/{accountId}": {
+      "schema": {
+        "$ref": "#/entities/SocialAccount"
+      },
+      "description": "Stores connected social media accounts for a company."
     }
   }
 }

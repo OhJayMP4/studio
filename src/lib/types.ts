@@ -185,3 +185,47 @@ export type WorkspaceFile = {
     createdAt: any; // Firestore Timestamp
     workspaceId: string;
 };
+
+export const SocialPlatforms = ["facebook", "instagram", "linkedin", "x"] as const;
+export type SocialPlatform = typeof SocialPlatforms[number];
+
+export const SocialPostStatus = ["draft", "pending_approval", "approved", "scheduled", "published", "failed", "rejected"] as const;
+export type SocialPostStatusType = typeof SocialPostStatus[number];
+
+export type SocialPost = {
+    id: string;
+    companyId: string;
+    workspaceId: string;
+    createdByUserId: string;
+    scheduledAt: any; // Firestore Timestamp
+    platforms: SocialPlatform[];
+    captionDefault: string;
+    captionFacebook?: string;
+    captionInstagram?: string;
+    captionLinkedin?: string;
+    captionX?: string;
+    media: {
+        fileUrl: string;
+        fileType: 'image' | 'video';
+    }[];
+    status: SocialPostStatusType;
+    rejectionReason?: string;
+    createdAt: any; // Firestore Timestamp
+    updatedAt: any; // Firestore Timestamp
+}
+
+export const SocialAccountStatus = ["connected", "expired", "revoked"] as const;
+export type SocialAccountStatusType = typeof SocialAccountStatus[number];
+
+export type SocialAccount = {
+    id: string;
+    companyId: string;
+    workspaceId: string;
+    platform: SocialPlatform;
+    accountName: string; // e.g., "Acme Inc. Facebook Page"
+    accountId: string;   // e.g., the page ID from the platform
+    accessToken: string; // Encrypted or placeholder
+    refreshToken?: string; // Encrypted or placeholder
+    status: SocialAccountStatusType;
+    expiresAt?: any; // Firestore Timestamp
+}

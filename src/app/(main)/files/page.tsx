@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
@@ -33,7 +34,7 @@ function WorkspaceFilesView() {
         <div className="space-y-6">
             <FilesBreadcrumb />
             <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-headline">Workspace Files</h1>
+                <h1 className="text-3xl font-headline">Files</h1>
             </div>
             <FileBrowser />
         </div>
