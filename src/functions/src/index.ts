@@ -909,61 +909,113 @@ exports.createFolder = functions.region("us-central1").https.onCall(async (data,
     }
 });
 
+exports.backfillAllProjects = functions
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .https.onCall(async (data, context) => {
+    try {
+      // 1) Auth check
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+          "unauthenticated",
+          "You must be signed in to run this migration."
+        );
+      }
 
-exports.backfillProjectWorkspaceIds = functions.https.onCall(async (data, context) => {
-    // 1. Auth Check: Ensure only the specified user can run this.
-    if (context.auth?.token.email !== 'marketing@saturnmanagement.co.za') {
-        throw new functions.https.HttpsError('permission-denied', 'You are not authorized to run this operation.');
-    }
+      // 2) Restrict who can run it
+      const callerEmail = context.auth.token.email;
+      const allowedEmails = [
+        "marketing@saturnmanagement.co.za",
+        // add more admin emails if needed
+      ];
+      if (!allowedEmails.includes(callerEmail as string)) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          `User ${callerEmail} is not allowed to run this migration.`
+        );
+      }
 
-    console.log("Starting backfill process...");
-    let updatedCount = 0;
-    const batchPromises: Promise<any>[] = [];
+      const db = admin.firestore();
 
-    const workspacesSnap = await db.collection('workspaces').get();
-    
-    for (const workspaceDoc of workspacesSnap.docs) {
-        const workspaceId = workspaceDoc.id;
-        const companiesSnap = await workspaceDoc.ref.collection('companies').get();
+      let updatedCount = 0;
+      let strayCount = 0;
+      let deletedCount = 0;
 
-        for (const companyDoc of companiesSnap.docs) {
-            const companyId = companyDoc.id;
-            const projectsSnap = await companyDoc.ref.collection('projects').get();
-            
-            let batch = db.batch();
-            let batchSize = 0;
+      console.log("Starting backfillAllProjects migration...");
 
-            for (const projectDoc of projectsSnap.docs) {
-                const projectData = projectDoc.data();
-                
-                // Check if workspaceId or companyId is missing or incorrect
-                if (projectData.workspaceId !== workspaceId || projectData.companyId !== companyId) {
-                    console.log(`Updating project ${projectDoc.id} in workspace ${workspaceId}`);
-                    batch.update(projectDoc.ref, { 
-                        workspaceId: workspaceId,
-                        companyId: companyId 
-                    });
-                    updatedCount++;
-                    batchSize++;
+      // 3) Grab ALL 'projects' documents in the database
+      const snap = await db.collectionGroup("projects").get();
+      console.log(`Found ${snap.size} project documents in collectionGroup.`);
 
-                    // Firestore batch writes are limited to 500 operations.
-                    if (batchSize >= 499) {
-                        console.log("Committing a batch of updates...");
-                        batchPromises.push(batch.commit());
-                        batch = db.batch(); // Start a new batch
-                        batchSize = 0;
-                    }
-                }
-            }
-            // Commit any remaining operations in the last batch for this company
-            if (batchSize > 0) {
-                 batchPromises.push(batch.commit());
-            }
+      for (const docSnap of snap.docs) {
+        const data = docSnap.data() || {};
+        const path = docSnap.ref.path;
+        const segments = path.split("/");
+
+        // Expecting: workspaces/{wsId}/companies/{companyId}/projects/{projectId}
+        const isNestedProject =
+          segments.length >= 6 &&
+          segments[0] === "workspaces" &&
+          segments[2] === "companies" &&
+          segments[4] === "projects";
+
+        if (isNestedProject) {
+          const workspaceId = segments[1];
+          const companyId = segments[3];
+
+          const needsWorkspaceFix =
+            !data.workspaceId || data.workspaceId !== workspaceId;
+          const needsCompanyFix =
+            !data.companyId || data.companyId !== companyId;
+
+          if (needsWorkspaceFix || needsCompanyFix) {
+            console.log(
+              `Updating nested project ${path} (workspaceId=${workspaceId}, companyId=${companyId})`
+            );
+            const updates: any = {};
+            if (needsWorkspaceFix) updates.workspaceId = workspaceId;
+            if (needsCompanyFix) updates.companyId = companyId;
+
+            await docSnap.ref.update(updates);
+            updatedCount++;
+          }
+        } else {
+          // This is a 'projects' doc OUTSIDE the expected path
+          strayCount++;
+          console.warn(
+            `Stray project document outside expected structure: ${path}`
+          );
+
+          // OPTION A: Just log them, do not delete:
+          // continue;
+
+          // OPTION B (stricter): delete them because they are invalid / test data:
+          // await docSnap.ref.delete();
+          // deletedCount++;
         }
+      }
+
+      console.log(
+        `backfillAllProjects completed. updated=${updatedCount}, stray=${strayCount}, deleted=${deletedCount}`
+      );
+
+      return {
+        success: true,
+        updatedCount,
+        strayCount,
+        deletedCount,
+      };
+    } catch (err: any) {
+      console.error("Migration failed in backfillAllProjects:", err);
+
+      if (err instanceof functions.https.HttpsError) {
+        throw err;
+      }
+
+      throw new functions.https.HttpsError(
+        "internal",
+        err?.message || "Unknown internal error during backfillAllProjects."
+      );
     }
+  });
 
-    await Promise.all(batchPromises);
-
-    console.log(`Backfill complete. Updated ${updatedCount} projects.`);
-    return { success: true, updatedCount: updatedCount };
-});
+    

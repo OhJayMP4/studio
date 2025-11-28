@@ -21,7 +21,7 @@ export default function MigrationPage() {
     try {
       // Note: Make sure the region 'us-central1' matches your function's deployment region.
       const functions = getFunctions(firebaseApp, "us-central1");
-      const fn = httpsCallable(functions, "backfillProjectWorkspaceIds");
+      const fn = httpsCallable(functions, "backfillAllProjects");
       const res = await fn();
       setResult(res.data);
     } catch (err: any) {
@@ -35,17 +35,18 @@ export default function MigrationPage() {
     <div className="p-8">
         <Card className="max-w-2xl mx-auto">
             <CardHeader>
-                <CardTitle className="text-2xl">Project Data Migration</CardTitle>
+                <CardTitle className="text-2xl">Project Data Migration (Global)</CardTitle>
                 <CardDescription>
-                    Run the one-time Cloud Function to backfill `workspaceId` and `companyId` on all existing project documents. This is necessary to fix permission errors with collection group queries.
+                    Run the one-time Cloud Function to scan ALL project documents in the database and backfill `workspaceId` and `companyId` on any that are missing or incorrect. This also detects "stray" project documents outside the expected structure.
                 </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col items-start gap-6">
                 <Button 
                     onClick={runMigration}
                     disabled={loading}
+                    variant="destructive"
                 >
-                    {loading ? "Running Migration..." : "Run Backfill Function"}
+                    {loading ? "Running Migration..." : "Run Global Backfill Function"}
                 </Button>
 
                 {result && (
@@ -61,3 +62,5 @@ export default function MigrationPage() {
     </div>
   );
 }
+
+    
