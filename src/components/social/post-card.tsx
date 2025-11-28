@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -49,7 +50,7 @@ export function PostCard({ post, onPostSelect }: PostCardProps) {
         <TooltipProvider>
             <Tooltip>
                 <TooltipTrigger>
-                    <div className={cn('w-2 h-2 rounded-full', statusColors[post.status])} />
+                    <div className={cn('w-2 h-2 rounded-full flex-shrink-0', statusColors[post.status])} />
                 </TooltipTrigger>
                 <TooltipContent>
                     <p>{post.status.replace('_', ' ')}</p>
