@@ -1,4 +1,3 @@
-
 'use client';
 
 import {
@@ -12,6 +11,7 @@ import {
     Timestamp,
     serverTimestamp,
     Firestore,
+    deleteDoc,
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import type { SocialPost, SocialPostStatusType } from './types';
@@ -32,6 +32,7 @@ export async function createSocialPost(
         ...postData,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+        rejectionReason: postData.rejectionReason || null,
     };
     
     const socialPostsRef = collection(
@@ -66,6 +67,7 @@ export async function updateSocialPost(
     const postWithTimestamp = {
         ...postData,
         updatedAt: serverTimestamp(),
+        rejectionReason: postData.rejectionReason || null,
     };
 
     const postRef = doc(
@@ -75,13 +77,53 @@ export async function updateSocialPost(
     );
 
     try {
-        await updateDoc(postRef, postWithTimestamp);
+        await updateDoc(postRef, postWithTimestamp as any);
     } catch(error) {
         console.error("Error updating social post: ", error);
         errorEmitter.emit('permission-error', new FirestorePermissionError({
             path: postRef.path,
             operation: 'update',
             requestResourceData: postWithTimestamp,
+        }));
+        throw error;
+    }
+}
+
+/**
+ * Deletes a social media post and its associated media.
+ * @param firestore The Firestore instance.
+ * @param workspaceId The ID of the workspace.
+ * @param companyId The ID of the company.
+ * @param post The post object to delete.
+ */
+export async function deleteSocialPost(
+    firestore: Firestore,
+    workspaceId: string,
+    companyId: string,
+    post: SocialPost
+): Promise<void> {
+    // 1. Delete associated media from Storage
+    if (post.media && post.media.length > 0) {
+        const storage = getStorage();
+        const deletePromises = post.media.map(mediaItem => {
+            const fileRef = ref(storage, mediaItem.fileUrl);
+            return deleteObject(fileRef).catch(error => {
+                // Log error if file deletion fails, but don't block Firestore deletion
+                console.warn(`Failed to delete media file: ${mediaItem.fileUrl}`, error);
+            });
+        });
+        await Promise.all(deletePromises);
+    }
+
+    // 2. Delete the Firestore document
+    const postRef = doc(firestore, `workspaces/${workspaceId}/companies/${companyId}/socialPosts`, post.id);
+    try {
+        await deleteDoc(postRef);
+    } catch (error) {
+        console.error("Error deleting social post document: ", error);
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+            path: postRef.path,
+            operation: 'delete',
         }));
         throw error;
     }

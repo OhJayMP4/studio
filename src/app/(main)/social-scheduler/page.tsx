@@ -80,8 +80,8 @@ export default function SocialSchedulerPage() {
     setIsCreateDialogOpen(true);
   };
 
-  const handlePostCreated = () => {
-    fetchPosts(); // Refetch posts after one is created/updated
+  const handlePostChange = () => {
+    fetchPosts(); // Refetch posts after one is created/updated/deleted
   }
 
   if (!selectedWorkspace) {
@@ -105,7 +105,7 @@ export default function SocialSchedulerPage() {
          {selectedCompanyId && (
           <CreatePostDialog 
             companyId={selectedCompanyId} 
-            onPostCreated={handlePostCreated}
+            onPostCreated={handlePostChange}
           >
             <Button>
               <Plus className="mr-2 h-4 w-4" />
@@ -160,7 +160,7 @@ export default function SocialSchedulerPage() {
       
       {selectedCompanyId && <CreatePostDialog 
         companyId={selectedCompanyId}
-        onPostCreated={handlePostCreated}
+        onPostCreated={handlePostChange}
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
         selectedDate={selectedDateForCreate}
@@ -174,7 +174,7 @@ export default function SocialSchedulerPage() {
                 setSelectedPost(null);
             }
         }}
-        onPostUpdated={handlePostCreated}
+        onPostChange={handlePostChange}
       />
     </div>
   );

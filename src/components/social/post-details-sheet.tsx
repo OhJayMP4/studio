@@ -1,4 +1,3 @@
-
 'use client';
 
 import React from 'react';
@@ -19,12 +18,16 @@ import { Badge } from '../ui/badge';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { CreatePostDialog } from './create-post-dialog';
+import { DeleteDialog } from '../common/delete-dialog';
+import { useFirestore, useSelectedWorkspace } from '@/firebase';
+import { useToast } from '@/hooks/use-toast';
+import { deleteSocialPost } from '@/lib/social-posts';
 
 interface PostDetailsSheetProps {
   post: SocialPost | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onPostUpdated: () => void;
+  onPostChange: () => void;
 }
 
 const statusColors: Record<SocialPostStatusType, string> = {
@@ -44,10 +47,26 @@ const platformNames: Record<SocialPlatform, string> = {
     x: 'X (Twitter)',
 }
 
-export function PostDetailsSheet({ post, open, onOpenChange, onPostUpdated }: PostDetailsSheetProps) {
+export function PostDetailsSheet({ post, open, onOpenChange, onPostChange }: PostDetailsSheetProps) {
+  const firestore = useFirestore();
+  const { selectedWorkspace } = useSelectedWorkspace();
+  const { toast } = useToast();
+
   if (!post) return null;
 
   const canEdit = post.status === 'draft' || post.status === 'rejected';
+
+  const handleDelete = async () => {
+    if (!firestore || !selectedWorkspace) return;
+    try {
+        await deleteSocialPost(firestore, selectedWorkspace.id, post.companyId, post);
+        toast({ title: 'Post deleted successfully' });
+        onOpenChange(false);
+        onPostChange();
+    } catch(error: any) {
+        toast({ variant: 'destructive', title: 'Failed to delete post', description: error.message });
+    }
+  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -123,18 +142,23 @@ export function PostDetailsSheet({ post, open, onOpenChange, onPostUpdated }: Po
                 </div>
             </div>
         </ScrollArea>
-        <SheetFooter>
-          <Button onClick={() => onOpenChange(false)} variant="outline">Close</Button>
-          <CreatePostDialog
-            companyId={post.companyId}
-            onPostCreated={() => {
-                onOpenChange(false); // Close details sheet
-                onPostUpdated(); // Refresh calendar
-            }}
-            postToEdit={post}
-          >
-            <Button disabled={!canEdit}>Edit Post</Button>
-          </CreatePostDialog>
+        <SheetFooter className='gap-2 sm:justify-between'>
+            <DeleteDialog onConfirm={handleDelete} itemName={`the post scheduled for ${format(new Date((post.scheduledAt as any).seconds * 1000), 'PPP')}`}>
+                 <Button variant="destructive" className='w-full sm:w-auto'>Delete Post</Button>
+            </DeleteDialog>
+            <div className='flex gap-2 w-full sm:w-auto'>
+                <Button onClick={() => onOpenChange(false)} variant="outline" className='w-full sm:w-auto'>Close</Button>
+                <CreatePostDialog
+                    companyId={post.companyId}
+                    onPostCreated={() => {
+                        onOpenChange(false); // Close details sheet
+                        onPostChange(); // Refresh calendar
+                    }}
+                    postToEdit={post}
+                >
+                    <Button disabled={!canEdit} className='w-full sm:w-auto'>Edit Post</Button>
+                </CreatePostDialog>
+            </div>
         </SheetFooter>
       </SheetContent>
     </Sheet>
