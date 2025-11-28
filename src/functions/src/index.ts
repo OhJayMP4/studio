@@ -191,7 +191,7 @@ exports.onSaleCreate = functions.firestore
 exports.onTaskWrite = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
     .onWrite(async (change, context) => {
-        const { workspaceId, companyId, projectId, siloId } = context.params;
+        const { workspaceId, companyId, projectId, siloId, taskId } = context.params;
         
         const beforeData = change.before.data();
         const afterData = change.after.data();
@@ -909,6 +909,7 @@ exports.createFolder = functions.region("us-central1").https.onCall(async (data,
     }
 });
 
+
 exports.backfillProjectWorkspaceIds = functions.https.onCall(async (data, context) => {
     // 1. Auth Check: Ensure only the specified user can run this.
     if (context.auth?.token.email !== 'marketing@saturnmanagement.co.za') {
@@ -917,7 +918,7 @@ exports.backfillProjectWorkspaceIds = functions.https.onCall(async (data, contex
 
     console.log("Starting backfill process...");
     let updatedCount = 0;
-    const batchPromises = [];
+    const batchPromises: Promise<any>[] = [];
 
     const workspacesSnap = await db.collection('workspaces').get();
     
