@@ -4,11 +4,10 @@
 import React from 'react';
 import { SocialPost, SocialPostStatusType, SocialPlatform } from '@/lib/types';
 import { format } from 'date-fns';
-import { Card } from '../ui/card';
 import { cn } from '@/lib/utils';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '../ui/tooltip';
 
-interface PostCardProps {
+interface PostItemProps {
   post: SocialPost;
   onPostSelect: (post: SocialPost) => void;
 }
@@ -30,23 +29,14 @@ const platformIcons: Record<SocialPlatform, string> = {
     x: 'X',
 }
 
-export function PostCard({ post, onPostSelect }: PostCardProps) {
+export function PostItem({ post, onPostSelect }: PostItemProps) {
   const scheduledTime = format(new Date((post.scheduledAt as any).seconds * 1000), 'HH:mm');
 
   return (
-    <Card 
-        className="p-1.5 rounded-md hover:shadow-md cursor-pointer text-xs"
+    <div 
+        className="flex items-center gap-2 p-1.5 rounded-md hover:bg-accent cursor-pointer text-xs"
         onClick={() => onPostSelect(post)}
     >
-        <div className="flex justify-between items-center">
-            <span>{scheduledTime}</span>
-            <div className="flex items-center gap-1">
-                {post.platforms.map(platform => (
-                    <span key={platform} className="text-muted-foreground font-bold">{platformIcons[platform]}</span>
-                ))}
-            </div>
-        </div>
-      <div className="flex items-center gap-2 mt-1">
         <TooltipProvider>
             <Tooltip>
                 <TooltipTrigger>
@@ -57,8 +47,16 @@ export function PostCard({ post, onPostSelect }: PostCardProps) {
                 </TooltipContent>
             </Tooltip>
         </TooltipProvider>
-        <p className="truncate flex-shrink min-w-0">{post.captionDefault}</p>
-      </div>
-    </Card>
+
+        <span className="font-semibold text-muted-foreground">{scheduledTime}</span>
+        
+        <p className="flex-1 truncate min-w-0">{post.captionDefault}</p>
+
+        <div className="flex items-center gap-1 flex-shrink-0">
+            {post.platforms.map(platform => (
+                <span key={platform} className="text-muted-foreground font-bold text-[10px]">{platformIcons[platform]}</span>
+            ))}
+        </div>
+    </div>
   );
 }

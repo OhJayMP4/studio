@@ -2,9 +2,9 @@
 
 import React from 'react';
 import { DayPicker, DayProps } from 'react-day-picker';
-import { addDays, isSameDay } from 'date-fns';
+import { isSameDay } from 'date-fns';
 import { SocialPost } from '@/lib/types';
-import { PostCard } from './post-card';
+import { PostItem } from './post-card';
 import { ScrollArea } from '../ui/scroll-area';
 
 interface SchedulerCalendarProps {
@@ -12,19 +12,19 @@ interface SchedulerCalendarProps {
   onPostSelect: (post: SocialPost) => void;
 }
 
-function CustomDay(props: DayProps) {
-    const { posts, onPostSelect } = props.postsForDay;
+function CustomDay(props: DayProps & { postsForDay: { posts: SocialPost[]; onPostSelect: (post: SocialPost) => void; } }) {
+    const { postsForDay } = props;
+    const { posts, onPostSelect } = postsForDay;
 
     return (
         <div 
             className="h-32 w-full p-1 relative flex flex-col"
-            onClick={() => console.log("Day clicked", props.date)}
         >
             <span className="text-xs text-muted-foreground self-end pr-1">{props.date.getDate()}</span>
              <ScrollArea className="flex-1">
                 <div className="space-y-1 p-1">
                     {posts.map((post: SocialPost) => (
-                        <PostCard key={post.id} post={post} onPostSelect={onPostSelect} />
+                        <PostItem key={post.id} post={post} onPostSelect={onPostSelect} />
                     ))}
                 </div>
             </ScrollArea>
