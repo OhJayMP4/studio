@@ -126,16 +126,22 @@ service cloud.firestore {
     // These rules allow cross-project searches (e.g., in GlobalSearch, Archive)
     // but are secured by checking if the user is a member of the item's workspace.
     match /{path=**}/companies/{companyId} {
-      allow read: if isWorkspaceMember(resource.data.workspaceId);
+      // Rule for single document GET requests
+      allow get: if isWorkspaceMember(resource.data.workspaceId);
+      // Rule for LIST (query) requests
+      allow list: if isWorkspaceMember(request.query.get("workspaceId"));
     }
     match /{path=**}/projects/{projectId} {
-      allow read: if isWorkspaceMember(resource.data.workspaceId);
+      allow get: if isWorkspaceMember(resource.data.workspaceId);
+      allow list: if isWorkspaceMember(request.query.get("workspaceId"));
     }
     match /{path=**}/silos/{siloId} {
-      allow read: if isWorkspaceMember(resource.data.workspaceId);
+      allow get: if isWorkspaceMember(resource.data.workspaceId);
+      allow list: if isWorkspaceMember(request.query.get("workspaceId"));
     }
     match /{path=**}/tasks/{taskId} {
-      allow read: if isWorkspaceMember(resource.data.workspaceId);
+      allow get: if isWorkspaceMember(resource.data.workspaceId);
+      allow list: if isWorkspaceMember(request.query.get("workspaceId"));
     }
 
     /**
@@ -345,3 +351,5 @@ service cloud.firestore {
     }
   }
 }
+
+    
