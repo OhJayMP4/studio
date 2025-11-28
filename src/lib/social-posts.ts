@@ -130,6 +130,72 @@ export async function deleteSocialPost(
 }
 
 /**
+ * Approves a social media post.
+ * @param firestore - The Firestore instance.
+ * @param workspaceId - The ID of the workspace.
+ * @param companyId - The ID of the company.
+ * @param postId - The ID of the post to approve.
+ */
+export async function approveSocialPost(
+  firestore: Firestore,
+  workspaceId: string,
+  companyId: string,
+  postId: string
+): Promise<void> {
+  const postRef = doc(firestore, `workspaces/${workspaceId}/companies/${companyId}/socialPosts`, postId);
+  const updateData = {
+    status: 'scheduled',
+    updatedAt: serverTimestamp(),
+  };
+  try {
+    await updateDoc(postRef, updateData);
+  } catch (error) {
+    console.error("Error approving social post: ", error);
+    errorEmitter.emit('permission-error', new FirestorePermissionError({
+      path: postRef.path,
+      operation: 'update',
+      requestResourceData: updateData,
+    }));
+    throw error;
+  }
+}
+
+/**
+ * Rejects a social media post.
+ * @param firestore - The Firestore instance.
+ * @param workspaceId - The ID of the workspace.
+ * @param companyId - The ID of the company.
+ * @param postId - The ID of the post to reject.
+ * @param reason - The reason for rejection.
+ */
+export async function rejectSocialPost(
+  firestore: Firestore,
+  workspaceId: string,
+  companyId: string,
+  postId: string,
+  reason: string
+): Promise<void> {
+  const postRef = doc(firestore, `workspaces/${workspaceId}/companies/${companyId}/socialPosts`, postId);
+  const updateData = {
+    status: 'rejected',
+    rejectionReason: reason,
+    updatedAt: serverTimestamp(),
+  };
+  try {
+    await updateDoc(postRef, updateData);
+  } catch (error) {
+    console.error("Error rejecting social post: ", error);
+    errorEmitter.emit('permission-error', new FirestorePermissionError({
+      path: postRef.path,
+      operation: 'update',
+      requestResourceData: updateData,
+    }));
+    throw error;
+  }
+}
+
+
+/**
  * Uploads a file to Firebase Storage for a social post.
  * @param file - The file to upload.
  * @param workspaceId - The ID of the workspace.

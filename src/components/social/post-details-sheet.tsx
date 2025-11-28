@@ -23,7 +23,8 @@ import { DeleteDialog } from '../common/delete-dialog';
 import { useFirestore } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useToast } from '@/hooks/use-toast';
-import { deleteSocialPost } from '@/lib/social-posts';
+import { deleteSocialPost, approveSocialPost, rejectSocialPost } from '@/lib/social-posts';
+import { RejectPostDialog } from './reject-post-dialog';
 
 interface PostDetailsSheetProps {
   post: SocialPost | null;
@@ -51,12 +52,13 @@ const platformNames: Record<SocialPlatform, string> = {
 
 export function PostDetailsSheet({ post, open, onOpenChange, onPostChange }: PostDetailsSheetProps) {
   const firestore = useFirestore();
-  const { selectedWorkspace } = useSelectedWorkspace();
+  const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
   const { toast } = useToast();
 
   if (!post) return null;
 
   const canEdit = post.status === 'draft' || post.status === 'rejected';
+  const canApprove = isUserAdmin && post.status === 'pending_approval';
 
   const handleDelete = async () => {
     if (!firestore || !selectedWorkspace) return;
@@ -69,6 +71,30 @@ export function PostDetailsSheet({ post, open, onOpenChange, onPostChange }: Pos
         toast({ variant: 'destructive', title: 'Failed to delete post', description: error.message });
     }
   }
+
+  const handleApprove = async () => {
+    if (!firestore || !selectedWorkspace) return;
+    try {
+        await approveSocialPost(firestore, selectedWorkspace.id, post.companyId, post.id);
+        toast({ title: 'Post Approved', description: 'The post has been scheduled for publishing.'});
+        onOpenChange(false);
+        onPostChange();
+    } catch(error: any) {
+        toast({ variant: 'destructive', title: 'Approval Failed', description: error.message });
+    }
+  }
+  
+  const handleReject = async (reason: string) => {
+     if (!firestore || !selectedWorkspace) return;
+    try {
+        await rejectSocialPost(firestore, selectedWorkspace.id, post.companyId, post.id, reason);
+        toast({ title: 'Post Rejected', description: 'The creator will be notified.'});
+        onPostChange();
+    } catch(error: any) {
+        toast({ variant: 'destructive', title: 'Rejection Failed', description: error.message });
+    }
+  }
+
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -145,21 +171,32 @@ export function PostDetailsSheet({ post, open, onOpenChange, onPostChange }: Pos
             </div>
         </ScrollArea>
         <SheetFooter className='gap-2 sm:justify-between'>
-            <DeleteDialog onConfirm={handleDelete} itemName={`the post scheduled for ${format(new Date((post.scheduledAt as any).seconds * 1000), 'PPP')}`}>
+             <DeleteDialog onConfirm={handleDelete} itemName={`the post scheduled for ${format(new Date((post.scheduledAt as any).seconds * 1000), 'PPP')}`}>
                  <Button variant="destructive" className='w-full sm:w-auto'>Delete Post</Button>
             </DeleteDialog>
             <div className='flex gap-2 w-full sm:w-auto'>
-                <Button onClick={() => onOpenChange(false)} variant="outline" className='w-full sm:w-auto'>Close</Button>
-                <CreatePostDialog
-                    companyId={post.companyId}
-                    onPostCreated={() => {
-                        onOpenChange(false); // Close details sheet
-                        onPostChange(); // Refresh calendar
-                    }}
-                    postToEdit={post}
-                >
-                    <Button disabled={!canEdit} className='w-full sm:w-auto'>Edit Post</Button>
-                </CreatePostDialog>
+                {canApprove ? (
+                    <>
+                        <RejectPostDialog onConfirm={handleReject}>
+                             <Button variant="outline">Reject</Button>
+                        </RejectPostDialog>
+                        <Button onClick={handleApprove}>Approve & Schedule</Button>
+                    </>
+                ) : (
+                    <>
+                        <Button onClick={() => onOpenChange(false)} variant="outline" className='w-full sm:w-auto'>Close</Button>
+                        <CreatePostDialog
+                            companyId={post.companyId}
+                            onPostCreated={() => {
+                                onOpenChange(false); // Close details sheet
+                                onPostChange(); // Refresh calendar
+                            }}
+                            postToEdit={post}
+                        >
+                            <Button disabled={!canEdit} className='w-full sm:w-auto'>Edit Post</Button>
+                        </CreatePostDialog>
+                    </>
+                )}
             </div>
         </SheetFooter>
       </SheetContent>
