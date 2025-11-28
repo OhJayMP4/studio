@@ -910,6 +910,7 @@ exports.createFolder = functions.region("us-central1").https.onCall(async (data,
 });
 
 exports.backfillAllProjects = functions
+  .region("us-central1")
   .runWith({ timeoutSeconds: 540, memory: "1GB" })
   .https.onCall(async (data, context) => {
     try {
