@@ -257,7 +257,7 @@ service cloud.firestore {
          * @allow (get, list, create, update, delete) Authenticated workspace member can manage social posts.
          */
         match /socialPosts/{postId} {
-          allow get, list, create, update, delete: if isWorkspaceMember(workspaceId);
+          allow read, list, create, update, delete: if isWorkspaceMember(workspaceId);
         }
 
         /**
@@ -266,7 +266,7 @@ service cloud.firestore {
          * @allow (get, list, create, update, delete) Authenticated workspace admin can manage social accounts.
          */
         match /socialAccounts/{accountId} {
-          allow get, list, create, update, delete: if isWorkspaceAdmin(workspaceId);
+          allow read, list, create, update, delete: if isWorkspaceAdmin(workspaceId);
         }
       }
     }
