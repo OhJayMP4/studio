@@ -46,7 +46,7 @@ export function PostCard({ post, onPostSelect }: PostCardProps) {
                 ))}
             </div>
         </div>
-      <div className="flex items-center gap-2 mt-1 min-w-0">
+      <div className="flex items-center gap-2 mt-1">
         <TooltipProvider>
             <Tooltip>
                 <TooltipTrigger>
@@ -57,7 +57,7 @@ export function PostCard({ post, onPostSelect }: PostCardProps) {
                 </TooltipContent>
             </Tooltip>
         </TooltipProvider>
-        <p className="truncate flex-1 min-w-0">{post.captionDefault}</p>
+        <p className="truncate flex-shrink min-w-0">{post.captionDefault}</p>
       </div>
     </Card>
   );
