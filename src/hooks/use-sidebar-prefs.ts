@@ -9,7 +9,7 @@ import { useEffect, useMemo } from 'react';
 
 export const availableModules: (Omit<SidebarModule, 'order' | 'route' | 'hidden'> & {description: string})[] = [
     { id: 'files', label: 'Files', icon: 'Folder', description: 'Workspace filing system with folders.' },
-    // Future modules can be added here
+    { id: 'social-scheduler', label: 'Social Scheduler', icon: 'CalendarDays', description: 'Plan and schedule social media posts.' },
 ];
 
 const coreModuleIds = ['dashboard', 'companies', 'reporting', 'my-tasks'];
