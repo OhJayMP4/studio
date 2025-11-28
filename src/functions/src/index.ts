@@ -908,3 +908,61 @@ exports.createFolder = functions.region("us-central1").https.onCall(async (data,
         throw new functions.https.HttpsError('internal', 'Failed to create the folder in the database.');
     }
 });
+
+exports.backfillProjectWorkspaceIds = functions.https.onCall(async (data, context) => {
+    // 1. Auth Check: Ensure only the specified user can run this.
+    if (context.auth?.token.email !== 'marketing@saturnmanagement.co.za') {
+        throw new functions.https.HttpsError('permission-denied', 'You are not authorized to run this operation.');
+    }
+
+    console.log("Starting backfill process...");
+    let updatedCount = 0;
+    const batchPromises = [];
+
+    const workspacesSnap = await db.collection('workspaces').get();
+    
+    for (const workspaceDoc of workspacesSnap.docs) {
+        const workspaceId = workspaceDoc.id;
+        const companiesSnap = await workspaceDoc.ref.collection('companies').get();
+
+        for (const companyDoc of companiesSnap.docs) {
+            const companyId = companyDoc.id;
+            const projectsSnap = await companyDoc.ref.collection('projects').get();
+            
+            let batch = db.batch();
+            let batchSize = 0;
+
+            for (const projectDoc of projectsSnap.docs) {
+                const projectData = projectDoc.data();
+                
+                // Check if workspaceId or companyId is missing or incorrect
+                if (projectData.workspaceId !== workspaceId || projectData.companyId !== companyId) {
+                    console.log(`Updating project ${projectDoc.id} in workspace ${workspaceId}`);
+                    batch.update(projectDoc.ref, { 
+                        workspaceId: workspaceId,
+                        companyId: companyId 
+                    });
+                    updatedCount++;
+                    batchSize++;
+
+                    // Firestore batch writes are limited to 500 operations.
+                    if (batchSize >= 499) {
+                        console.log("Committing a batch of updates...");
+                        batchPromises.push(batch.commit());
+                        batch = db.batch(); // Start a new batch
+                        batchSize = 0;
+                    }
+                }
+            }
+            // Commit any remaining operations in the last batch for this company
+            if (batchSize > 0) {
+                 batchPromises.push(batch.commit());
+            }
+        }
+    }
+
+    await Promise.all(batchPromises);
+
+    console.log(`Backfill complete. Updated ${updatedCount} projects.`);
+    return { success: true, updatedCount: updatedCount };
+});
