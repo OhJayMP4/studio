@@ -43,9 +43,8 @@ export type Project = {
   workspaceId: string;
   totalSalesValue: number;
   createdBy: string;
-  status: 'active' | 'completed' | 'archived';
+  status: 'active' | 'completed';
   completedAt: any | null; // Firestore Timestamp
-  archivedAt: any | null; // Firestore Timestamp
 };
 
 export type Silo = {

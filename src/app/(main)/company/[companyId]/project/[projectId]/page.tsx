@@ -69,18 +69,6 @@ import { CSS } from '@dnd-kit/utilities';
 async function updateProjectProgress(firestore: any, workspaceId: string, companyId: string, projectId: string, toast?: any, isUserAdmin?: boolean) {
     const projectRef = doc(firestore, 'workspaces', workspaceId, 'companies', companyId, 'projects', projectId);
 
-    const handleArchive = async () => {
-        try {
-            await updateDoc(projectRef, {
-                status: 'archived',
-                archivedAt: serverTimestamp(),
-            });
-            toast({ title: "Project Archived", description: "The project has been moved to the archive." });
-        } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Error Archiving Project', description: error.message });
-        }
-    };
-
     // Perform reads outside of the transaction
     const silosCollection = collection(projectRef, 'silos');
     const silosSnapshot = await getDocs(silosCollection);
@@ -122,12 +110,11 @@ async function updateProjectProgress(firestore: any, workspaceId: string, compan
         if (newOverallProgress === 100 && projectData.status === 'active') {
             updates.status = 'completed';
             updates.completedAt = serverTimestamp();
-            if (toast && isUserAdmin) {
+            if (toast) {
                  setTimeout(() => {
                     toast({
                         title: 'Project Completed!',
                         description: 'This project has reached 100% completion.',
-                        action: <Button onClick={handleArchive}>Archive Now</Button>,
                         duration: 10000,
                     });
                 }, 500);

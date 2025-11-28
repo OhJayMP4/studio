@@ -22,7 +22,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Archive, MoreVertical, Trash2 } from "lucide-react";
+import { MoreVertical, Trash2 } from "lucide-react";
 import { EditProjectDialog } from "@/components/common/edit-project-dialog";
 import { DeleteDialog } from "@/components/common/delete-dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -92,27 +92,6 @@ function ProjectActions({ project, companyId }: { project: Project, companyId: s
         }
     };
     
-    const handleArchive = async () => {
-        if (!selectedWorkspace) return;
-        const projectRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', project.id);
-        try {
-            await updateDoc(projectRef, {
-                status: 'archived',
-                archivedAt: serverTimestamp(),
-            });
-            toast({
-                title: "Project Archived",
-                description: `"${project.name}" has been archived.`,
-            });
-        } catch (error: any) {
-            toast({
-                variant: 'destructive',
-                title: "Error Archiving Project",
-                description: error.message,
-            });
-        }
-    };
-
     return (
         <div className="absolute top-2 right-2">
             <DropdownMenu>
@@ -127,12 +106,6 @@ function ProjectActions({ project, companyId }: { project: Project, companyId: s
                             Edit
                         </DropdownMenuItem>
                     </EditProjectDialog>
-                    {project.status !== 'archived' && (
-                        <DropdownMenuItem onSelect={handleArchive} className="flex items-center gap-2">
-                            <Archive className="h-4 w-4" />
-                            Archive
-                        </DropdownMenuItem>
-                    )}
                     <DropdownMenuSeparator />
                     <DeleteDialog onConfirm={handleDelete} itemName={project.name}>
                         <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
@@ -149,7 +122,7 @@ function ProjectActions({ project, companyId }: { project: Project, companyId: s
 function ProjectsList({ companyId }: { companyId: string }) {
     const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
     const firestore = useFirestore();
-    const [filter, setFilter] = useState<'active' | 'completed' | 'archived'>('active');
+    const [filter, setFilter] = useState<'active' | 'completed'>('active');
     
     const projectsQuery = useMemoFirebase(() => {
         if (!selectedWorkspace) return null;
@@ -203,7 +176,6 @@ function ProjectsList({ companyId }: { companyId: string }) {
                 <TabsList>
                     <TabsTrigger value="active">Active</TabsTrigger>
                     <TabsTrigger value="completed">Completed</TabsTrigger>
-                    <TabsTrigger value="archived">Archived</TabsTrigger>
                 </TabsList>
                 {isUserAdmin && <AddProjectDialog companyId={companyId} />}
             </div>
@@ -227,9 +199,6 @@ function ProjectsList({ companyId }: { companyId: string }) {
                                     Deadline: {format(new Date(project.deadline), 'PPP')}
                                     {project.status === 'completed' && project.completedAt &&
                                         ` • Completed: ${format((project.completedAt as Timestamp).toDate(), 'PPP')}`
-                                    }
-                                     {project.status === 'archived' && project.archivedAt &&
-                                        ` • Archived: ${format((project.archivedAt as Timestamp).toDate(), 'PPP')}`
                                     }
                                 </CardDescription>
                             </CardHeader>

@@ -177,18 +177,13 @@
         },
         "status": {
           "type": "string",
-          "enum": ["active", "completed", "archived"],
+          "enum": ["active", "completed"],
           "description": "The current status of the project."
         },
         "completedAt": {
             "type": "string",
             "format": "date-time",
             "description": "Timestamp when the project was marked as completed."
-        },
-        "archivedAt": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when the project was archived."
         }
       },
       "required": [

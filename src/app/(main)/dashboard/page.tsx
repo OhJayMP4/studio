@@ -15,101 +15,6 @@ import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow, subDays } from "date-fns";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Archive } from "lucide-react";
-
-
-function ReadyToArchive() {
-  const { selectedWorkspace } = useSelectedWorkspace();
-  const firestore = useFirestore();
-  const { toast } = useToast();
-  const [archiveReadyProjects, setArchiveReadyProjects] = useState<Project[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    if (!selectedWorkspace?.id) {
-      setIsLoading(false);
-      return;
-    }
-    const fetchProjects = async () => {
-      setIsLoading(true);
-      try {
-        const thirtyDaysAgo = Timestamp.fromDate(subDays(new Date(), 30));
-        const projectsRef = collectionGroup(firestore, 'projects');
-        const q = query(
-          projectsRef,
-          where('workspaceId', '==', selectedWorkspace.id),
-          where('status', '==', 'completed'),
-          where('completedAt', '<=', thirtyDaysAgo)
-        );
-        const querySnapshot = await getDocs(q);
-        const projects = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
-        setArchiveReadyProjects(projects);
-      } catch (e) {
-        console.error("Failed to fetch projects ready for archive:", e);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchProjects();
-  }, [selectedWorkspace, firestore]);
-
-  const handleArchive = async (project: Project) => {
-    const projectRef = doc(firestore, 'workspaces', project.workspaceId, 'companies', project.companyId, 'projects', project.id);
-    try {
-      await updateDoc(projectRef, {
-        status: 'archived',
-        archivedAt: serverTimestamp()
-      });
-      toast({ title: 'Project Archived', description: `"${project.name}" has been moved to the archive.` });
-      setArchiveReadyProjects(prev => prev.filter(p => p.id !== project.id));
-    } catch (e: any) {
-      toast({ variant: 'destructive', title: 'Archive Failed', description: e.message });
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-6 w-1/2" />
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-8 w-full" />
-          <Skeleton className="h-8 w-full mt-2" />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (archiveReadyProjects.length === 0) {
-    return null; // Don't show the card if there's nothing to do
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Projects Ready to Archive</CardTitle>
-        <CardDescription>These completed projects can be archived to clean up your workspace.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {archiveReadyProjects.map(p => (
-          <div key={p.id} className="flex items-center justify-between p-2 rounded-md hover:bg-muted">
-            <div>
-              <Link href={`/company/${p.companyId}/project/${p.id}`} className="font-medium hover:underline">{p.name}</Link>
-              <p className="text-sm text-muted-foreground">
-                Completed {p.completedAt ? formatDistanceToNow((p.completedAt as Timestamp).toDate(), { addSuffix: true }) : ''}
-              </p>
-            </div>
-            <Button size="sm" variant="outline" onClick={() => handleArchive(p)}>
-              <Archive className="h-4 w-4 mr-2" />
-              Archive
-            </Button>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
 
 
 function DashboardView() {
@@ -214,8 +119,6 @@ function DashboardView() {
           </CardContent>
         </Card>
       </div>
-
-      <ReadyToArchive />
 
       <div className="grid gap-8 md:grid-cols-2">
         <ProjectStatusChart projects={projects} isLoading={isLoading} />
