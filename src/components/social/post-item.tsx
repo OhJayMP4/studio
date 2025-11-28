@@ -12,26 +12,30 @@ interface PostItemProps {
 }
 
 const statusColors: Record<SocialPostStatusType, string> = {
-    draft: 'bg-gray-400',
-    pending_approval: 'bg-orange-400',
-    approved: 'bg-blue-500',
-    scheduled: 'bg-blue-500',
-    published: 'bg-green-500',
-    failed: 'bg-red-500',
-    rejected: 'bg-red-500',
+  draft: 'bg-gray-400',
+  pending_approval: 'bg-orange-400',
+  approved: 'bg-blue-500',
+  scheduled: 'bg-blue-500',
+  published: 'bg-green-500',
+  failed: 'bg-red-500',
+  rejected: 'bg-red-500',
 };
 
 const platformIcons: Record<SocialPlatform, string> = {
-    facebook: 'F',
-    instagram: 'I',
-    linkedin: 'L',
-    x: 'X',
-}
+  facebook: 'F',
+  instagram: 'I',
+  linkedin: 'L',
+  x: 'X',
+};
 
 export function PostItem({ post, onPostSelect }: PostItemProps) {
-  const scheduledTime = format(new Date((post.scheduledAt as any).seconds * 1000), 'HH:mm');
+  const scheduledTime = format(
+    new Date((post.scheduledAt as any).seconds * 1000),
+    'HH:mm'
+  );
 
-  const MAX_LEN = 40;
+  // Make the preview very short in the calendar
+  const MAX_LEN = 25;
   const fullCaption = post.captionDefault || '';
   const previewCaption =
     fullCaption.length > MAX_LEN
@@ -40,16 +44,19 @@ export function PostItem({ post, onPostSelect }: PostItemProps) {
 
   return (
     <div
-      className="flex items-center gap-2 p-1.5 rounded-md hover:bg-accent cursor-pointer text-xs w-full overflow-hidden"
+      className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-accent cursor-pointer text-[11px] w-full overflow-hidden"
       onClick={() => onPostSelect(post)}
     >
-      {/* Left: Status dot and time */}
-      <div className="flex items-center gap-1.5 flex-shrink-0">
+      {/* Left: Status dot + time */}
+      <div className="flex items-center gap-1 flex-shrink-0">
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
               <div
-                className={cn('w-2 h-2 rounded-full flex-shrink-0', statusColors[post.status])}
+                className={cn(
+                  'w-1.5 h-1.5 rounded-full flex-shrink-0',
+                  statusColors[post.status]
+                )}
               />
             </TooltipTrigger>
             <TooltipContent>
@@ -57,10 +64,12 @@ export function PostItem({ post, onPostSelect }: PostItemProps) {
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        <span className="font-semibold text-muted-foreground">{scheduledTime}</span>
+        <span className="font-semibold text-muted-foreground">
+          {scheduledTime}
+        </span>
       </div>
 
-      {/* Middle: Truncated Caption */}
+      {/* Middle: Truncated caption */}
       <div className="flex-grow min-w-0">
         <p
           className="overflow-hidden whitespace-nowrap text-ellipsis"
@@ -70,12 +79,12 @@ export function PostItem({ post, onPostSelect }: PostItemProps) {
         </p>
       </div>
 
-      {/* Right: Platform letters */}
-      <div className="flex items-center gap-1 flex-shrink-0">
+      {/* Right: platforms */}
+      <div className="flex items-center gap-0.5 flex-shrink-0">
         {post.platforms.map((platform) => (
           <span
             key={platform}
-            className="text-muted-foreground font-bold text-[10px]"
+            className="text-muted-foreground font-bold text-[9px]"
           >
             {platformIcons[platform]}
           </span>
