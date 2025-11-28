@@ -250,6 +250,24 @@ service cloud.firestore {
             allow delete: if isWorkspaceMember(workspaceId);
           }
         }
+        
+        /**
+         * @description Rules for social media post documents within a company.
+         * @path /workspaces/{workspaceId}/companies/{companyId}/socialPosts/{postId}
+         * @allow (get, list, create, update, delete) Authenticated workspace member can manage social posts.
+         */
+        match /socialPosts/{postId} {
+          allow get, list, create, update, delete: if isWorkspaceMember(workspaceId);
+        }
+
+        /**
+         * @description Rules for connected social media accounts within a company.
+         * @path /workspaces/{workspaceId}/companies/{companyId}/socialAccounts/{accountId}
+         * @allow (get, list, create, update, delete) Authenticated workspace admin can manage social accounts.
+         */
+        match /socialAccounts/{accountId} {
+          allow get, list, create, update, delete: if isWorkspaceAdmin(workspaceId);
+        }
       }
     }
     
