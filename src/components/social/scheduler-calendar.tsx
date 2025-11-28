@@ -4,7 +4,7 @@ import React from 'react';
 import { DayPicker, DayProps } from 'react-day-picker';
 import { isSameDay } from 'date-fns';
 import { SocialPost } from '@/lib/types';
-import { PostItem } from './post-card';
+import { PostItem } from './post-item';
 import { ScrollArea } from '../ui/scroll-area';
 
 interface SchedulerCalendarProps {
@@ -22,7 +22,7 @@ function CustomDay(props: DayProps & { postsForDay: { posts: SocialPost[]; onPos
         >
             <span className="text-xs text-muted-foreground self-end pr-1">{props.date.getDate()}</span>
              <ScrollArea className="flex-1">
-                <div className="space-y-1 p-1">
+                <div className="flex flex-col gap-1 overflow-hidden p-1">
                     {posts.map((post: SocialPost) => (
                         <PostItem key={post.id} post={post} onPostSelect={onPostSelect} />
                     ))}

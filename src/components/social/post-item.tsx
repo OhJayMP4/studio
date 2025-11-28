@@ -30,44 +30,57 @@ const platformIcons: Record<SocialPlatform, string> = {
 
 export function PostItem({ post, onPostSelect }: PostItemProps) {
   const scheduledTime = format(new Date((post.scheduledAt as any).seconds * 1000), 'HH:mm');
-  
+
   const MAX_LEN = 40;
-  const fullCaption = post.captionDefault || "";
-  const previewCaption = fullCaption.length > MAX_LEN 
-    ? fullCaption.slice(0, MAX_LEN).trim() + "..." 
-    : fullCaption;
+  const fullCaption = post.captionDefault || '';
+  const previewCaption =
+    fullCaption.length > MAX_LEN
+      ? fullCaption.slice(0, MAX_LEN).trim() + '...'
+      : fullCaption;
 
   return (
-    <div 
-        className="flex items-center gap-2 p-1.5 rounded-md hover:bg-accent cursor-pointer text-xs w-full"
-        onClick={() => onPostSelect(post)}
+    <div
+      className="flex items-center gap-2 p-1.5 rounded-md hover:bg-accent cursor-pointer text-xs w-full overflow-hidden"
+      onClick={() => onPostSelect(post)}
     >
-        {/* Left: Status dot and time */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-            <TooltipProvider>
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                        <div className={cn('w-2 h-2 rounded-full flex-shrink-0', statusColors[post.status])} />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                        <p className="capitalize">{post.status.replace('_', ' ')}</p>
-                    </TooltipContent>
-                </Tooltip>
-            </TooltipProvider>
-            <span className="font-semibold text-muted-foreground">{scheduledTime}</span>
-        </div>
-        
-        {/* Middle: Truncated Caption */}
-        <p className="flex-grow truncate min-w-0" title={post.captionDefault}>
-            {previewCaption}
-        </p>
+      {/* Left: Status dot and time */}
+      <div className="flex items-center gap-1.5 flex-shrink-0">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div
+                className={cn('w-2 h-2 rounded-full flex-shrink-0', statusColors[post.status])}
+              />
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="capitalize">{post.status.replace('_', ' ')}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <span className="font-semibold text-muted-foreground">{scheduledTime}</span>
+      </div>
 
-        {/* Right: Platform letters */}
-        <div className="flex items-center gap-1 flex-shrink-0">
-            {post.platforms.map(platform => (
-                <span key={platform} className="text-muted-foreground font-bold text-[10px]">{platformIcons[platform]}</span>
-            ))}
-        </div>
+      {/* Middle: Truncated Caption */}
+      <div className="flex-grow min-w-0">
+        <p
+          className="overflow-hidden whitespace-nowrap text-ellipsis"
+          title={post.captionDefault}
+        >
+          {previewCaption}
+        </p>
+      </div>
+
+      {/* Right: Platform letters */}
+      <div className="flex items-center gap-1 flex-shrink-0">
+        {post.platforms.map((platform) => (
+          <span
+            key={platform}
+            className="text-muted-foreground font-bold text-[10px]"
+          >
+            {platformIcons[platform]}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
