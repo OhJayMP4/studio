@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -19,7 +20,8 @@ import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { CreatePostDialog } from './create-post-dialog';
 import { DeleteDialog } from '../common/delete-dialog';
-import { useFirestore, useSelectedWorkspace } from '@/firebase';
+import { useFirestore } from '@/firebase';
+import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useToast } from '@/hooks/use-toast';
 import { deleteSocialPost } from '@/lib/social-posts';
 
