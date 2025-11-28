@@ -9,6 +9,7 @@ import { PostItem } from './post-item';
 interface SchedulerCalendarProps {
   posts: SocialPost[];
   onPostSelect: (post: SocialPost) => void;
+  onMonthChange: (month: Date) => void;
 }
 
 // Max posts to show in month view before "+X more"
@@ -22,8 +23,10 @@ function CustomDay(
   const { postsForDay } = props;
   const { posts, onPostSelect } = postsForDay;
 
-  const visiblePosts = posts.slice(0, MAX_POSTS_PER_DAY);
-  const hiddenCount = posts.length - visiblePosts.length;
+  const sortedPosts = posts.sort((a, b) => (a.scheduledAt as any).seconds - (b.scheduledAt as any).seconds);
+
+  const visiblePosts = sortedPosts.slice(0, MAX_POSTS_PER_DAY);
+  const hiddenCount = sortedPosts.length - visiblePosts.length;
 
   return (
     <div className="h-24 w-full p-1 relative flex flex-col">
@@ -42,10 +45,13 @@ function CustomDay(
           <button
             type="button"
             className="text-[10px] text-muted-foreground mt-0.5 text-left hover:underline"
-            onClick={() => {
-              // If there are more posts than shown,
-              // just open the first one for now.
-              onPostSelect(posts[0]);
+            onClick={(e) => {
+              e.stopPropagation();
+              // When clicking "+X more", we can open the first post in the list
+              // A more advanced implementation might open a specific popover listing all posts for that day.
+              if(posts.length > 0) {
+                onPostSelect(posts[0]);
+              }
             }}
           >
             +{hiddenCount} more…
@@ -59,6 +65,7 @@ function CustomDay(
 export function SchedulerCalendar({
   posts,
   onPostSelect,
+  onMonthChange,
 }: SchedulerCalendarProps) {
   const components = {
     Day: (props: DayProps) => {
@@ -80,6 +87,7 @@ export function SchedulerCalendar({
       <DayPicker
         numberOfMonths={1}
         mode="single"
+        onMonthChange={onMonthChange}
         className="w-full"
         classNames={{
           months:

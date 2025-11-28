@@ -45,7 +45,10 @@ export function PostItem({ post, onPostSelect }: PostItemProps) {
   return (
     <div
       className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-accent cursor-pointer text-[11px] w-full overflow-hidden"
-      onClick={() => onPostSelect(post)}
+      onClick={(e) => {
+          e.stopPropagation();
+          onPostSelect(post)
+      }}
     >
       {/* Left: Status dot + time */}
       <div className="flex items-center gap-1 flex-shrink-0">
