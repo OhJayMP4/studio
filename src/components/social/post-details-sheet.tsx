@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -17,11 +18,13 @@ import { Separator } from '../ui/separator';
 import { Badge } from '../ui/badge';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
+import { CreatePostDialog } from './create-post-dialog';
 
 interface PostDetailsSheetProps {
   post: SocialPost | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onPostUpdated: () => void;
 }
 
 const statusColors: Record<SocialPostStatusType, string> = {
@@ -41,8 +44,10 @@ const platformNames: Record<SocialPlatform, string> = {
     x: 'X (Twitter)',
 }
 
-export function PostDetailsSheet({ post, open, onOpenChange }: PostDetailsSheetProps) {
+export function PostDetailsSheet({ post, open, onOpenChange, onPostUpdated }: PostDetailsSheetProps) {
   if (!post) return null;
+
+  const canEdit = post.status === 'draft' || post.status === 'rejected';
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -119,8 +124,17 @@ export function PostDetailsSheet({ post, open, onOpenChange }: PostDetailsSheetP
             </div>
         </ScrollArea>
         <SheetFooter>
-          <Button onClick={() => onOpenChange(false)}>Close</Button>
-          <Button variant="outline">Edit Post</Button>
+          <Button onClick={() => onOpenChange(false)} variant="outline">Close</Button>
+          <CreatePostDialog
+            companyId={post.companyId}
+            onPostCreated={() => {
+                onOpenChange(false); // Close details sheet
+                onPostUpdated(); // Refresh calendar
+            }}
+            postToEdit={post}
+          >
+            <Button disabled={!canEdit}>Edit Post</Button>
+          </CreatePostDialog>
         </SheetFooter>
       </SheetContent>
     </Sheet>

@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -17,6 +18,9 @@ import { useFirestore } from '@/firebase';
 import { listSocialPostsByCompany } from '@/lib/social-posts';
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
+import { CreatePostDialog } from '@/components/social/create-post-dialog';
+import { Button } from '@/components/ui/button';
+import { Plus } from 'lucide-react';
 
 function SocialSchedulerBreadcrumb() {
   return (
@@ -40,36 +44,45 @@ export default function SocialSchedulerPage() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [currentMonth, setCurrentMonth] = React.useState(new Date());
 
-  React.useEffect(() => {
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = React.useState(false);
+  const [selectedDateForCreate, setSelectedDateForCreate] = React.useState<Date | undefined>();
+
+  const fetchPosts = React.useCallback(async () => {
     if (!selectedCompanyId || !firestore || !selectedWorkspace) {
       setPosts([]);
       return;
     }
-
-    const fetchPosts = async () => {
-      setIsLoading(true);
-      const startDate = startOfMonth(currentMonth);
-      const endDate = endOfMonth(currentMonth);
-      try {
-        const fetchedPosts = await listSocialPostsByCompany(
-          firestore,
-          selectedCompanyId,
-          selectedWorkspace.id,
-          startDate,
-          endDate
-        );
-        setPosts(fetchedPosts);
-      } catch (error) {
-        console.error("Failed to fetch social posts:", error);
-        // Optionally, show a toast notification for the error
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchPosts();
+    setIsLoading(true);
+    const startDate = startOfMonth(currentMonth);
+    const endDate = endOfMonth(currentMonth);
+    try {
+      const fetchedPosts = await listSocialPostsByCompany(
+        firestore,
+        selectedCompanyId,
+        selectedWorkspace.id,
+        startDate,
+        endDate
+      );
+      setPosts(fetchedPosts);
+    } catch (error) {
+      console.error("Failed to fetch social posts:", error);
+    } finally {
+      setIsLoading(false);
+    }
   }, [selectedCompanyId, currentMonth, firestore, selectedWorkspace]);
 
+  React.useEffect(() => {
+    fetchPosts();
+  }, [fetchPosts]);
+
+  const handleDayClick = (date: Date) => {
+    setSelectedDateForCreate(date);
+    setIsCreateDialogOpen(true);
+  };
+
+  const handlePostCreated = () => {
+    fetchPosts(); // Refetch posts after one is created/updated
+  }
 
   if (!selectedWorkspace) {
     return (
@@ -89,6 +102,17 @@ export default function SocialSchedulerPage() {
       <SocialSchedulerBreadcrumb />
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-headline">Social Media Scheduler</h1>
+         {selectedCompanyId && (
+          <CreatePostDialog 
+            companyId={selectedCompanyId} 
+            onPostCreated={handlePostCreated}
+          >
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Post
+            </Button>
+          </CreatePostDialog>
+        )}
       </div>
       
       <Card>
@@ -96,7 +120,10 @@ export default function SocialSchedulerPage() {
             <div className="w-full md:w-1/3">
                 <CompanySelector
                     selectedCompanyId={selectedCompanyId}
-                    onCompanyChange={setSelectedCompanyId}
+                    onCompanyChange={(id) => {
+                      setSelectedCompanyId(id);
+                      setPosts([]); // Clear posts when company changes
+                    }}
                 />
             </div>
         </CardHeader>
@@ -119,6 +146,7 @@ export default function SocialSchedulerPage() {
                             posts={posts} 
                             onPostSelect={setSelectedPost}
                             onMonthChange={setCurrentMonth}
+                            onDayClick={handleDayClick}
                         />
                     )}
                 </>
@@ -130,6 +158,14 @@ export default function SocialSchedulerPage() {
         </CardContent>
       </Card>
       
+      {selectedCompanyId && <CreatePostDialog 
+        companyId={selectedCompanyId}
+        onPostCreated={handlePostCreated}
+        open={isCreateDialogOpen}
+        onOpenChange={setIsCreateDialogOpen}
+        selectedDate={selectedDateForCreate}
+      />}
+      
       <PostDetailsSheet 
         post={selectedPost}
         open={!!selectedPost}
@@ -138,6 +174,7 @@ export default function SocialSchedulerPage() {
                 setSelectedPost(null);
             }
         }}
+        onPostUpdated={handlePostCreated}
       />
     </div>
   );

@@ -1,15 +1,18 @@
+
 'use client';
 
 import React from 'react';
 import { DayPicker, DayProps } from 'react-day-picker';
-import { isSameDay } from 'date-fns';
+import { isSameDay, isToday } from 'date-fns';
 import { SocialPost } from '@/lib/types';
 import { PostItem } from './post-item';
+import { cn } from '@/lib/utils';
 
 interface SchedulerCalendarProps {
   posts: SocialPost[];
   onPostSelect: (post: SocialPost) => void;
   onMonthChange: (month: Date) => void;
+  onDayClick: (date: Date) => void;
 }
 
 // Max posts to show in month view before "+X more"
@@ -17,28 +20,49 @@ const MAX_POSTS_PER_DAY = 3;
 
 function CustomDay(
   props: DayProps & {
-    postsForDay: { posts: SocialPost[]; onPostSelect: (post: SocialPost) => void };
+    postsForDay: {
+      posts: SocialPost[];
+      onPostSelect: (post: SocialPost) => void;
+      onDayClick: (date: Date) => void;
+    };
   }
 ) {
-  const { postsForDay } = props;
-  const { posts, onPostSelect } = postsForDay;
+  const { postsForDay, date } = props;
+  const { posts, onPostSelect, onDayClick } = postsForDay;
 
-  const sortedPosts = posts.sort((a, b) => (a.scheduledAt as any).seconds - (b.scheduledAt as any).seconds);
+  const sortedPosts = posts.sort(
+    (a, b) => (a.scheduledAt as any).seconds - (b.scheduledAt as any).seconds
+  );
 
   const visiblePosts = sortedPosts.slice(0, MAX_POSTS_PER_DAY);
   const hiddenCount = sortedPosts.length - visiblePosts.length;
+  
+  const handleDayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Check if the click was on a post item. If so, let the post item handle it.
+    if ((e.target as HTMLElement).closest('[data-post-item]')) {
+      return;
+    }
+    // Otherwise, it was a click on the day cell itself.
+    onDayClick(date);
+  };
+
 
   return (
-    <div className="h-24 w-full p-1 relative flex flex-col">
+    <div 
+        className="h-28 w-full p-1 relative flex flex-col cursor-pointer"
+        onClick={handleDayClick}
+    >
       {/* Day number */}
-      <span className="text-[11px] text-muted-foreground self-end pr-1">
+      <span className={cn("text-xs self-end pr-1", { "text-primary font-bold": isToday(date) })}>
         {props.date.getDate()}
       </span>
 
       {/* Posts */}
       <div className="flex-1 flex flex-col gap-0.5 overflow-hidden">
         {visiblePosts.map((post: SocialPost) => (
-          <PostItem key={post.id} post={post} onPostSelect={onPostSelect} />
+          <div key={post.id} data-post-item="true">
+            <PostItem post={post} onPostSelect={onPostSelect} />
+          </div>
         ))}
 
         {hiddenCount > 0 && (
@@ -46,12 +70,8 @@ function CustomDay(
             type="button"
             className="text-[10px] text-muted-foreground mt-0.5 text-left hover:underline"
             onClick={(e) => {
-              e.stopPropagation();
-              // When clicking "+X more", we can open the first post in the list
-              // A more advanced implementation might open a specific popover listing all posts for that day.
-              if(posts.length > 0) {
-                onPostSelect(posts[0]);
-              }
+                e.stopPropagation();
+                onDayClick(date);
             }}
           >
             +{hiddenCount} more…
@@ -66,6 +86,7 @@ export function SchedulerCalendar({
   posts,
   onPostSelect,
   onMonthChange,
+  onDayClick
 }: SchedulerCalendarProps) {
   const components = {
     Day: (props: DayProps) => {
@@ -76,7 +97,7 @@ export function SchedulerCalendar({
       return (
         <CustomDay
           {...props}
-          postsForDay={{ posts: postsForDay, onPostSelect }}
+          postsForDay={{ posts: postsForDay, onPostSelect, onDayClick }}
         />
       );
     },
@@ -99,7 +120,7 @@ export function SchedulerCalendar({
             'text-muted-foreground rounded-md w-full font-normal text-sm',
           row: 'flex w-full mt-2',
           cell:
-            'h-24 text-center text-sm p-0 relative [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20 w-full border',
+            'h-28 text-center text-sm p-0 relative focus-within:relative focus-within:z-20 w-full border',
         }}
         components={components}
       />

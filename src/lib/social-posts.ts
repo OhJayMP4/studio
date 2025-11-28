@@ -13,18 +13,21 @@ import {
     serverTimestamp,
     Firestore,
 } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import type { SocialPost, SocialPostStatusType } from './types';
 import { errorEmitter, FirestorePermissionError } from '@/firebase';
+
+type PostData = Omit<SocialPost, 'id' | 'createdAt' | 'updatedAt'>;
 
 /**
  * Creates a new social media post in Firestore.
  * @param firestore - The Firestore instance.
- * @param postData - The data for the new post, without the ID and timestamps.
+ * @param postData - The data for the new post.
  */
-export function createSocialPost(
+export async function createSocialPost(
     firestore: Firestore,
-    postData: Omit<SocialPost, 'id' | 'createdAt' | 'updatedAt'>
-) {
+    postData: PostData
+): Promise<void> {
     const postWithTimestamps = {
         ...postData,
         createdAt: serverTimestamp(),
@@ -36,57 +39,86 @@ export function createSocialPost(
         `workspaces/${postData.workspaceId}/companies/${postData.companyId}/socialPosts`
     );
 
-    addDoc(socialPostsRef, postWithTimestamps).catch(error => {
+    try {
+        await addDoc(socialPostsRef, postWithTimestamps);
+    } catch(error) {
         console.error("Error creating social post: ", error);
         errorEmitter.emit('permission-error', new FirestorePermissionError({
             path: socialPostsRef.path,
             operation: 'create',
             requestResourceData: postWithTimestamps,
         }));
-    });
+        throw error; // re-throw to be caught by the calling component
+    };
 }
 
 /**
- * Updates the status of a social media post.
+ * Updates an existing social media post in Firestore.
  * @param firestore - The Firestore instance.
- * @param workspaceId - The ID of the workspace.
- * @param companyId - The ID of the company.
  * @param postId - The ID of the post to update.
- * @param status - The new status of the post.
- * @param rejectionReason - Optional reason for rejection.
+ * @param postData - The data to update.
  */
-export function updateSocialPostStatus(
+export async function updateSocialPost(
     firestore: Firestore,
-    workspaceId: string,
-    companyId: string,
     postId: string,
-    status: SocialPostStatusType,
-    rejectionReason?: string
-) {
-    const postRef = doc(
-        firestore,
-        `workspaces/${workspaceId}/companies/${companyId}/socialPosts`,
-        postId
-    );
-
-    const updateData: { status: SocialPostStatusType; updatedAt: any; rejectionReason?: string } = {
-        status,
+    postData: PostData
+): Promise<void> {
+    const postWithTimestamp = {
+        ...postData,
         updatedAt: serverTimestamp(),
     };
 
-    if (status === 'rejected' && rejectionReason) {
-        updateData.rejectionReason = rejectionReason;
-    }
+    const postRef = doc(
+        firestore,
+        `workspaces/${postData.workspaceId}/companies/${postData.companyId}/socialPosts`,
+        postId
+    );
 
-    updateDoc(postRef, updateData).catch(error => {
-        console.error("Error updating social post status: ", error);
+    try {
+        await updateDoc(postRef, postWithTimestamp);
+    } catch(error) {
+        console.error("Error updating social post: ", error);
         errorEmitter.emit('permission-error', new FirestorePermissionError({
             path: postRef.path,
             operation: 'update',
-            requestResourceData: updateData,
+            requestResourceData: postWithTimestamp,
         }));
-    });
+        throw error;
+    }
 }
+
+/**
+ * Uploads a file to Firebase Storage for a social post.
+ * @param file - The file to upload.
+ * @param workspaceId - The ID of the workspace.
+ * @param companyId - The ID of the company.
+ * @returns A promise that resolves to the download URL and file name.
+ */
+export async function uploadPostMedia(
+    file: File,
+    workspaceId: string,
+    companyId: string
+): Promise<{ fileUrl: string; fileName: string }> {
+    const storage = getStorage();
+    const uniqueFileName = `${Date.now()}-${file.name}`;
+    const storageRef = ref(storage, `workspaces/${workspaceId}/companies/${companyId}/socialMedia/${uniqueFileName}`);
+    
+    await uploadBytes(storageRef, file);
+    const downloadURL = await getDownloadURL(storageRef);
+
+    return { fileUrl: downloadURL, fileName: file.name };
+}
+
+/**
+ * Deletes a media file from Firebase Storage.
+ * @param fileUrl - The URL of the file to delete.
+ */
+export async function deletePostMedia(fileUrl: string): Promise<void> {
+    const storage = getStorage();
+    const fileRef = ref(storage, fileUrl);
+    await deleteObject(fileRef);
+}
+
 
 /**
  * Lists social media posts for a company within a specific date range.

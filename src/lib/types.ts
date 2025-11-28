@@ -1,4 +1,5 @@
 
+
 export type UserProfile = {
   uid: string;
   name: string | null;
@@ -206,6 +207,7 @@ export type SocialPost = {
     captionX?: string;
     media: {
         fileUrl: string;
+        fileName: string;
         fileType: 'image' | 'video';
     }[];
     status: SocialPostStatusType;
