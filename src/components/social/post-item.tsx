@@ -53,7 +53,7 @@ export function PostItem({ post, onPostSelect }: PostItemProps) {
 
         <span className="font-semibold text-muted-foreground">{scheduledTime}</span>
         
-        <p className="flex-1 min-w-0">{truncatedCaption}</p>
+        <p className="flex-1 min-w-0" title={post.captionDefault}>{truncatedCaption}</p>
 
         <div className="flex items-center gap-1 flex-shrink-0">
             {post.platforms.map(platform => (
