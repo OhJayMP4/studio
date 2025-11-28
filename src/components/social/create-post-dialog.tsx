@@ -163,20 +163,20 @@ export function CreatePostDialog({
     const [hours, minutes] = data.scheduledAtTime.split(':').map(Number);
     const scheduledAtWithTime = setMinutes(setHours(data.scheduledAtDate, hours), minutes);
 
-    const postData = {
+    const postData: Omit<SocialPost, 'id' | 'createdAt' | 'updatedAt'> = {
         companyId,
         workspaceId: selectedWorkspace.id,
         createdByUserId: user.uid,
         scheduledAt: Timestamp.fromDate(scheduledAtWithTime),
         platforms: data.platforms as SocialPlatform[],
         captionDefault: data.captionDefault,
-        captionFacebook: data.captionFacebook,
-        captionInstagram: data.captionInstagram,
-        captionLinkedin: data.captionLinkedin,
-        captionX: data.captionX,
+        captionFacebook: data.captionFacebook || '',
+        captionInstagram: data.captionInstagram || '',
+        captionLinkedin: data.captionLinkedin || '',
+        captionX: data.captionX || '',
         media: data.media || [],
         status: status,
-        rejectionReason: postToEdit?.status === 'rejected' ? '' : postToEdit?.rejectionReason,
+        rejectionReason: postToEdit?.status === 'rejected' ? '' : (postToEdit?.rejectionReason || null),
     };
     
     try {
@@ -324,3 +324,5 @@ export function CreatePostDialog({
     </Dialog>
   );
 }
+
+    
