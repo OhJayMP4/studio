@@ -1019,4 +1019,39 @@ exports.backfillAllProjects = functions
     }
   });
 
+exports.publishSocialPosts = functions.pubsub.schedule('every 1 minutes').onRun(async (context) => {
+    console.log('publishSocialPosts: function started at', new Date().toISOString());
+
+    const now = admin.firestore.Timestamp.now();
     
+    console.log('publishSocialPosts: query for socialPosts with status in [approved, scheduled] and scheduledAt <= now');
+    const postsToPublishQuery = db.collectionGroup('socialPosts')
+        .where('status', 'in', ['approved', 'scheduled'])
+        .where('scheduledAt', '<=', now);
+        
+    try {
+        const snapshot = await postsToPublishQuery.get();
+        console.log('publishSocialPosts: found', snapshot.size, 'posts');
+
+        if (snapshot.empty) {
+            return null;
+        }
+
+        const batch = db.batch();
+        
+        snapshot.forEach(doc => {
+            const post = doc.data();
+            console.log('publishSocialPosts: will update doc', doc.ref.path, doc.data());
+            console.log(`Pretend publishing post ${doc.id} to platforms: ${post.platforms.join(', ')}`);
+            batch.update(doc.ref, { status: 'published', updatedAt: now });
+        });
+        
+        await batch.commit();
+        console.log(`Successfully published ${snapshot.size} posts.`);
+        return null;
+
+    } catch (error) {
+        console.error('Error publishing social posts:', error);
+        return null;
+    }
+});

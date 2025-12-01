@@ -804,4 +804,31 @@ exports.backfillProjectWorkspaceIds = functions.https.onCall(async (data, contex
     console.log(`Backfill complete. Updated ${updatedCount} projects.`);
     return { success: true, updatedCount: updatedCount };
 });
+exports.publishSocialPosts = functions.pubsub.schedule('every 1 minutes').onRun(async (context) => {
+    console.log('Running social post publisher...');
+    const now = admin.firestore.Timestamp.now();
+    const postsToPublishQuery = db.collectionGroup('socialPosts')
+        .where('status', 'in', ['approved', 'scheduled'])
+        .where('scheduledAt', '<=', now);
+    try {
+        const snapshot = await postsToPublishQuery.get();
+        if (snapshot.empty) {
+            console.log('No posts to publish at this time.');
+            return null;
+        }
+        const batch = db.batch();
+        snapshot.forEach(doc => {
+            const post = doc.data();
+            console.log(`Pretend publishing post ${doc.id} to platforms: ${post.platforms.join(', ')}`);
+            batch.update(doc.ref, { status: 'published', updatedAt: now });
+        });
+        await batch.commit();
+        console.log(`Successfully published ${snapshot.size} posts.`);
+        return null;
+    }
+    catch (error) {
+        console.error('Error publishing social posts:', error);
+        return null;
+    }
+});
 //# sourceMappingURL=index.js.map
