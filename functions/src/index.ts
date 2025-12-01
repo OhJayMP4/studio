@@ -191,7 +191,7 @@ exports.onSaleCreate = functions.firestore
 exports.onTaskWrite = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
     .onWrite(async (change, context) => {
-        const { workspaceId, companyId, projectId, siloId } = context.params;
+        const { workspaceId, companyId, projectId, siloId, taskId } = context.params;
         
         const beforeData = change.before.data();
         const afterData = change.after.data();
@@ -909,93 +909,221 @@ exports.createFolder = functions.region("us-central1").https.onCall(async (data,
     }
 });
 
-exports.backfillProjectWorkspaceIds = functions.https.onCall(async (data, context) => {
-    // 1. Auth Check: Ensure only the specified user can run this.
-    if (context.auth?.token.email !== 'marketing@saturnmanagement.co.za') {
-        throw new functions.https.HttpsError('permission-denied', 'You are not authorized to run this operation.');
-    }
+exports.backfillAllProjects = functions
+  .region("us-central1")
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .https.onCall(async (data, context) => {
+    try {
+      // 1) Auth check
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+          "unauthenticated",
+          "You must be signed in to run this migration."
+        );
+      }
 
-    console.log("Starting backfill process...");
-    let updatedCount = 0;
-    const batchPromises: Promise<any>[] = [];
+      // 2) Restrict who can run it
+      const callerEmail = context.auth.token.email;
+      const allowedEmails = [
+        "marketing@saturnmanagement.co.za",
+        // add more admin emails if needed
+      ];
+      if (!allowedEmails.includes(callerEmail as string)) {
+        throw new functions.https.HttpsError(
+          "permission-denied",
+          `User ${callerEmail} is not allowed to run this migration.`
+        );
+      }
 
-    const workspacesSnap = await db.collection('workspaces').get();
-    
-    for (const workspaceDoc of workspacesSnap.docs) {
-        const workspaceId = workspaceDoc.id;
-        const companiesSnap = await workspaceDoc.ref.collection('companies').get();
+      const db = admin.firestore();
 
-        for (const companyDoc of companiesSnap.docs) {
-            const companyId = companyDoc.id;
-            const projectsSnap = await companyDoc.ref.collection('projects').get();
-            
-            let batch = db.batch();
-            let batchSize = 0;
+      let updatedCount = 0;
+      let strayCount = 0;
+      let deletedCount = 0;
 
-            for (const projectDoc of projectsSnap.docs) {
-                const projectData = projectDoc.data();
-                
-                // Check if workspaceId or companyId is missing or incorrect
-                if (projectData.workspaceId !== workspaceId || projectData.companyId !== companyId) {
-                    console.log(`Updating project ${projectDoc.id} in workspace ${workspaceId}`);
-                    batch.update(projectDoc.ref, { 
-                        workspaceId: workspaceId,
-                        companyId: companyId 
-                    });
-                    updatedCount++;
-                    batchSize++;
+      console.log("Starting backfillAllProjects migration...");
 
-                    // Firestore batch writes are limited to 500 operations.
-                    if (batchSize >= 499) {
-                        console.log("Committing a batch of updates...");
-                        batchPromises.push(batch.commit());
-                        batch = db.batch(); // Start a new batch
-                        batchSize = 0;
-                    }
-                }
-            }
-            // Commit any remaining operations in the last batch for this company
-            if (batchSize > 0) {
-                 batchPromises.push(batch.commit());
-            }
+      // 3) Grab ALL 'projects' documents in the database
+      const snap = await db.collectionGroup("projects").get();
+      console.log(`Found ${snap.size} project documents in collectionGroup.`);
+
+      for (const docSnap of snap.docs) {
+        const data = docSnap.data() || {};
+        const path = docSnap.ref.path;
+        const segments = path.split("/");
+
+        // Expecting: workspaces/{wsId}/companies/{companyId}/projects/{projectId}
+        const isNestedProject =
+          segments.length >= 6 &&
+          segments[0] === "workspaces" &&
+          segments[2] === "companies" &&
+          segments[4] === "projects";
+
+        if (isNestedProject) {
+          const workspaceId = segments[1];
+          const companyId = segments[3];
+
+          const needsWorkspaceFix =
+            !data.workspaceId || data.workspaceId !== workspaceId;
+          const needsCompanyFix =
+            !data.companyId || data.companyId !== companyId;
+
+          if (needsWorkspaceFix || needsCompanyFix) {
+            console.log(
+              `Updating nested project ${path} (workspaceId=${workspaceId}, companyId=${companyId})`
+            );
+            const updates: any = {};
+            if (needsWorkspaceFix) updates.workspaceId = workspaceId;
+            if (needsCompanyFix) updates.companyId = companyId;
+
+            await docSnap.ref.update(updates);
+            updatedCount++;
+          }
+        } else {
+          // This is a 'projects' doc OUTSIDE the expected path
+          strayCount++;
+          console.warn(
+            `Stray project document outside expected structure: ${path}`
+          );
+
+          // OPTION A: Just log them, do not delete:
+          // continue;
+
+          // OPTION B (stricter): delete them because they are invalid / test data:
+          // await docSnap.ref.delete();
+          // deletedCount++;
         }
+      }
+
+      console.log(
+        `backfillAllProjects completed. updated=${updatedCount}, stray=${strayCount}, deleted=${deletedCount}`
+      );
+
+      return {
+        success: true,
+        updatedCount,
+        strayCount,
+        deletedCount,
+      };
+    } catch (err: any) {
+      console.error("Migration failed in backfillAllProjects:", err);
+
+      if (err instanceof functions.https.HttpsError) {
+        throw err;
+      }
+
+      throw new functions.https.HttpsError(
+        "internal",
+        err?.message || "Unknown internal error during backfillAllProjects."
+      );
     }
-
-    await Promise.all(batchPromises);
-
-    console.log(`Backfill complete. Updated ${updatedCount} projects.`);
-    return { success: true, updatedCount: updatedCount };
-});
+  });
 
 exports.publishSocialPosts = functions.pubsub.schedule('every 1 minutes').onRun(async (context) => {
-    console.log('Running social post publisher...');
+    console.log('publishSocialPosts: function started at', new Date().toISOString());
+
+    const now = new Date();
     
-    const now = admin.firestore.Timestamp.now();
-    const postsToPublishQuery = db.collectionGroup('socialPosts')
-        .where('status', 'in', ['approved', 'scheduled'])
-        .where('scheduledAt', '<=', now);
-        
-    try {
-        const snapshot = await postsToPublishQuery.get();
-        if (snapshot.empty) {
-            console.log('No posts to publish at this time.');
-            return null;
-        }
+    // Only filter by scheduledAt in Firestore
+    const snapshot = await db
+      .collectionGroup('socialPosts')
+      .where('scheduledAt', '<=', now)
+      .get();
 
-        const batch = db.batch();
-        
-        snapshot.forEach(doc => {
-            const post = doc.data();
-            console.log(`Pretend publishing post ${doc.id} to platforms: ${post.platforms.join(', ')}`);
-            batch.update(doc.ref, { status: 'published', updatedAt: now });
-        });
-        
-        await batch.commit();
-        console.log(`Successfully published ${snapshot.size} posts.`);
-        return null;
+    console.log('publishSocialPosts: found (by date only)', snapshot.size, 'posts');
 
-    } catch (error) {
-        console.error('Error publishing social posts:', error);
+    if (snapshot.empty) {
         return null;
     }
+
+    const batch = db.batch();
+    const updateTimestamp = admin.firestore.FieldValue.serverTimestamp();
+
+    snapshot.forEach(doc => {
+      const post = doc.data() as any;
+
+      // Only process posts that are approved or scheduled
+      if (!['approved', 'scheduled'].includes(post.status)) {
+        return;
+      }
+
+      console.log(
+        'publishSocialPosts: will publish doc',
+        doc.ref.path,
+        'status=',
+        post.status,
+        'scheduledAt=',
+        post.scheduledAt?.toDate?.().toISOString?.()
+      );
+
+      // Mock publish
+      console.log(
+        `Pretend publishing post ${doc.id} to platforms: ${(post.platforms || []).join(', ')}`
+      );
+
+      batch.update(doc.ref, {
+        status: 'published',
+        updatedAt: updateTimestamp,
+      });
+    });
+    
+    await batch.commit();
+    console.log('publishSocialPosts: batch commit complete');
+    
+    return null;
+});
+
+exports.setCompanyFacebookConfig = functions.https.onCall(async (data, context) => {
+  // 1. Auth Check
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'You must be signed in to perform this action.');
+  }
+  const uid = context.auth.uid;
+  const { workspaceId, companyId, pageId, pageName, pageAccessToken } = data;
+
+  // 2. Input Validation
+  if (!workspaceId || !companyId || !pageId || !pageName || !pageAccessToken) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing required parameters for Facebook configuration.');
+  }
+
+  // 3. Permission Check
+  const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+  try {
+    const workspaceSnap = await workspaceRef.get();
+    if (!workspaceSnap.exists) {
+      throw new functions.https.HttpsError('not-found', 'Workspace not found.');
+    }
+    const workspaceData = workspaceSnap.data();
+    const userRole = workspaceData?.users?.[uid]?.role;
+
+    if (userRole !== 'admin') {
+      throw new functions.https.HttpsError('permission-denied', 'You must be a workspace admin to configure social media integrations.');
+    }
+  } catch (error) {
+    console.error("Permission check failed:", error);
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError('internal', 'An error occurred while verifying your permissions.');
+  }
+
+  // 4. Update Firestore Document
+  const companyRef = db.doc(`workspaces/${workspaceId}/companies/${companyId}`);
+  const facebookConfig = {
+    pageId,
+    pageName,
+    pageAccessToken,
+    connectedBy: uid,
+    connectedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  try {
+    await companyRef.update({
+      'socialIntegration.facebook': facebookConfig,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error("Error updating company document with Facebook config:", error);
+    throw new functions.https.HttpsError('internal', 'Failed to save the Facebook configuration to the company.');
+  }
 });
