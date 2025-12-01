@@ -1019,39 +1019,183 @@ exports.backfillAllProjects = functions
     }
   });
 
-exports.publishSocialPosts = functions.pubsub.schedule('every 1 minutes').onRun(async (context) => {
-    console.log('publishSocialPosts: function started at', new Date().toISOString());
 
-    const now = admin.firestore.Timestamp.now();
-    
-    console.log('publishSocialPosts: query for socialPosts with status in [approved, scheduled] and scheduledAt <= now');
-    const postsToPublishQuery = db.collectionGroup('socialPosts')
-        .where('status', 'in', ['approved', 'scheduled'])
-        .where('scheduledAt', '<=', now);
-        
+async function publishToFacebook(postDoc: admin.firestore.DocumentSnapshot): Promise<'success' | 'skip' | 'failed'> {
+  const post = postDoc.data() as any;
+  const pathSegments = postDoc.ref.path.split('/');
+  // path: workspaces/{workspaceId}/companies/{companyId}/socialPosts/{postId}
+  const workspaceId = pathSegments[1];
+  const companyId   = pathSegments[3];
+
+  const companyRef = db.doc(`workspaces/${workspaceId}/companies/${companyId}`);
+  const companySnap = await companyRef.get();
+  if (!companySnap.exists) {
+    console.warn('publishToFacebook: company not found for', companyRef.path);
+    return 'failed';
+  }
+
+  const companyData = companySnap.data() as any;
+  const fbConfig = companyData?.socialIntegration?.facebook;
+
+  if (!fbConfig?.pageId || !fbConfig?.pageAccessToken) {
+    console.log('publishToFacebook: no facebook config, skipping', companyRef.path);
+    return 'skip';
+  }
+
+  // For now, only publish caption text (no media)
+  const message: string = post.captionDefault || '';
+  if (!message.trim()) {
+    console.log('publishToFacebook: empty message, skipping', postDoc.ref.path);
+    return 'skip';
+  }
+
+  const url = `https://graph.facebook.com/v19.0/${fbConfig.pageId}/feed`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        access_token: fbConfig.pageAccessToken,
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error('publishToFacebook: Facebook API error', res.status, text);
+      return 'failed';
+    }
+
+    const data = await res.json();
+    console.log('publishToFacebook: success, facebook response:', data);
+    return 'success';
+  } catch (err) {
+    console.error('publishToFacebook: network error', err);
+    return 'failed';
+  }
+}
+
+exports.publishSocialPosts = functions.pubsub
+  .schedule('every 1 minutes')
+  .onRun(async (context) => {
     try {
-        const snapshot = await postsToPublishQuery.get();
-        console.log('publishSocialPosts: found', snapshot.size, 'posts');
+      console.log('publishSocialPosts: function started at', new Date().toISOString());
+      const now = new Date();
 
-        if (snapshot.empty) {
-            return null;
+      const snapshot = await db
+        .collectionGroup('socialPosts')
+        .where('scheduledAt', '<=', now)
+        .get();
+
+      console.log('publishSocialPosts: found (by date only)', snapshot.size, 'posts');
+
+      if (snapshot.empty) {
+        return null;
+      }
+
+      const batch = db.batch();
+      const updateTimestamp = admin.firestore.FieldValue.serverTimestamp();
+
+      for (const doc of snapshot.docs) {
+        const post = doc.data() as any;
+
+        if (!['approved', 'scheduled'].includes(post.status)) {
+          continue;
         }
 
-        const batch = db.batch();
-        
-        snapshot.forEach(doc => {
-            const post = doc.data();
-            console.log('publishSocialPosts: will update doc', doc.ref.path, doc.data());
-            console.log(`Pretend publishing post ${doc.id} to platforms: ${post.platforms.join(', ')}`);
-            batch.update(doc.ref, { status: 'published', updatedAt: now });
-        });
-        
-        await batch.commit();
-        console.log(`Successfully published ${snapshot.size} posts.`);
-        return null;
+        const platforms: string[] = post.platforms || [];
+        let anyFailed = false;
+        let anySuccess = false;
 
+        if (platforms.includes('facebook')) {
+          const result = await publishToFacebook(doc);
+          if (result === 'failed') anyFailed = true;
+          if (result === 'success') anySuccess = true;
+        }
+
+        // Later: instagram, linkedin, etc
+
+        let newStatus = post.status;
+        let errorMessage = null;
+
+        if (anyFailed) {
+          newStatus = 'failed';
+          errorMessage = 'One or more platforms failed to publish.';
+        } else if (anySuccess) {
+          newStatus = 'published';
+        }
+
+        if (newStatus !== post.status) {
+          batch.update(doc.ref, {
+            status: newStatus,
+            errorMessage,
+            updatedAt: updateTimestamp,
+          });
+        }
+      }
+
+      await batch.commit();
+      console.log('publishSocialPosts: batch commit complete.');
+      return null;
     } catch (error) {
-        console.error('Error publishing social posts:', error);
-        return null;
+      console.error('Error publishing social posts:', error);
+      return null;
     }
+  });
+
+
+exports.setCompanyFacebookConfig = functions.https.onCall(async (data, context) => {
+  // 1. Auth Check
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'You must be signed in to perform this action.');
+  }
+  const uid = context.auth.uid;
+  const { workspaceId, companyId, pageId, pageName, pageAccessToken } = data;
+
+  // 2. Input Validation
+  if (!workspaceId || !companyId || !pageId || !pageName || !pageAccessToken) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing required parameters for Facebook configuration.');
+  }
+
+  // 3. Permission Check
+  const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+  try {
+    const workspaceSnap = await workspaceRef.get();
+    if (!workspaceSnap.exists) {
+      throw new functions.https.HttpsError('not-found', 'Workspace not found.');
+    }
+    const workspaceData = workspaceSnap.data();
+    const userRole = workspaceData?.users?.[uid]?.role;
+
+    if (userRole !== 'admin') {
+      throw new functions.https.HttpsError('permission-denied', 'You must be a workspace admin to configure social media integrations.');
+    }
+  } catch (error) {
+    console.error("Permission check failed:", error);
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError('internal', 'An error occurred while verifying your permissions.');
+  }
+
+  // 4. Update Firestore Document
+  const companyRef = db.doc(`workspaces/${workspaceId}/companies/${companyId}`);
+  const facebookConfig = {
+    pageId,
+    pageName,
+    pageAccessToken,
+    connectedBy: uid,
+    connectedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  try {
+    await companyRef.update({
+      'socialIntegration.facebook': facebookConfig,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error("Error updating company document with Facebook config:", error);
+    throw new functions.https.HttpsError('internal', 'Failed to save the Facebook configuration to the company.');
+  }
 });

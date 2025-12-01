@@ -1,3 +1,4 @@
+
 'use client';
 
 import {
@@ -17,7 +18,7 @@ import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'fire
 import type { SocialPost, SocialPostStatusType } from './types';
 import { errorEmitter, FirestorePermissionError } from '@/firebase';
 
-type PostData = Omit<SocialPost, 'id' | 'createdAt' | 'updatedAt'>;
+type PostData = Omit<SocialPost, 'id' | 'createdAt' | 'updatedAt' | 'errorMessage'>;
 
 /**
  * Creates a new social media post in Firestore.
@@ -33,6 +34,7 @@ export async function createSocialPost(
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         rejectionReason: postData.rejectionReason || null,
+        errorMessage: null,
     };
     
     const socialPostsRef = collection(
@@ -68,6 +70,7 @@ export async function updateSocialPost(
         ...postData,
         updatedAt: serverTimestamp(),
         rejectionReason: postData.rejectionReason || null,
+        errorMessage: null, // Clear error on update
     };
 
     const postRef = doc(
@@ -106,11 +109,19 @@ export async function deleteSocialPost(
     if (post.media && post.media.length > 0) {
         const storage = getStorage();
         const deletePromises = post.media.map(mediaItem => {
-            const fileRef = ref(storage, mediaItem.fileUrl);
-            return deleteObject(fileRef).catch(error => {
-                // Log error if file deletion fails, but don't block Firestore deletion
-                console.warn(`Failed to delete media file: ${mediaItem.fileUrl}`, error);
-            });
+            try {
+                // Ensure the URL is a gs:// or https:// URL from Firebase Storage before attempting to create a ref
+                 if (mediaItem.fileUrl.includes('firebasestorage.googleapis.com')) {
+                    const fileRef = ref(storage, mediaItem.fileUrl);
+                    return deleteObject(fileRef).catch(error => {
+                        // Log error if file deletion fails, but don't block Firestore deletion
+                        console.warn(`Failed to delete media file: ${mediaItem.fileUrl}`, error);
+                    });
+                }
+            } catch (e) {
+                 console.warn(`Could not create storage reference from URL: ${mediaItem.fileUrl}`, e);
+            }
+             return Promise.resolve(); // Return a resolved promise for invalid URLs
         });
         await Promise.all(deletePromises);
     }

@@ -757,6 +757,7 @@
           "enum": ["draft", "pending_approval", "approved", "scheduled", "published", "failed", "rejected"]
         },
         "rejectionReason": { "type": "string" },
+        "errorMessage": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
       },

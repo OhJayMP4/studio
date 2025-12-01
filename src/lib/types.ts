@@ -31,6 +31,15 @@ export type Company = {
   yearlyTurnoverTarget?: number;
   workspaceId: string;
   createdBy: string;
+  socialIntegration?: {
+    facebook?: {
+      pageId: string | null;
+      pageName: string | null;
+      pageAccessToken: string | null;
+      connectedBy: string | null;
+      connectedAt: any; // Firestore Timestamp
+    }
+  }
 };
 
 export type Project = {
@@ -211,7 +220,8 @@ export type SocialPost = {
         fileType: 'image' | 'video';
     }[];
     status: SocialPostStatusType;
-    rejectionReason?: string;
+    rejectionReason?: string | null;
+    errorMessage?: string | null;
     createdAt: any; // Firestore Timestamp
     updatedAt: any; // Firestore Timestamp
 }
