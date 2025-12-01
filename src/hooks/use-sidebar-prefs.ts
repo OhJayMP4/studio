@@ -10,6 +10,7 @@ import { useEffect, useMemo } from 'react';
 export const availableModules: (Omit<SidebarModule, 'order' | 'route' | 'hidden'> & {description: string})[] = [
     { id: 'files', label: 'Files', icon: 'Folder', description: 'Workspace filing system with folders.' },
     { id: 'social-scheduler', label: 'Social Scheduler', icon: 'CalendarDays', description: 'Plan and schedule social media posts.' },
+    { id: 'social-accounts', label: 'Social Accounts', icon: 'Settings2', description: 'Manage connected social media accounts.' },
 ];
 
 const coreModuleIds = ['dashboard', 'companies', 'reporting', 'my-tasks'];
@@ -80,7 +81,7 @@ export const useSidebarPrefs = () => {
       // Add new module
       const newModule: SidebarModule = {
         ...moduleToAdd,
-        route: `/${moduleToAdd.id}`, // Adjust route logic if necessary
+        route: `/admin/${moduleToAdd.id}`, // Adjust route logic if necessary
         hidden: false,
         order: prefs.sidebarModules.length,
       };

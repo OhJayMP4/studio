@@ -1,3 +1,4 @@
+
 'use client';
 
 import {
@@ -26,18 +27,33 @@ import * as LucideIcons from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { RemoveModuleDialog } from "../sidebar/remove-module-dialog";
 import { cn } from "@/lib/utils";
+import { useSelectedWorkspace } from "@/app/(main)/layout";
 
 
 export default function MainSidebar() {
   const pathname = usePathname();
   const { prefs, loading, setModuleHidden } = useSidebarPrefs();
   const [isAddModuleOpen, setIsAddModuleOpen] = useState(false);
+  const { isUserAdmin } = useSelectedWorkspace();
 
   const isActive = (path: string) => {
+    // Handle special case for admin pages under settings
+    if (pathname.startsWith('/admin') && path.startsWith('/admin')) {
+      return pathname === path;
+    }
     return pathname === path;
   };
   
-  const sortedModules = prefs?.sidebarModules?.filter(m => !m.hidden).sort((a, b) => a.order - b.order) || [];
+  const sortedModules = prefs?.sidebarModules
+    ?.filter(m => !m.hidden)
+    // Filter out admin modules if user is not an admin
+    .filter(m => {
+        if (m.route.startsWith('/admin')) {
+            return isUserAdmin;
+        }
+        return true;
+    })
+    .sort((a, b) => a.order - b.order) || [];
   
   const Icon = ({ name, ...props }: { name: string } & LucideIcons.LucideProps) => {
       const LucideIcon = (LucideIcons as any)[name];
@@ -48,6 +64,7 @@ export default function MainSidebar() {
   };
 
   const coreModuleIds = ['dashboard', 'companies', 'reporting', 'my-tasks'];
+  const adminModuleIds = ['social-accounts']; // ID of modules that are for admins
 
   return (
     <Sidebar>
