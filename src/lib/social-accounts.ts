@@ -59,6 +59,7 @@ export async function saveSocialAccount(
         ...accountData,
         workspaceId,
         companyId,
+        expiresAt: accountData.expiresAt || null, // Ensure expiresAt is null, not undefined
     };
 
     try {
