@@ -124,6 +124,33 @@
         "createdBy": {
           "type": "string",
           "description": "The UID of the user who created the company."
+        },
+        "socialIntegration": {
+          "type": "object",
+          "description": "Stores configuration for social media integrations.",
+          "properties": {
+            "facebook": {
+              "type": "object",
+              "properties": {
+                "pageId": {
+                  "type": "string"
+                },
+                "pageName": {
+                  "type": "string"
+                },
+                "pageAccessToken": {
+                  "type": "string"
+                },
+                "connectedBy": {
+                  "type": "string"
+                },
+                "connectedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          }
         }
       },
       "required": [
