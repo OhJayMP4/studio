@@ -47,6 +47,12 @@ export default function SocialAccountsPage() {
       .finally(() => setIsLoading(false));
   }, [selectedCompanyId, firestore, selectedWorkspace]);
 
+  const accountsByPlatform = useMemo(() => {
+    const map = new Map<SocialAccount['platform'], SocialAccount>();
+    accounts.forEach(acc => map.set(acc.platform, acc));
+    return map;
+  }, [accounts]);
+
   if (!isUserAdmin) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -69,12 +75,6 @@ export default function SocialAccountsPage() {
   };
 
   const platforms: SocialAccount['platform'][] = ['facebook', 'instagram', 'linkedin', 'x'];
-
-  const accountsByPlatform = useMemo(() => {
-    const map = new Map<SocialAccount['platform'], SocialAccount>();
-    accounts.forEach(acc => map.set(acc.platform, acc));
-    return map;
-  }, [accounts]);
 
   return (
     <div className="space-y-6">
