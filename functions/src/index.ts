@@ -191,7 +191,7 @@ exports.onSaleCreate = functions.firestore
 exports.onTaskWrite = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
     .onWrite(async (change, context) => {
-        const { workspaceId, companyId, projectId, siloId, taskId } = context.params;
+        const { workspaceId, companyId, projectId, siloId } = context.params;
         
         const beforeData = change.before.data();
         const afterData = change.after.data();
@@ -1019,59 +1019,131 @@ exports.backfillAllProjects = functions
     }
   });
 
-exports.publishSocialPosts = functions.pubsub.schedule('every 1 minutes').onRun(async (context) => {
-    console.log('publishSocialPosts: function started at', new Date().toISOString());
 
-    const now = new Date();
-    
-    // Only filter by scheduledAt in Firestore
-    const snapshot = await db
-      .collectionGroup('socialPosts')
-      .where('scheduledAt', '<=', now)
-      .get();
+async function publishToFacebook(postDoc: admin.firestore.DocumentSnapshot): Promise<'success' | 'skip' | 'failed'> {
+  const post = postDoc.data() as any;
+  const pathSegments = postDoc.ref.path.split('/');
+  // path: workspaces/{workspaceId}/companies/{companyId}/socialPosts/{postId}
+  const workspaceId = pathSegments[1];
+  const companyId   = pathSegments[3];
 
-    console.log('publishSocialPosts: found (by date only)', snapshot.size, 'posts');
+  const companyRef = db.doc(`workspaces/${workspaceId}/companies/${companyId}`);
+  const companySnap = await companyRef.get();
+  if (!companySnap.exists) {
+    console.warn('publishToFacebook: company not found for', companyRef.path);
+    return 'failed';
+  }
 
-    if (snapshot.empty) {
-        return null;
+  const companyData = companySnap.data() as any;
+  const fbConfig = companyData?.socialIntegration?.facebook;
+
+  if (!fbConfig?.pageId || !fbConfig?.pageAccessToken) {
+    console.log('publishToFacebook: no facebook config, skipping', companyRef.path);
+    return 'skip';
+  }
+
+  // For now, only publish caption text (no media)
+  const message: string = post.captionDefault || '';
+  if (!message.trim()) {
+    console.log('publishToFacebook: empty message, skipping', postDoc.ref.path);
+    return 'skip';
+  }
+
+  const url = `https://graph.facebook.com/v19.0/${fbConfig.pageId}/feed`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        access_token: fbConfig.pageAccessToken,
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error('publishToFacebook: Facebook API error', res.status, text);
+      return 'failed';
     }
 
-    const batch = db.batch();
-    const updateTimestamp = admin.firestore.FieldValue.serverTimestamp();
+    const data = await res.json();
+    console.log('publishToFacebook: success, facebook response:', data);
+    return 'success';
+  } catch (err) {
+    console.error('publishToFacebook: network error', err);
+    return 'failed';
+  }
+}
 
-    snapshot.forEach(doc => {
-      const post = doc.data() as any;
+exports.publishSocialPosts = functions.pubsub
+  .schedule('every 1 minutes')
+  .onRun(async (context) => {
+    try {
+      console.log('publishSocialPosts: function started at', new Date().toISOString());
+      const now = new Date();
 
-      // Only process posts that are approved or scheduled
-      if (!['approved', 'scheduled'].includes(post.status)) {
-        return;
+      const snapshot = await db
+        .collectionGroup('socialPosts')
+        .where('scheduledAt', '<=', now)
+        .get();
+
+      console.log('publishSocialPosts: found (by date only)', snapshot.size, 'posts');
+
+      if (snapshot.empty) {
+        return null;
       }
 
-      console.log(
-        'publishSocialPosts: will publish doc',
-        doc.ref.path,
-        'status=',
-        post.status,
-        'scheduledAt=',
-        post.scheduledAt?.toDate?.().toISOString?.()
-      );
+      const batch = db.batch();
+      const updateTimestamp = admin.firestore.FieldValue.serverTimestamp();
 
-      // Mock publish
-      console.log(
-        `Pretend publishing post ${doc.id} to platforms: ${(post.platforms || []).join(', ')}`
-      );
+      for (const doc of snapshot.docs) {
+        const post = doc.data() as any;
 
-      batch.update(doc.ref, {
-        status: 'published',
-        updatedAt: updateTimestamp,
-      });
-    });
-    
-    await batch.commit();
-    console.log('publishSocialPosts: batch commit complete');
-    
-    return null;
-});
+        if (!['approved', 'scheduled'].includes(post.status)) {
+          continue;
+        }
+
+        const platforms: string[] = post.platforms || [];
+        let anyFailed = false;
+        let anySuccess = false;
+
+        if (platforms.includes('facebook')) {
+          const result = await publishToFacebook(doc);
+          if (result === 'failed') anyFailed = true;
+          if (result === 'success') anySuccess = true;
+        }
+
+        // Later: instagram, linkedin, etc
+
+        let newStatus = post.status;
+        let errorMessage = null;
+
+        if (anyFailed) {
+          newStatus = 'failed';
+          errorMessage = 'One or more platforms failed to publish.';
+        } else if (anySuccess) {
+          newStatus = 'published';
+        }
+
+        if (newStatus !== post.status) {
+          batch.update(doc.ref, {
+            status: newStatus,
+            errorMessage,
+            updatedAt: updateTimestamp,
+          });
+        }
+      }
+
+      await batch.commit();
+      console.log('publishSocialPosts: batch commit complete.');
+      return null;
+    } catch (error) {
+      console.error('Error publishing social posts:', error);
+      return null;
+    }
+  });
+
 
 exports.setCompanyFacebookConfig = functions.https.onCall(async (data, context) => {
   // 1. Auth Check
