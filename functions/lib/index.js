@@ -1,4 +1,3 @@
-
 "use strict";
 'use server';
 Object.defineProperty(exports, "__esModule", { value: true });
@@ -836,7 +835,7 @@ exports.backfillAllProjects = functions
     }
 });
 async function publishToFacebook(postDoc) {
-    var _a, _b;
+    var _a;
     const post = postDoc.data();
     const pathSegments = postDoc.ref.path.split('/');
     // path: workspaces/{workspaceId}/companies/{companyId}/socialPosts/{postId}
@@ -849,13 +848,13 @@ async function publishToFacebook(postDoc) {
         return 'failed';
     }
     const companyData = companySnap.data();
-    const fbConfig = (_b = (_a = companyData === null || companyData === void 0 ? void 0 : companyData.socialIntegration) === null || _a === void 0 ? void 0 : _a.facebook) !== null && _b !== void 0 ? _b : null;
+    const fbConfig = (_a = companyData === null || companyData === void 0 ? void 0 : companyData.socialIntegration) === null || _a === void 0 ? void 0 : _a.facebook;
     if (!(fbConfig === null || fbConfig === void 0 ? void 0 : fbConfig.pageId) || !(fbConfig === null || fbConfig === void 0 ? void 0 : fbConfig.pageAccessToken)) {
         console.log('publishToFacebook: no facebook config, skipping', companyRef.path);
         return 'skip';
     }
     // For now, only publish caption text (no media)
-    const message = (post.captionDefault || '');
+    const message = post.captionDefault || '';
     if (!message.trim()) {
         console.log('publishToFacebook: empty message, skipping', postDoc.ref.path);
         return 'skip';
