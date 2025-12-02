@@ -85,6 +85,33 @@ export function SocialAccountCard({ platform, companyId, account, onAccountUpdat
       setIsSubmitting(false);
     }
   };
+  
+  const handleFacebookConnect = () => {
+    if (!selectedWorkspace) return;
+    
+    const clientId = process.env.NEXT_PUBLIC_FB_APP_ID;
+    const redirectUri = process.env.NEXT_PUBLIC_FB_REDIRECT_URI;
+    
+    if (!clientId || !redirectUri) {
+        toast({
+            variant: 'destructive',
+            title: 'Configuration Error',
+            description: 'Facebook App ID or Redirect URI is not configured.'
+        });
+        return;
+    }
+    
+    const scope = 'pages_show_list,pages_read_engagement,pages_manage_posts';
+    const state = {
+        workspaceId: selectedWorkspace.id,
+        companyId: companyId
+    };
+    const encodedState = encodeURIComponent(JSON.stringify(state));
+    
+    const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=${encodedState}&response_type=code`;
+    
+    window.open(oauthUrl, '_blank');
+  };
 
   const PlatformIcon = platformDetails[platform].icon;
   const currentStatus = account ? statusDetails[account.status] : null;
@@ -93,8 +120,7 @@ export function SocialAccountCard({ platform, companyId, account, onAccountUpdat
     <Card>
       <Accordion type="single" collapsible>
         <AccordionItem value={platform} className="border-b-0">
-          <AccordionTrigger className="p-4 hover:no-underline">
-            <div className="flex items-center justify-between w-full">
+          <div className="p-4 flex items-center justify-between w-full">
               <div className="flex items-center gap-4">
                 <PlatformIcon className={cn("h-8 w-8", platformDetails[platform].color)} />
                 <div className="text-left">
@@ -114,12 +140,19 @@ export function SocialAccountCard({ platform, companyId, account, onAccountUpdat
                    </Badge>
                 )}
                  {!account && (
-                    <Badge variant="secondary">Not Connected</Badge>
+                    platform === 'facebook' ? (
+                        <Button onClick={handleFacebookConnect}>Connect Facebook</Button>
+                    ) : (
+                         <AccordionTrigger className="p-2 hover:no-underline" />
+                    )
                 )}
+                 {account && <AccordionTrigger className="p-2 hover:no-underline" />}
               </div>
             </div>
-          </AccordionTrigger>
           <AccordionContent className="p-4 pt-0">
+            <p className="text-sm text-muted-foreground mb-4">
+              Manually update the connection details. Note: for real connections, use the 'Connect' button.
+            </p>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">

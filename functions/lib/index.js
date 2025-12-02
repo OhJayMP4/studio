@@ -835,38 +835,42 @@ exports.backfillAllProjects = functions
     }
 });
 async function publishToFacebook(postDoc) {
-    var _a;
     const post = postDoc.data();
     const pathSegments = postDoc.ref.path.split('/');
     // path: workspaces/{workspaceId}/companies/{companyId}/socialPosts/{postId}
     const workspaceId = pathSegments[1];
     const companyId = pathSegments[3];
-    const companyRef = db.doc(`workspaces/${workspaceId}/companies/${companyId}`);
-    const companySnap = await companyRef.get();
-    if (!companySnap.exists) {
-        console.warn('publishToFacebook: company not found for', companyRef.path);
-        return 'failed';
-    }
-    const companyData = companySnap.data();
-    const fbConfig = (_a = companyData === null || companyData === void 0 ? void 0 : companyData.socialIntegration) === null || _a === void 0 ? void 0 : _a.facebook;
-    if (!(fbConfig === null || fbConfig === void 0 ? void 0 : fbConfig.pageId) || !(fbConfig === null || fbConfig === void 0 ? void 0 : fbConfig.pageAccessToken)) {
-        console.log('publishToFacebook: no facebook config, skipping', companyRef.path);
+    // Load facebook config from subcollection
+    const fbAccountRef = db.doc(`workspaces/${workspaceId}/companies/${companyId}/socialAccounts/facebook`);
+    const fbSnap = await fbAccountRef.get();
+    if (!fbSnap.exists) {
+        console.log('publishToFacebook: no facebook socialAccounts doc, skipping', fbAccountRef.path);
         return 'skip';
     }
-    // For now, only publish caption text (no media)
-    const message = post.captionDefault || '';
+    const fbConfig = fbSnap.data();
+    if (fbConfig.status !== 'connected') {
+        console.log('publishToFacebook: facebook account not connected, skipping', fbAccountRef.path, 'status=', fbConfig.status);
+        return 'skip';
+    }
+    const pageId = fbConfig.accountId; // Page ID from /me/accounts
+    const accessToken = fbConfig.accessToken;
+    if (!pageId || !accessToken) {
+        console.log('publishToFacebook: missing pageId or accessToken, skipping', fbAccountRef.path);
+        return 'skip';
+    }
+    const message = post.captionFacebook || post.captionDefault || '';
     if (!message.trim()) {
         console.log('publishToFacebook: empty message, skipping', postDoc.ref.path);
         return 'skip';
     }
-    const url = `https://graph.facebook.com/v19.0/${fbConfig.pageId}/feed`;
+    const url = `https://graph.facebook.com/v19.0/${pageId}/feed`;
     try {
         const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 message,
-                access_token: fbConfig.pageAccessToken,
+                access_token: accessToken,
             }),
         });
         if (!res.ok) {

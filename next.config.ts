@@ -47,6 +47,8 @@ const nextConfig: NextConfig = {
   },
   env: {
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+    NEXT_PUBLIC_FB_APP_ID: process.env.NEXT_PUBLIC_FB_APP_ID,
+    NEXT_PUBLIC_FB_REDIRECT_URI: process.env.NEXT_PUBLIC_FB_REDIRECT_URI,
   }
 };
 

@@ -49,6 +49,16 @@ env:
     availability:
       - BUILD
       - RUNTIME
+  - variable: NEXT_PUBLIC_FB_APP_ID
+    value: "510258814981144"
+    availability:
+      - BUILD
+      - RUNTIME
+  - variable: NEXT_PUBLIC_FB_REDIRECT_URI
+    value: "https://saturnsync.com/api/social/facebook/callback"
+    availability:
+      - BUILD
+      - RUNTIME
 
 # The build command for the Next.js app.
 # This is used to build the production version of the app.
