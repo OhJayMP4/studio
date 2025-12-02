@@ -1020,36 +1020,63 @@ exports.backfillAllProjects = functions
   });
 
 
-async function publishToFacebook(postDoc: admin.firestore.DocumentSnapshot): Promise<'success' | 'skip' | 'failed'> {
+async function publishToFacebook(
+  postDoc: admin.firestore.DocumentSnapshot
+): Promise<'success' | 'skip' | 'failed'> {
   const post = postDoc.data() as any;
   const pathSegments = postDoc.ref.path.split('/');
+
   // path: workspaces/{workspaceId}/companies/{companyId}/socialPosts/{postId}
   const workspaceId = pathSegments[1];
   const companyId   = pathSegments[3];
 
-  const companyRef = db.doc(`workspaces/${workspaceId}/companies/${companyId}`);
-  const companySnap = await companyRef.get();
-  if (!companySnap.exists) {
-    console.warn('publishToFacebook: company not found for', companyRef.path);
-    return 'failed';
-  }
+  // Load facebook config from subcollection
+  const fbAccountRef = db.doc(
+    `workspaces/${workspaceId}/companies/${companyId}/socialAccounts/facebook`
+  );
 
-  const companyData = companySnap.data() as any;
-  const fbConfig = companyData?.socialIntegration?.facebook;
+  const fbSnap = await fbAccountRef.get();
 
-  if (!fbConfig?.pageId || !fbConfig?.pageAccessToken) {
-    console.log('publishToFacebook: no facebook config, skipping', companyRef.path);
+  if (!fbSnap.exists) {
+    console.log(
+      'publishToFacebook: no facebook socialAccounts doc, skipping',
+      fbAccountRef.path
+    );
     return 'skip';
   }
 
-  // For now, only publish caption text (no media)
-  const message: string = post.captionDefault || '';
+  const fbConfig = fbSnap.data() as any;
+
+  if (fbConfig.status !== 'connected') {
+    console.log(
+      'publishToFacebook: facebook account not connected, skipping',
+      fbAccountRef.path,
+      'status=',
+      fbConfig.status
+    );
+    return 'skip';
+  }
+
+  const pageId: string = fbConfig.accountId;       // Page ID from /me/accounts
+  const accessToken: string = fbConfig.accessToken;
+
+  if (!pageId || !accessToken) {
+    console.log(
+      'publishToFacebook: missing pageId or accessToken, skipping',
+      fbAccountRef.path
+    );
+    return 'skip';
+  }
+
+  const message: string =
+    post.captionFacebook || post.captionDefault || '';
+
   if (!message.trim()) {
     console.log('publishToFacebook: empty message, skipping', postDoc.ref.path);
     return 'skip';
   }
 
-  const url = `https://graph.facebook.com/v19.0/${fbConfig.pageId}/feed`;
+  const url = `https://graph.facebook.com/v19.0/${pageId}/feed`;
 
   try {
     const res = await fetch(url, {
@@ -1057,7 +1084,7 @@ async function publishToFacebook(postDoc: admin.firestore.DocumentSnapshot): Pro
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message,
-        access_token: fbConfig.pageAccessToken,
+        access_token: accessToken,
       }),
     });
 
@@ -1070,6 +1097,7 @@ async function publishToFacebook(postDoc: admin.firestore.DocumentSnapshot): Pro
     const data = await res.json();
     console.log('publishToFacebook: success, facebook response:', data);
     return 'success';
+
   } catch (err) {
     console.error('publishToFacebook: network error', err);
     return 'failed';
