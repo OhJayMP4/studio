@@ -16,11 +16,11 @@ export function FirebaseClientProvider({ children }: FirebaseClientProviderProps
   }, []); // Empty dependency array guarantees this runs only once.
 
   // If the services are not yet initialized (e.g., initial server render),
-  // you can optionally return a loading state or null.
+  // return a loading state that matches the MainLayoutContent loading state.
   if (!firebaseServices.firebaseApp) {
     return (
       <div className="flex h-screen w-screen items-center justify-center">
-        Initializing Firebase...
+        Loading...
       </div>
     );
   }

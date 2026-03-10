@@ -96,13 +96,14 @@ function WorkspaceView() {
 
   const { data: companies, isLoading: isCompaniesLoading } = useCollection<Company>(companiesQuery);
 
-  // Fetch all projects in the workspace to calculate progress centrally
+  // Fetch all projects in the workspace. 
+  // We remove the status != archived filter here to be safer with security rules 
+  // and handle filtering in the useMemo below.
   const projectsQuery = useMemoFirebase(() => {
     if (!selectedWorkspace) return null;
     return query(
         collectionGroup(firestore, 'projects'),
-        where('workspaceId', '==', selectedWorkspace.id),
-        where('status', '!=', 'archived')
+        where('workspaceId', '==', selectedWorkspace.id)
     );
   }, [firestore, selectedWorkspace]);
 
@@ -112,7 +113,12 @@ function WorkspaceView() {
     if (!companies) return [];
     
     const results = companies.map(company => {
-        const companyProjects = allProjects?.filter(p => p.companyId === company.id) || [];
+        // Filter projects for this company and exclude archived ones manually
+        const companyProjects = allProjects?.filter(p => 
+            p.companyId === company.id && 
+            (p.status || 'active') !== 'archived'
+        ) || [];
+        
         const averageProgress = companyProjects.length > 0
             ? Math.round(companyProjects.reduce((acc, p) => acc + (p.progress || 0), 0) / companyProjects.length)
             : 0;

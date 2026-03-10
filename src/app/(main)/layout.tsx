@@ -31,12 +31,17 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const firestore = useFirestore();
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    if (!isUserLoading && !user) {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isUserLoading && !user && mounted) {
       router.push('/login');
     }
-  }, [user, isUserLoading, router]);
+  }, [user, isUserLoading, router, mounted]);
 
   useEffect(() => {
     if (user && firestore) {
@@ -59,7 +64,8 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
 
   const isUserAdmin = selectedWorkspace?.users?.[user?.uid || '']?.role === 'admin';
 
-  if (isUserLoading || (!user && !isUserLoading)) {
+  // Prevent hydration mismatch by waiting for mount and auth state
+  if (!mounted || isUserLoading || (!user && !isUserLoading)) {
     return (
       <div className="flex h-screen w-screen items-center justify-center">
         Loading...
