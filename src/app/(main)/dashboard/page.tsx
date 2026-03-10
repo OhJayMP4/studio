@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 import { useFirestore } from "@/firebase";
 import { collection, getDocs } from "firebase/firestore";
-import type { Project, Task } from "@/lib/types";
+import type { Company, Project, Task } from "@/lib/types";
 import ProjectStatusChart from "@/components/reporting/project-status-chart";
 import TaskPriorityChart from "@/components/reporting/task-priority-chart";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,7 +21,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 type DashboardDetailView = 'main' | 'active-projects' | 'completed-projects' | 'total-tasks' | 'overdue-tasks';
 
-function TaskListRow({ task }: { task: Task }) {
+// Extended types to include names for display in lists
+type ProjectWithContext = Project & { companyName: string };
+type TaskWithContext = Task & { companyName: string; projectName: string };
+
+function TaskListRow({ task }: { task: TaskWithContext }) {
   const dueDate = new Date(task.dueDate);
   const overdue = !task.completed && isPast(dueDate) && !isToday(dueDate);
   const isQuickTask = task.projectId === 'general-tasks';
@@ -52,6 +56,9 @@ function TaskListRow({ task }: { task: Task }) {
             <Calendar className="h-3 w-3" />
             {format(dueDate, 'MMM d')}
           </span>
+          <span className="text-[10px] text-muted-foreground truncate opacity-70">
+            • {task.companyName}
+          </span>
         </div>
       </div>
       <Button variant="ghost" size="icon" asChild className="h-8 w-8">
@@ -77,8 +84,8 @@ function DetailHeader({ title, onBack }: { title: string, onBack: () => void }) 
 function DashboardView() {
   const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [projects, setProjects] = useState<ProjectWithContext[]>([]);
+  const [tasks, setTasks] = useState<TaskWithContext[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [detailView, setDetailView] = useState<DashboardDetailView>('main');
 
@@ -94,15 +101,19 @@ function DashboardView() {
         const workspaceCompaniesRef = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies');
         const companiesSnapshot = await getDocs(workspaceCompaniesRef);
         
-        let allProjects: Project[] = [];
-        let allTasks: Task[] = [];
+        let allProjects: ProjectWithContext[] = [];
+        let allTasks: TaskWithContext[] = [];
 
         for (const companyDoc of companiesSnapshot.docs) {
+          const companyData = companyDoc.data() as Company;
+          const companyName = companyData.name;
+          
           const projectsRef = collection(companyDoc.ref, 'projects');
           const projectsSnapshot = await getDocs(projectsRef);
           
           for (const projectDoc of projectsSnapshot.docs) {
-            const projectData = { id: projectDoc.id, ...projectDoc.data() } as Project;
+            const projectDataRaw = projectDoc.data();
+            const projectData = { id: projectDoc.id, ...projectDataRaw, companyName } as ProjectWithContext;
             if (projectData.status === 'archived') continue;
             
             allProjects.push(projectData);
@@ -114,7 +125,12 @@ function DashboardView() {
               const siloTasksRef = collection(siloDoc.ref, 'tasks');
               const tasksSnapshot = await getDocs(siloTasksRef);
               tasksSnapshot.forEach(taskDoc => {
-                allTasks.push({ id: taskDoc.id, ...taskDoc.data() } as Task);
+                allTasks.push({ 
+                    id: taskDoc.id, 
+                    ...taskDoc.data(), 
+                    companyName, 
+                    projectName: projectData.name 
+                } as TaskWithContext);
               });
             }
           }
@@ -192,7 +208,7 @@ function DashboardView() {
                                       </TableCell>
                                       <TableCell>
                                           <Link href={`/company/${p.companyId}`} className="text-muted-foreground hover:underline">
-                                              {p.companyId === 'general-tasks' ? 'General' : 'View Company'}
+                                              {p.companyName}
                                           </Link>
                                       </TableCell>
                                       <TableCell className="text-muted-foreground">
@@ -235,8 +251,10 @@ function DashboardView() {
                                             {p.name}
                                         </Link>
                                     </TableCell>
-                                    <TableCell className="text-muted-foreground">
-                                        {p.companyId === 'general-tasks' ? 'General' : 'Workspace Company'}
+                                    <TableCell>
+                                        <Link href={`/company/${p.companyId}`} className="text-muted-foreground hover:underline">
+                                            {p.companyName}
+                                        </Link>
                                     </TableCell>
                                     <TableCell className="text-muted-foreground">
                                         {p.completedAt ? format(p.completedAt.toDate(), 'MMM d, yyyy') : 'Recently'}
@@ -265,6 +283,7 @@ function DashboardView() {
                             <TableRow>
                                 <TableHead>Task</TableHead>
                                 <TableHead>Status</TableHead>
+                                <TableHead>Company / Project</TableHead>
                                 <TableHead>Due Date</TableHead>
                                 <TableHead className="text-right">Priority</TableHead>
                             </TableRow>
@@ -282,6 +301,9 @@ function DashboardView() {
                                         <Badge variant={t.completed ? "secondary" : "outline"}>
                                             {t.completed ? "Completed" : "In Progress"}
                                         </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-xs text-muted-foreground">
+                                        {t.companyName} <span className="mx-1">/</span> {t.projectName}
                                     </TableCell>
                                     <TableCell className="text-muted-foreground">
                                         {format(new Date(t.dueDate), 'MMM d, yyyy')}
@@ -311,6 +333,7 @@ function DashboardView() {
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Task</TableHead>
+                                <TableHead>Company</TableHead>
                                 <TableHead>Due Date</TableHead>
                                 <TableHead>Priority</TableHead>
                                 <TableHead className="text-right">Action</TableHead>
@@ -321,6 +344,9 @@ function DashboardView() {
                                 <TableRow key={t.id}>
                                     <TableCell className="font-medium text-destructive">
                                         {t.title}
+                                    </TableCell>
+                                    <TableCell className="text-muted-foreground">
+                                        {t.companyName}
                                     </TableCell>
                                     <TableCell className="font-semibold text-destructive">
                                         {format(new Date(t.dueDate), 'MMM d, yyyy')}
@@ -403,7 +429,7 @@ function DashboardView() {
           <CardHeader>
             <div className="flex items-center gap-2 text-primary">
               <AlertCircle className="h-5 w-5 fill-current" />
-              <CardTitle>Priority & Urgent</CardTitle>
+              <CardTitle>Urgent & High Priority</CardTitle>
             </div>
             <CardDescription>Top upcoming or high priority items.</CardDescription>
           </CardHeader>
