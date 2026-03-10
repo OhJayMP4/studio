@@ -19,6 +19,7 @@ import { WorkspaceManager } from '@/components/settings/workspace-manager';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Pencil, KeyRound, User } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
 
 
 const profileFormSchema = z.object({
