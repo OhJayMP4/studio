@@ -141,9 +141,11 @@ function WorkspaceView() {
     if (!companies) return [];
     
     const enriched = companies.map(company => {
+        // EXCLUDE 'general-tasks' from the health/progress calculation
         const activeProjects = allProjects.filter(p => 
             p.companyId === company.id && 
-            (p.status || 'active') === 'active'
+            (p.status || 'active') === 'active' &&
+            p.id !== 'general-tasks'
         );
         
         const averageProgress = activeProjects.length > 0

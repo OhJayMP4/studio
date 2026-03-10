@@ -1,6 +1,6 @@
 
 'use client';
-import { collection, doc, writeBatch, getDoc, setDoc, Firestore } from "firebase/firestore";
+import { collection, doc, writeBatch, getDoc, setDoc, Firestore, query, where, getDocs } from "firebase/firestore";
 import type { Company, Project, Silo, Task, Workspace } from "./types";
 
 interface AddTaskParams {
@@ -66,6 +66,76 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
         });
     } else {
         console.warn(`Skipping task denormalization: User ${taskData.assigneeId} is not a member of workspace ${workspaceId}.`);
+    }
+
+    await batch.commit();
+}
+
+/**
+ * Updates a task and ensures all denormalized copies stay in sync.
+ */
+export async function updateTask(
+    firestore: Firestore,
+    originalTaskPath: string,
+    originalTaskId: string,
+    updates: Partial<Task>,
+    oldAssigneeId: string
+) {
+    const originalTaskRef = doc(firestore, originalTaskPath);
+    const batch = writeBatch(firestore);
+
+    // 1. Update the original task
+    batch.update(originalTaskRef, updates);
+
+    // 2. Sync with denormalized user-tasks
+    const isAssigneeChanged = updates.assigneeId && updates.assigneeId !== oldAssigneeId;
+    
+    // Find existing denormalized record for the old assignee
+    const oldUserTasksQuery = query(
+        collection(firestore, `user-tasks/${oldAssigneeId}/tasks`),
+        where("originalTaskId", "==", originalTaskId)
+    );
+    const oldUserTasksSnap = await getDocs(oldUserTasksQuery);
+
+    if (isAssigneeChanged) {
+        // Delete from old user's list
+        oldUserTasksSnap.forEach(d => batch.delete(d.ref));
+
+        // Create in new user's list
+        const newUserTaskRef = doc(collection(firestore, `user-tasks/${updates.assigneeId}/tasks`));
+        
+        // We need the full context for the new record
+        const originalSnap = await getDoc(originalTaskRef);
+        const taskData = originalSnap.data() as Task;
+        
+        // Since we are in a batch and haven't committed the original update yet, 
+        // we manually merge the new updates for the denormalized copy
+        const denormalizedData = {
+            originalTaskId,
+            workspaceId: taskData.workspaceId,
+            companyId: originalTaskPath.split('/')[3],
+            projectId: taskData.projectId,
+            siloId: originalTaskPath.split('/')[7],
+            title: updates.title ?? taskData.title,
+            description: updates.description ?? taskData.description ?? '',
+            completed: updates.completed ?? taskData.completed,
+            dueDate: updates.dueDate ?? taskData.dueDate,
+            priority: updates.priority ?? taskData.priority,
+            assigneeId: updates.assigneeId,
+            // These names are hard to get without more reads, we keep existing if possible
+            // or fetch them. For simplicity in this sync, we assume names don't change often.
+            companyName: (oldUserTasksSnap.docs[0]?.data() as any)?.companyName || 'Company',
+            projectName: (oldUserTasksSnap.docs[0]?.data() as any)?.projectName || 'Project',
+            siloName: (oldUserTasksSnap.docs[0]?.data() as any)?.siloName || 'Silo',
+            timeSpentMinutes: taskData.timeSpentMinutes ?? 0,
+        };
+        
+        batch.set(newUserTaskRef, denormalizedData);
+    } else {
+        // Just update existing records for the same user
+        oldUserTasksSnap.forEach(document => {
+            batch.update(document.ref, updates);
+        });
     }
 
     await batch.commit();
@@ -139,7 +209,6 @@ export async function updateTaskCompletion(
     const originalTaskRef = doc(firestore, originalTaskPath);
     
     // Find the denormalized task to update. We need to query for it.
-    const { query, where, getDocs } = await import('firebase/firestore');
     const userTasksRef = collection(firestore, `user-tasks/${userId}/tasks`);
     const q = query(userTasksRef, where("originalTaskId", "==", originalTaskId));
     

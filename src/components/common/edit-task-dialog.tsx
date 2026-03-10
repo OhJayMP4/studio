@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -18,7 +19,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFirestore, useUser } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { doc, updateDoc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { CalendarIcon } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
@@ -35,6 +35,7 @@ import {
 import type { Workspace, Task } from '@/lib/types';
 import { FormControl, FormField, FormItem, FormMessage } from '../ui/form';
 import { Textarea } from '../ui/textarea';
+import { updateTask } from '@/lib/tasks';
 
 const formSchema = z.object({
   title: z.string().min(1, 'Task title is required.'),
@@ -91,15 +92,20 @@ export function EditTaskDialog({ task, path, children }: EditTaskDialogProps) {
     if (!selectedWorkspace || !user) return;
 
     try {
-      const taskRef = doc(firestore, path);
-      await updateDoc(taskRef, {
-        title: data.title,
-        description: data.description || '',
-        dueDate: data.dueDate.toISOString(),
-        priority: data.priority,
-        assigneeId: data.assigneeId,
-        updatedBy: user.uid,
-      });
+      await updateTask(
+        firestore,
+        path,
+        task.id,
+        {
+            title: data.title,
+            description: data.description || '',
+            dueDate: data.dueDate.toISOString(),
+            priority: data.priority,
+            assigneeId: data.assigneeId,
+            updatedBy: user.uid,
+        },
+        task.assigneeId // Passing old assignee to handle synchronization
+      );
       
       toast({
         title: 'Task Updated',
@@ -163,7 +169,7 @@ export function EditTaskDialog({ task, path, children }: EditTaskDialogProps) {
                   render={({ field }) => (
                       <FormItem>
                           <Label>Priority</Label>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
                               <FormControl>
                                   <SelectTrigger>
                                       <SelectValue placeholder="Select priority" />
@@ -186,7 +192,7 @@ export function EditTaskDialog({ task, path, children }: EditTaskDialogProps) {
                   render={({ field }) => (
                       <FormItem>
                           <Label>Assign To</Label>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
                               <FormControl>
                                   <SelectTrigger>
                                       <SelectValue placeholder="Select a team member" />
