@@ -134,8 +134,10 @@ function DashboardView() {
   }, [selectedWorkspace, firestore]);
   
   const stats = useMemo(() => {
-    const activeProjectsList = projects.filter(p => p.status === 'active' || !p.status);
-    const completedProjectsList = projects.filter(p => p.status === 'completed' || p.progress === 100);
+    // Exclude the internal 'general-tasks' project from project lists/counts
+    const activeProjectsList = projects.filter(p => p.id !== 'general-tasks' && (p.status === 'active' || !p.status));
+    const completedProjectsList = projects.filter(p => p.id !== 'general-tasks' && (p.status === 'completed' || p.progress === 100));
+    
     const overdueTasksList = tasks.filter(t => !t.completed && isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate)));
     
     const now = new Date();
