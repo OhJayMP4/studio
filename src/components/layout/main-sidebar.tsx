@@ -1,4 +1,3 @@
-
 'use client';
 
 import {
@@ -14,6 +13,9 @@ import {
   Settings,
   Plus,
   X,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -22,12 +24,19 @@ import { WorkspaceSwitcher } from "../common/workspace-switcher";
 import { Separator } from "../ui/separator";
 import { useSidebarPrefs } from "@/hooks/use-sidebar-prefs";
 import { AddModuleDialog } from "../sidebar/add-module-dialog";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import * as LucideIcons from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { RemoveModuleDialog } from "../sidebar/remove-module-dialog";
 import { cn } from "@/lib/utils";
 import { useSelectedWorkspace } from "@/app/(main)/layout";
+import { useTheme } from "next-themes";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 
 export default function MainSidebar() {
@@ -35,6 +44,13 @@ export default function MainSidebar() {
   const { prefs, loading, setModuleHidden } = useSidebarPrefs();
   const [isAddModuleOpen, setIsAddModuleOpen] = useState(false);
   const { isUserAdmin } = useSelectedWorkspace();
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  // Prevent hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const isActive = (path: string) => {
     // Handle special case for admin pages under settings
@@ -64,7 +80,6 @@ export default function MainSidebar() {
   };
 
   const coreModuleIds = ['dashboard', 'companies', 'reporting', 'my-tasks'];
-  const adminModuleIds = ['social-accounts']; // ID of modules that are for admins
 
   return (
     <Sidebar>
@@ -112,6 +127,30 @@ export default function MainSidebar() {
         </div>
         <Separator className="my-2" />
         <SidebarMenu>
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton tooltip="Change Theme">
+                  {mounted && theme === "dark" ? <Moon /> : mounted && theme === "light" ? <Sun /> : <Monitor />}
+                  <span>Theme</span>
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => setTheme("light")}>
+                  <Sun className="mr-2 h-4 w-4" />
+                  <span>Light</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme("dark")}>
+                  <Moon className="mr-2 h-4 w-4" />
+                  <span>Dark</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme("system")}>
+                  <Monitor className="mr-2 h-4 w-4" />
+                  <span>System</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton tooltip="Settings" asChild isActive={isActive('/settings')}>
               <Link href="/settings">

@@ -1,6 +1,7 @@
 import type {Metadata} from 'next';
 import { Toaster } from "@/components/ui/toaster";
 import './globals.css';
+import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
   title: 'SaturnSync',
@@ -13,10 +14,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <body suppressHydrationWarning>
-        {children}
-        <Toaster />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );
