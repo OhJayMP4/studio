@@ -3,7 +3,7 @@
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
-import { useFirestore } from "@/firebase";
+import { useFirestore, useUser } from "@/firebase";
 import { collection, getDocs } from "firebase/firestore";
 import type { Company, Project, Task } from "@/lib/types";
 import ProjectStatusChart from "@/components/reporting/project-status-chart";
@@ -84,6 +84,7 @@ function DetailHeader({ title, onBack }: { title: string, onBack: () => void }) 
 
 function DashboardView() {
   const { selectedWorkspace } = useSelectedWorkspace();
+  const { user } = useUser();
   const firestore = useFirestore();
   const [projects, setProjects] = useState<ProjectWithContext[]>([]);
   const [tasks, setTasks] = useState<TaskWithContext[]>([]);
@@ -153,17 +154,24 @@ function DashboardView() {
     fetchWorkspaceData();
   }, [selectedWorkspace, firestore]);
   
+  // Filter tasks to only include those assigned to the current user
+  const userTasks = useMemo(() => {
+    if (!user) return [];
+    return tasks.filter(t => t.assigneeId === user.uid);
+  }, [tasks, user]);
+
   const stats = useMemo(() => {
-    // Exclude the internal 'general-tasks' project from project lists/counts
+    // Projects remain workspace-wide for overview
     const activeProjectsList = projects.filter(p => p.id !== 'general-tasks' && (p.status === 'active' || !p.status));
     const completedProjectsList = projects.filter(p => p.id !== 'general-tasks' && (p.status === 'completed' || p.progress === 100));
     
-    const overdueTasksList = tasks.filter(t => !t.completed && isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate)));
+    // Task-based stats are now strictly personal
+    const overdueTasksList = userTasks.filter(t => !t.completed && isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate)));
     
     const now = new Date();
     const urgentThreshold = addDays(now, 2);
 
-    const highPriorityUpcoming = tasks
+    const highPriorityUpcoming = userTasks
       .filter(t => {
           if (t.completed) return false;
           const dueDate = new Date(t.dueDate);
@@ -172,7 +180,7 @@ function DashboardView() {
       .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
       .slice(0, 5);
 
-    const quickTasksList = tasks
+    const quickTasksList = userTasks
       .filter(t => !t.completed && t.projectId === 'general-tasks')
       .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
       .slice(0, 5);
@@ -182,9 +190,10 @@ function DashboardView() {
         completedProjects: completedProjectsList, 
         overdueTasks: overdueTasksList, 
         highPriorityUpcoming, 
-        quickTasksList
+        quickTasksList,
+        userTasksCount: userTasks.length
     };
-  }, [projects, tasks]);
+  }, [projects, userTasks]);
 
   if (detailView === 'active-projects') {
       return (
@@ -279,7 +288,7 @@ function DashboardView() {
   if (detailView === 'total-tasks') {
     return (
         <div className="space-y-6">
-            <DetailHeader title="Total Workspace Tasks" onBack={() => setDetailView('main')} />
+            <DetailHeader title="My Tasks" onBack={() => setDetailView('main')} />
             <Card>
                 <CardContent className="p-0">
                     <Table>
@@ -293,7 +302,7 @@ function DashboardView() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {tasks.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).map(t => (
+                            {userTasks.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).map(t => (
                                 <TableRow key={t.id}>
                                     <TableCell className="font-medium">
                                         <div className="flex items-center gap-2">
@@ -330,7 +339,7 @@ function DashboardView() {
   if (detailView === 'overdue-tasks') {
     return (
         <div className="space-y-6">
-            <DetailHeader title="Overdue Tasks" onBack={() => setDetailView('main')} />
+            <DetailHeader title="My Overdue Tasks" onBack={() => setDetailView('main')} />
             <Card>
                 <CardContent className="p-0">
                     <Table>
@@ -409,10 +418,10 @@ function DashboardView() {
             onClick={() => setDetailView('total-tasks')}
         >
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Tasks</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">My Total Tasks</CardTitle>
           </CardHeader>
           <CardContent>
-             {isLoading ? <Skeleton className="h-8 w-16"/> : <p className="text-3xl font-bold">{tasks.length}</p>}
+             {isLoading ? <Skeleton className="h-8 w-16"/> : <p className="text-3xl font-bold">{stats.userTasksCount}</p>}
           </CardContent>
         </Card>
         <Card 
@@ -420,7 +429,7 @@ function DashboardView() {
             onClick={() => setDetailView('overdue-tasks')}
         >
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-destructive uppercase tracking-wider">Overdue</CardTitle>
+            <CardTitle className="text-sm font-medium text-destructive uppercase tracking-wider">My Overdue</CardTitle>
           </CardHeader>
           <CardContent>
              {isLoading ? <Skeleton className="h-8 w-16"/> : <p className="text-3xl font-bold text-destructive">{stats.overdueTasks.length}</p>}
@@ -435,7 +444,7 @@ function DashboardView() {
               <AlertCircle className="h-5 w-5 fill-current" />
               <CardTitle>Urgent & High Priority</CardTitle>
             </div>
-            <CardDescription>Top upcoming or high priority items.</CardDescription>
+            <CardDescription>Your top upcoming or high priority items.</CardDescription>
           </CardHeader>
           <CardContent className="flex-grow">
             {isLoading ? (
@@ -467,7 +476,7 @@ function DashboardView() {
               <AlertCircle className="h-5 w-5" />
               <CardTitle>Overdue Action</CardTitle>
             </div>
-            <CardDescription>Tasks past their deadline.</CardDescription>
+            <CardDescription>Your tasks past their deadline.</CardDescription>
           </CardHeader>
           <CardContent className="flex-grow">
             {isLoading ? (
@@ -497,9 +506,9 @@ function DashboardView() {
           <CardHeader>
             <div className="flex items-center gap-2 text-primary">
               <Zap className="h-5 w-5 fill-current" />
-              <CardTitle>Quick Tasks</CardTitle>
+              <CardTitle>My Quick Tasks</CardTitle>
             </div>
-            <CardDescription>One-off items from Quick Tasks project.</CardDescription>
+            <CardDescription>Your one-off items from Quick Tasks project.</CardDescription>
           </CardHeader>
           <CardContent className="flex-grow">
             {isLoading ? (
@@ -528,7 +537,7 @@ function DashboardView() {
 
       <div className="grid gap-8 md:grid-cols-2">
         <ProjectStatusChart projects={projects} isLoading={isLoading} />
-        <TaskPriorityChart tasks={tasks} isLoading={isLoading} />
+        <TaskPriorityChart tasks={userTasks} isLoading={isLoading} />
       </div>
     </div>
   );
