@@ -4,7 +4,7 @@ import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { AddSiloDialog } from '@/components/common/add-silo-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
 import type { Company, Project, Sale, Silo, Task } from '@/lib/types';
 import { collection, doc, query, orderBy, getDocs, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
