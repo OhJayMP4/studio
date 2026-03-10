@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useSelectedWorkspace } from '@/app/(main)/layout';
@@ -7,10 +6,10 @@ import { doc, setDoc, serverTimestamp, getDoc, updateDoc } from 'firebase/firest
 import type { UserWorkspacePrefs, SidebarModule } from '@/lib/types';
 import { useEffect, useMemo } from 'react';
 
-export const availableModules: (Omit<SidebarModule, 'order' | 'route' | 'hidden'> & {description: string})[] = [
-    { id: 'files', label: 'Files', icon: 'Folder', description: 'Workspace filing system with folders.' },
-    { id: 'social-scheduler', label: 'Social Scheduler', icon: 'CalendarDays', description: 'Plan and schedule social media posts.' },
-    { id: 'social-accounts', label: 'Social Accounts', icon: 'Settings2', description: 'Manage connected social media accounts.' },
+export const availableModules: (Omit<SidebarModule, 'order' | 'hidden'> & {description: string})[] = [
+    { id: 'files', label: 'Files', icon: 'Folder', route: '/files', description: 'Workspace filing system with folders.' },
+    { id: 'social-scheduler', label: 'Social Scheduler', icon: 'CalendarDays', route: '/social-scheduler', description: 'Plan and schedule social media posts.' },
+    { id: 'social-accounts', label: 'Social Accounts', icon: 'Settings2', route: '/admin/social-accounts', description: 'Manage connected social media accounts.' },
 ];
 
 const coreModuleIds = ['dashboard', 'companies', 'reporting', 'my-tasks'];
@@ -56,13 +55,23 @@ export const useSidebarPrefs = () => {
   
   const prefs = useMemo(() => {
     if (!rawPrefs) return null;
-    // Self-healing: Ensure core modules are never hidden, regardless of DB state
+    
+    // Self-healing: Fix incorrect routes and ensure core modules are visible
     const correctedModules = rawPrefs.sidebarModules.map(module => {
+        // 1. Ensure core modules are never hidden
         if (coreModuleIds.includes(module.id)) {
             return { ...module, hidden: false };
         }
+        
+        // 2. Ensure routes match current master definitions (fixes the /admin/ prefix bug)
+        const masterModule = availableModules.find(am => am.id === module.id);
+        if (masterModule && masterModule.route !== module.route) {
+            return { ...module, route: masterModule.route };
+        }
+        
         return module;
     });
+    
     return { ...rawPrefs, sidebarModules: correctedModules };
   }, [rawPrefs]);
 
@@ -78,10 +87,9 @@ export const useSidebarPrefs = () => {
       const newModules = prefs.sidebarModules.map(m => m.id === moduleId ? { ...m, hidden: false } : m);
       await updateDoc(prefsRef, { sidebarModules: newModules, updatedAt: serverTimestamp() });
     } else {
-      // Add new module
+      // Add new module using its defined route
       const newModule: SidebarModule = {
         ...moduleToAdd,
-        route: `/admin/${moduleToAdd.id}`, // Adjust route logic if necessary
         hidden: false,
         order: prefs.sidebarModules.length,
       };
