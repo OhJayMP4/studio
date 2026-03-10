@@ -35,7 +35,7 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Zap } from 'lucide-react';
+import { Plus, Zap, CalendarIcon } from 'lucide-react';
 import { FormControl, FormField, FormItem, FormMessage } from '../ui/form';
 import { AddCompanyDialog } from './add-company-dialog';
 import { AddProjectDialog } from './add-project-dialog';
@@ -43,6 +43,10 @@ import { AddSiloDialog } from './add-silo-dialog';
 import { AddTaskDialog } from './add-task-dialog';
 import { addQuickTask } from '@/lib/tasks';
 import { useToast } from '@/hooks/use-toast';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { format } from "date-fns";
+import { cn } from '@/lib/utils';
 
 
 type AddEntityType = 'company' | 'project' | 'silo' | 'task' | 'quick-task';
@@ -55,6 +59,7 @@ export function GlobalQuickAdd() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedEntityType, setSelectedEntityType] = useState<AddEntityType | null>(null);
   const [quickTaskTitle, setQuickTaskTitle] = useState('');
+  const [quickTaskDueDate, setQuickTaskDueDate] = useState<Date>(new Date());
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   // State for chained selections
@@ -93,6 +98,7 @@ export function GlobalQuickAdd() {
     setSelectedProjectId(null);
     setSelectedSiloId(null);
     setQuickTaskTitle('');
+    setQuickTaskDueDate(new Date());
   }
 
   const handleAddQuickTask = async () => {
@@ -105,7 +111,7 @@ export function GlobalQuickAdd() {
               taskData: {
                   title: quickTaskTitle.trim(),
                   completed: false,
-                  dueDate: new Date().toISOString(),
+                  dueDate: quickTaskDueDate.toISOString(),
                   priority: 'medium',
                   assigneeId: user.uid,
                   createdBy: user.uid,
@@ -139,15 +145,42 @@ export function GlobalQuickAdd() {
                         </Select>
                     </div>
                     {selectedCompanyId && (
-                        <div>
-                            <Label>Task Title</Label>
-                            <Input 
-                                placeholder="What needs to happen?" 
-                                value={quickTaskTitle} 
-                                onChange={(e) => setQuickTaskTitle(e.target.value)}
-                                autoFocus
-                            />
-                        </div>
+                        <>
+                            <div>
+                                <Label>Task Title</Label>
+                                <Input 
+                                    placeholder="What needs to happen?" 
+                                    value={quickTaskTitle} 
+                                    onChange={(e) => setQuickTaskTitle(e.target.value)}
+                                    autoFocus
+                                />
+                            </div>
+                            <div>
+                                <Label>Due Date</Label>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant={"outline"}
+                                            className={cn(
+                                                "w-full justify-start text-left font-normal",
+                                                !quickTaskDueDate && "text-muted-foreground"
+                                            )}
+                                        >
+                                            <CalendarIcon className="mr-2 h-4 w-4" />
+                                            {quickTaskDueDate ? format(quickTaskDueDate, "PPP") : <span>Pick a date</span>}
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0">
+                                        <Calendar
+                                            mode="single"
+                                            selected={quickTaskDueDate}
+                                            onSelect={(date) => date && setQuickTaskDueDate(date)}
+                                            initialFocus
+                                        />
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+                        </>
                     )}
                     <Button 
                         className="w-full" 

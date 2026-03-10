@@ -21,7 +21,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Archive, ArchiveRestore, MoreVertical, Trash2, LayoutGrid, List, Zap, Plus } from "lucide-react";
+import { Archive, ArchiveRestore, MoreVertical, Trash2, LayoutGrid, List, Zap, Plus, CalendarIcon } from "lucide-react";
 import { EditProjectDialog } from "@/components/common/edit-project-dialog";
 import { DeleteDialog } from "@/components/common/delete-dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +38,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { addQuickTask } from "@/lib/tasks";
 import { TaskItem } from "@/components/common/task-item";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
 
 function CompanyBreadcrumb({ companyName }: { companyName?: string }) {
   return (
@@ -65,6 +68,7 @@ function QuickTaskSection({ companyId }: { companyId: string }) {
     const firestore = useFirestore();
     const { toast } = useToast();
     const [title, setTitle] = useState('');
+    const [dueDate, setDueDate] = useState<Date>(new Date());
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Fetch quick tasks (from the general project)
@@ -87,13 +91,14 @@ function QuickTaskSection({ companyId }: { companyId: string }) {
                 taskData: {
                     title: title.trim(),
                     completed: false,
-                    dueDate: new Date().toISOString(),
+                    dueDate: dueDate.toISOString(),
                     priority: 'medium',
                     assigneeId: user.uid,
                     createdBy: user.uid,
                 }
             });
             setTitle('');
+            setDueDate(new Date());
             toast({ title: "Quick Task Added", description: "Task created in General Tasks." });
         } catch (error: any) {
             toast({ variant: 'destructive', title: "Failed to add task", description: error.message });
@@ -114,7 +119,7 @@ function QuickTaskSection({ companyId }: { companyId: string }) {
                 <CardDescription>Rapidly add tasks that aren't linked to a specific project.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-                <form onSubmit={handleAdd} className="flex gap-2">
+                <form onSubmit={handleAdd} className="space-y-2">
                     <Input 
                         placeholder="What needs to happen?" 
                         value={title} 
@@ -122,10 +127,34 @@ function QuickTaskSection({ companyId }: { companyId: string }) {
                         disabled={isSubmitting}
                         className="bg-background"
                     />
-                    <Button type="submit" disabled={isSubmitting || !title.trim()}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add
-                    </Button>
+                    <div className="flex gap-2">
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    variant={"outline"}
+                                    className={cn(
+                                        "justify-start text-left font-normal bg-background w-full",
+                                        !dueDate && "text-muted-foreground"
+                                    )}
+                                >
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {dueDate ? format(dueDate, "MMM d") : <span>Due date</span>}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                                <Calendar
+                                    mode="single"
+                                    selected={dueDate}
+                                    onSelect={(date) => date && setDueDate(date)}
+                                    initialFocus
+                                />
+                            </PopoverContent>
+                        </Popover>
+                        <Button type="submit" disabled={isSubmitting || !title.trim()} className="px-6">
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add
+                        </Button>
+                    </div>
                 </form>
 
                 {activeQuickTasks.length > 0 && (
