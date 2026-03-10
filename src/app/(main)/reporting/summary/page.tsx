@@ -13,7 +13,7 @@ import { formatDuration } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, FileText, Printer, ArrowLeft, BarChart3, Building2, CheckCircle2 } from "lucide-react";
+import { CalendarIcon, FileText, Printer, ArrowLeft, BarChart3, Building2, CheckCircle2, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Cell } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
@@ -77,7 +77,7 @@ export default function SummaryReportPage() {
         if (availableCompanies && selectedCompanyIds.length === 0) {
             setSelectedCompanyIds(availableCompanies.map(c => c.id));
         }
-    }, [availableCompanies]);
+    }, [availableCompanies, selectedCompanyIds.length]);
 
     const handleGenerateReport = async () => {
         if (!selectedWorkspace || !firestore || !startDate || !endDate || selectedCompanyIds.length === 0) return;
@@ -190,7 +190,7 @@ export default function SummaryReportPage() {
                             <div className="space-y-4">
                                 <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Reporting Period</h3>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-semibold">Start Date</label>
+                                    <Label className="text-xs font-semibold">Start Date</Label>
                                     <Popover>
                                         <PopoverTrigger asChild>
                                             <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !startDate && "text-muted-foreground")}>
@@ -202,7 +202,7 @@ export default function SummaryReportPage() {
                                     </Popover>
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-semibold">End Date</label>
+                                    <Label className="text-xs font-semibold">End Date</Label>
                                     <Popover>
                                         <PopoverTrigger asChild>
                                             <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !endDate && "text-muted-foreground")}>
@@ -394,8 +394,9 @@ export default function SummaryReportPage() {
                                                         <table className="w-full text-left border-collapse text-[11px]">
                                                             <thead>
                                                                 <tr className="bg-white border-b border-slate-200">
-                                                                    <th className="p-3 font-black uppercase tracking-wider text-slate-400 w-[40%]">Task Item</th>
+                                                                    <th className="p-3 font-black uppercase tracking-wider text-slate-400 w-[35%]">Task Item</th>
                                                                     <th className="p-3 font-black uppercase tracking-wider text-slate-400">Owner</th>
+                                                                    <th className="p-3 font-black uppercase tracking-wider text-slate-400 text-center">Status</th>
                                                                     <th className="p-3 font-black uppercase tracking-wider text-slate-400 text-right">Time Spent</th>
                                                                     <th className="p-3 font-black uppercase tracking-wider text-slate-400">Timeline</th>
                                                                     <th className="p-3 font-black uppercase tracking-wider text-slate-400 text-center">Priority</th>
@@ -408,14 +409,23 @@ export default function SummaryReportPage() {
                                                                         <tr key={task.id} className={cn("border-b border-slate-100 last:border-0", task.completed && "bg-slate-50/30")}>
                                                                             <td className="p-3">
                                                                                 <div className="flex items-center gap-2">
-                                                                                    {task.completed && <CheckCircle2 className="h-3 w-3 text-green-500" />}
+                                                                                    {task.completed ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Clock className="h-3 w-3 text-blue-400" />}
                                                                                     <p className={cn("font-semibold", task.completed && "line-through text-slate-400")}>
                                                                                         {task.title}
                                                                                     </p>
                                                                                 </div>
                                                                             </td>
                                                                             <td className="p-3 text-slate-600 font-medium">{assignee}</td>
-                                                                            <td className="p-3 text-right font-mono font-bold text-slate-700">{formatDuration(task.timeSpentMinutes)}</td>
+                                                                            <td className="p-3 text-center">
+                                                                                <span className={cn("text-[9px] uppercase font-black px-2 py-0.5 rounded-full border", 
+                                                                                    task.completed ? "bg-green-50 border-green-200 text-green-700" : "bg-blue-50 border-blue-200 text-blue-700"
+                                                                                )}>
+                                                                                    {task.completed ? 'Completed' : 'In Progress'}
+                                                                                </span>
+                                                                            </td>
+                                                                            <td className="p-3 text-right font-mono font-bold text-slate-700">
+                                                                                {task.completed ? formatDuration(task.timeSpentMinutes) : '0m'}
+                                                                            </td>
                                                                             <td className="p-3 text-slate-500 font-medium">{format(new Date(task.dueDate), 'MMM d')}</td>
                                                                             <td className="p-3 text-center">
                                                                                 <span className={cn("text-[9px] uppercase font-black px-2 py-0.5 rounded-full border", 
