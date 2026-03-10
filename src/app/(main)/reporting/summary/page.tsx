@@ -108,15 +108,18 @@ export default function SummaryReportPage() {
                         const tasksRef = collection(siloDoc.ref, 'tasks');
                         const tasksSnap = await getDocs(query(tasksRef));
                         
-                        // Filter tasks by date range based on due date
+                        // Filter tasks:
+                        // 1. Include if due in range
+                        // 2. OR include if incomplete (active work)
                         const tasksData = tasksSnap.docs
                             .map(taskDoc => ({ id: taskDoc.id, ...taskDoc.data() } as Task))
                             .filter(task => {
                                 const taskDate = new Date(task.dueDate);
-                                return isWithinInterval(taskDate, { 
+                                const isDueInRange = isWithinInterval(taskDate, { 
                                     start: startOfDay(startDate), 
                                     end: endOfDay(endDate) 
                                 });
+                                return isDueInRange || !task.completed;
                             });
                         
                         siloMinutes = tasksData.reduce((acc, t) => acc + (t.timeSpentMinutes || 0), 0);
@@ -131,7 +134,7 @@ export default function SummaryReportPage() {
                 return { ...company, totalMinutes: companyTotalMinutes, projects: projectsData };
             }));
 
-            // Filter out companies with no tasks in the range to keep report clean
+            // Filter out companies with no matching tasks to keep report clean
             const filteredCompanies = companiesData.filter(c => c.projects.some(p => p.silos.some(s => s.tasks.length > 0)));
 
             const users: { [uid: string]: UserProfile } = {};
@@ -318,9 +321,9 @@ export default function SummaryReportPage() {
                     </div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Aggregate View</span>
                 </div>
-                <div className="h-[350px] w-full">
+                <div className="h-[400px] w-full">
                     <ChartContainer config={chartConfig} className="h-full w-full">
-                        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 100 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                             <XAxis 
                                 dataKey="name" 
@@ -330,7 +333,7 @@ export default function SummaryReportPage() {
                                 interval={0}
                                 angle={-45}
                                 textAnchor="end"
-                                height={80}
+                                height={100}
                             />
                             <YAxis 
                                 axisLine={false} 
