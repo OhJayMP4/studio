@@ -4,12 +4,13 @@ import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore'
-import { getStorage } from 'firebase/storage';
+import { getStorage, FirebaseStorage } from 'firebase/storage';
 
 // These will be initialized on the client
 let app: FirebaseApp | undefined;
 let auth: Auth | undefined;
 let firestore: Firestore | undefined;
+let storage: FirebaseStorage | undefined;
 
 // IMPORTANT: DO NOT MODIFY THIS FUNCTION
 export function initializeFirebase() {
@@ -26,16 +27,16 @@ export function initializeFirebase() {
       }
       auth = getAuth(app);
       firestore = getFirestore(app);
-      getStorage(app);
+      storage = getStorage(app);
     } else {
       app = getApp();
       auth = getAuth(app);
       firestore = getFirestore(app);
-      getStorage(app);
+      storage = getStorage(app);
     }
   }
   // On the server, we return undefined. ClientProvider will handle this.
-  return { firebaseApp: app, auth, firestore };
+  return { firebaseApp: app, auth, firestore, storage };
 }
 
 export * from './provider';

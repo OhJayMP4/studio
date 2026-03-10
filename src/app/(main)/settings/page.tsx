@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { useAuth, useFirestore, useDoc, useMemoFirebase, useFirebaseApp } from '@/firebase';
+import { useAuth, useFirestore, useDoc, useMemoFirebase, useStorage } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { updateProfile, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -17,7 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { WorkspaceManager } from '@/components/settings/workspace-manager';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Pencil, KeyRound, User } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
@@ -40,9 +40,9 @@ type ProfileFormValues = z.infer<typeof profileFormSchema>;
 type PasswordFormValues = z.infer<typeof passwordFormSchema>;
 
 export default function SettingsPage() {
-  const app = useFirebaseApp();
   const auth = useAuth();
   const firestore = useFirestore();
+  const storage = useStorage();
   const { toast } = useToast();
   const user = auth.currentUser;
   const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
@@ -146,37 +146,60 @@ export default function SettingsPage() {
   }
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!event.target.files || event.target.files.length === 0 || !user || !userProfileRef) return;
+    if (!event.target.files || event.target.files.length === 0 || !user || !userProfileRef || !storage) return;
     
     const file = event.target.files[0];
-    const storage = getStorage(app);
+    
+    // Basic validation
+    if (file.size > 2 * 1024 * 1024) {
+        toast({ variant: 'destructive', title: 'File too large', description: 'Please select an image smaller than 2MB.' });
+        return;
+    }
+
     const avatarRef = ref(storage, `user-avatars/${user.uid}`);
     
     setIsUploading(true);
     const { dismiss } = toast({ title: "Uploading avatar...", description: "Please wait while your image is being processed." });
     
     try {
-        await uploadBytes(avatarRef, file);
-        const downloadURL = await getDownloadURL(avatarRef);
+        // Use resumable upload for better reliability in cloud environments
+        const uploadTask = uploadBytesResumable(avatarRef, file);
 
-        // 1. Update Firestore Profile First (Most reliable for UI)
-        await updateDoc(userProfileRef, { avatarUrl: downloadURL });
+        return new Promise<void>((resolve, reject) => {
+            uploadTask.on('state_changed', 
+                null, 
+                (error) => {
+                    console.error("Upload error:", error);
+                    dismiss();
+                    toast({ variant: 'destructive', title: 'Upload Failed', description: error.message });
+                    setIsUploading(false);
+                    reject(error);
+                }, 
+                async () => {
+                    const downloadURL = await getDownloadURL(avatarRef);
+                    
+                    // Update Firestore Profile
+                    await updateDoc(userProfileRef, { avatarUrl: downloadURL });
 
-        // 2. Update Auth Profile (Background update)
-        try {
-            await updateProfile(user, { photoURL: downloadURL });
-        } catch (authErr) {
-            console.warn("Auth profile update failed, but Firestore is updated:", authErr);
-        }
+                    // Update Auth Profile
+                    try {
+                        await updateProfile(user, { photoURL: downloadURL });
+                    } catch (authErr) {
+                        console.warn("Auth profile update failed, but Firestore is updated:", authErr);
+                    }
 
-        dismiss();
-        toast({ title: 'Avatar Updated', description: 'Your profile picture has been updated across the app.' });
+                    dismiss();
+                    toast({ title: 'Avatar Updated', description: 'Your profile picture has been updated.' });
+                    setIsUploading(false);
+                    resolve();
+                }
+            );
+        });
     } catch (error: any) {
          dismiss();
          console.error("Avatar upload error:", error);
          toast({ variant: 'destructive', title: 'Upload Failed', description: error.message });
-    } finally {
-        setIsUploading(false);
+         setIsUploading(false);
     }
   };
 
@@ -199,7 +222,6 @@ export default function SettingsPage() {
   }
 
   const name = userProfile?.name || '';
-  // Favor Firestore avatarUrl as it's more reactive than Auth photoURL
   const avatarUrl = userProfile?.avatarUrl || user?.photoURL || '';
   const fallback = name ? name.charAt(0).toUpperCase() : '?';
 

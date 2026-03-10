@@ -17,7 +17,7 @@ export function FirebaseClientProvider({ children }: FirebaseClientProviderProps
 
   // If the services are not yet initialized (e.g., initial server render),
   // return a loading state that matches the MainLayoutContent loading state.
-  if (!firebaseServices.firebaseApp) {
+  if (!firebaseServices.firebaseApp || !firebaseServices.auth || !firebaseServices.firestore || !firebaseServices.storage) {
     return (
       <div className="flex h-screen w-screen items-center justify-center">
         Loading...
@@ -30,6 +30,7 @@ export function FirebaseClientProvider({ children }: FirebaseClientProviderProps
       firebaseApp={firebaseServices.firebaseApp}
       auth={firebaseServices.auth}
       firestore={firebaseServices.firestore}
+      storage={firebaseServices.storage}
     >
       {children}
     </FirebaseProvider>
