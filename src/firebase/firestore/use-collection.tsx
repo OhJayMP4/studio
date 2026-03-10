@@ -65,7 +65,7 @@ export function useCollection<T = any>(
     // If the query is null or undefined, do nothing. Set loading to false.
     if (!memoizedTargetRefOrQuery) {
       setData(null);
-      setIsLoading(false); // Correctly set loading to false as nothing is being fetched
+      setIsLoading(false);
       setError(null);
       return;
     }
@@ -90,15 +90,20 @@ export function useCollection<T = any>(
       },
       (err: FirestoreError) => {
         // Determine the path from the query object for error reporting.
-        const path: string =
-          memoizedTargetRefOrQuery.type === 'collection'
-            ? (memoizedTargetRefOrQuery as CollectionReference).path
-            : (memoizedTargetRefOrQuery as unknown as InternalQuery)._query.path.canonicalString();
+        // Collection group queries might have a root path in their internal structure.
+        let path = '';
+        try {
+            path = memoizedTargetRefOrQuery.type === 'collection'
+                ? (memoizedTargetRefOrQuery as CollectionReference).path
+                : (memoizedTargetRefOrQuery as unknown as InternalQuery)._query.path.canonicalString();
+        } catch (e) {
+            path = 'unknown/collection-group';
+        }
 
         // Create the rich, contextual error.
         const contextualError = new FirestorePermissionError({
           operation: 'list',
-          path,
+          path: path || 'collection-group-root',
         });
 
         // Set local component state to show an error if needed, but don't log here.
