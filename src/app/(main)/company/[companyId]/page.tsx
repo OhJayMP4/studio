@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase";
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import type { Company, Project, Task } from "@/lib/types";
 import { collection, doc, deleteDoc, updateDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { format } from "date-fns";
