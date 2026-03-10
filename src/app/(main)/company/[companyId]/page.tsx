@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase";
-import type { Company, Project } from "@/lib/types";
+import type { Company, Project, Task } from "@/lib/types";
 import { collection, doc, deleteDoc, updateDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { format } from "date-fns";
 import Link from "next/link";
@@ -21,7 +21,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Archive, ArchiveRestore, MoreVertical, Trash2, LayoutGrid, List } from "lucide-react";
+import { Archive, ArchiveRestore, MoreVertical, Trash2, LayoutGrid, List, Zap, Plus } from "lucide-react";
 import { EditProjectDialog } from "@/components/common/edit-project-dialog";
 import { DeleteDialog } from "@/components/common/delete-dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -35,6 +35,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { addQuickTask } from "@/lib/tasks";
+import { TaskItem } from "@/components/common/task-item";
 
 function CompanyBreadcrumb({ companyName }: { companyName?: string }) {
   return (
@@ -56,6 +59,91 @@ function CompanyBreadcrumb({ companyName }: { companyName?: string }) {
   );
 }
 
+function QuickTaskSection({ companyId }: { companyId: string }) {
+    const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
+    const { user } = useUser();
+    const firestore = useFirestore();
+    const { toast } = useToast();
+    const [title, setTitle] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Fetch quick tasks (from the general project)
+    const quickTasksQuery = useMemoFirebase(() => {
+        if (!selectedWorkspace) return null;
+        return collection(firestore, `workspaces/${selectedWorkspace.id}/companies/${companyId}/projects/general-tasks/silos/inbox/tasks`);
+    }, [firestore, selectedWorkspace, companyId]);
+
+    const { data: tasks, isLoading } = useCollection<Task>(quickTasksQuery);
+
+    const handleAdd = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!title.trim() || !user || !selectedWorkspace) return;
+
+        setIsSubmitting(true);
+        try {
+            await addQuickTask(firestore, {
+                workspaceId: selectedWorkspace.id,
+                companyId,
+                taskData: {
+                    title: title.trim(),
+                    completed: false,
+                    dueDate: new Date().toISOString(),
+                    priority: 'medium',
+                    assigneeId: user.uid,
+                    createdBy: user.uid,
+                }
+            });
+            setTitle('');
+            toast({ title: "Quick Task Added", description: "Task created in General Tasks." });
+        } catch (error: any) {
+            toast({ variant: 'destructive', title: "Failed to add task", description: error.message });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const activeQuickTasks = tasks?.filter(t => !t.completed) || [];
+
+    return (
+        <Card className="border-primary/20 bg-primary/5">
+            <CardHeader className="pb-3">
+                <div className="flex items-center gap-2 text-primary">
+                    <Zap className="h-5 w-5 fill-current" />
+                    <CardTitle className="text-lg">Quick Tasks</CardTitle>
+                </div>
+                <CardDescription>Rapidly add tasks that aren't linked to a specific project.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <form onSubmit={handleAdd} className="flex gap-2">
+                    <Input 
+                        placeholder="What needs to happen?" 
+                        value={title} 
+                        onChange={(e) => setTitle(e.target.value)}
+                        disabled={isSubmitting}
+                        className="bg-background"
+                    />
+                    <Button type="submit" disabled={isSubmitting || !title.trim()}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add
+                    </Button>
+                </form>
+
+                {activeQuickTasks.length > 0 && (
+                    <div className="space-y-1 bg-background/50 rounded-md border p-1">
+                        {activeQuickTasks.map(task => (
+                            <TaskItem 
+                                key={task.id} 
+                                task={task} 
+                                siloId="inbox" 
+                                path={`workspaces/${selectedWorkspace?.id}/companies/${companyId}/projects/general-tasks/silos/inbox/tasks/${task.id}`} 
+                            />
+                        ))}
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
 
 function NoProjectsView({ companyId, filter }: { companyId: string, filter: string }) {
   const { isUserAdmin } = useSelectedWorkspace();
@@ -187,6 +275,8 @@ function ProjectsList({ companyId }: { companyId: string }) {
     const filteredProjects = useMemo(() => {
         if (!allProjects) return [];
         return allProjects.filter(project => {
+            // Hide the internal "general-tasks" project from the main projects list
+            if (project.id === 'general-tasks') return false;
             const status = project.status || 'active';
             return status === filter;
         });
@@ -214,7 +304,7 @@ function ProjectsList({ companyId }: { companyId: string }) {
         <Tabs value={filter} onValueChange={(value) => setFilter(value as any)}>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                 <TabsList>
-                    <TabsTrigger value="active">Active</TabsTrigger>
+                    <TabsTrigger value="active">Active Projects</TabsTrigger>
                     <TabsTrigger value="completed">Completed</TabsTrigger>
                     <TabsTrigger value="archived">Archived</TabsTrigger>
                 </TabsList>
@@ -256,7 +346,7 @@ function ProjectsList({ companyId }: { companyId: string }) {
                                         </div>
                                         <CardHeader>
                                             <CardTitle className="flex justify-between items-start pr-8">
-                                                <Link href={`/company/${companyId}/project/${project.id}`} className="hover:underline">
+                                                <Link href={`/company/${companyId}/project/${project.id}`} className="hover:underline text-xl">
                                                     {project.name}
                                                 </Link>
                                                 {project.hasMonetaryValue && project.monetaryValue && (
@@ -366,14 +456,20 @@ export default function CompanyPage() {
   }
   
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
        <CompanyBreadcrumb companyName={company.name} />
-      <div className="mt-4">
+      <div>
         <h1 className="text-4xl font-headline font-bold">{company.name}</h1>
         <p className="text-lg text-muted-foreground mt-2">{company.description}</p>
       </div>
-      <div className="mt-8">
-        <ProjectsList companyId={company.id} />
+
+      <div className="grid gap-8 lg:grid-cols-3">
+          <div className="lg:col-span-2 order-2 lg:order-1">
+            <ProjectsList companyId={company.id} />
+          </div>
+          <div className="lg:col-span-1 order-1 lg:order-2">
+            <QuickTaskSection companyId={company.id} />
+          </div>
       </div>
     </div>
   );

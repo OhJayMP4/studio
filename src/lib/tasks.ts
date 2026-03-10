@@ -1,6 +1,5 @@
-
 'use client';
-import { collection, doc, writeBatch, getDoc, Firestore } from "firebase/firestore";
+import { collection, doc, writeBatch, getDoc, setDoc, Firestore } from "firebase/firestore";
 import type { Company, Project, Silo, Task, Workspace } from "./types";
 
 interface AddTaskParams {
@@ -68,6 +67,62 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
     }
 
     await batch.commit();
+}
+
+/**
+ * Adds a task to a "General Tasks" container for a company, creating the container if it doesn't exist.
+ * This satisfies the need for quick tasks without forcing users to navigate silos.
+ */
+export async function addQuickTask(firestore: Firestore, params: {
+    workspaceId: string;
+    companyId: string;
+    taskData: Omit<Task, 'id' | 'description' | 'workspaceId' | 'projectId'> & { description?: string, createdBy: string };
+}) {
+    const { workspaceId, companyId, taskData } = params;
+    
+    // We use a reserved ID for the general project and silo to make lookup instant and consistent
+    const projectId = 'general-tasks';
+    const siloId = 'inbox';
+
+    const projectRef = doc(firestore, `workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`);
+    const siloRef = doc(firestore, `workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`);
+
+    const projectSnap = await getDoc(projectRef);
+    if (!projectSnap.exists()) {
+        await setDoc(projectRef, {
+            name: 'General Tasks',
+            deadline: new Date(2099, 11, 31).toISOString(), // Far future
+            hasMonetaryValue: false,
+            progress: 0,
+            companyId,
+            workspaceId,
+            totalSalesValue: 0,
+            createdBy: taskData.createdBy,
+            status: 'active',
+            completedAt: null,
+        });
+    }
+
+    const siloSnap = await getDoc(siloRef);
+    if (!siloSnap.exists()) {
+        await setDoc(siloRef, {
+            name: 'Inbox',
+            order: 0,
+            createdBy: taskData.createdBy,
+            workspaceId
+        });
+    }
+
+    return addTask(firestore, {
+        workspaceId,
+        companyId,
+        projectId,
+        siloId,
+        taskData: {
+            ...taskData,
+            projectId // addTask expects this in the data object too
+        }
+    });
 }
 
 

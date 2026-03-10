@@ -5,7 +5,7 @@ import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
 import { collection, query } from 'firebase/firestore';
 import type { Company, Project, Silo } from '@/lib/types';
 
@@ -35,21 +35,27 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus } from 'lucide-react';
+import { Plus, Zap } from 'lucide-react';
 import { FormControl, FormField, FormItem, FormMessage } from '../ui/form';
 import { AddCompanyDialog } from './add-company-dialog';
 import { AddProjectDialog } from './add-project-dialog';
 import { AddSiloDialog } from './add-silo-dialog';
 import { AddTaskDialog } from './add-task-dialog';
+import { addQuickTask } from '@/lib/tasks';
+import { useToast } from '@/hooks/use-toast';
 
 
-type AddEntityType = 'company' | 'project' | 'silo' | 'task';
+type AddEntityType = 'company' | 'project' | 'silo' | 'task' | 'quick-task';
 
 export function GlobalQuickAdd() {
   const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
+  const { user } = useUser();
   const firestore = useFirestore();
+  const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedEntityType, setSelectedEntityType] = useState<AddEntityType | null>(null);
+  const [quickTaskTitle, setQuickTaskTitle] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // State for chained selections
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
@@ -86,6 +92,32 @@ export function GlobalQuickAdd() {
     setSelectedCompanyId(null);
     setSelectedProjectId(null);
     setSelectedSiloId(null);
+    setQuickTaskTitle('');
+  }
+
+  const handleAddQuickTask = async () => {
+      if (!selectedCompanyId || !quickTaskTitle.trim() || !user || !selectedWorkspace) return;
+      setIsSubmitting(true);
+      try {
+          await addQuickTask(firestore, {
+              workspaceId: selectedWorkspace.id,
+              companyId: selectedCompanyId,
+              taskData: {
+                  title: quickTaskTitle.trim(),
+                  completed: false,
+                  dueDate: new Date().toISOString(),
+                  priority: 'medium',
+                  assigneeId: user.uid,
+                  createdBy: user.uid,
+              }
+          });
+          toast({ title: "Quick Task Added" });
+          handleDialogClose();
+      } catch (error: any) {
+          toast({ variant: 'destructive', title: "Error", description: error.message });
+      } finally {
+          setIsSubmitting(false);
+      }
   }
   
   if (!selectedWorkspace) {
@@ -94,6 +126,38 @@ export function GlobalQuickAdd() {
   
   const renderDialogContent = () => {
     switch (selectedEntityType) {
+        case 'quick-task':
+            return (
+                <div className="space-y-4">
+                    <div>
+                        <Label>Select Company</Label>
+                        <Select onValueChange={setSelectedCompanyId} value={selectedCompanyId || undefined}>
+                            <SelectTrigger><SelectValue placeholder="Choose a company..." /></SelectTrigger>
+                            <SelectContent>
+                                {companies?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    {selectedCompanyId && (
+                        <div>
+                            <Label>Task Title</Label>
+                            <Input 
+                                placeholder="What needs to happen?" 
+                                value={quickTaskTitle} 
+                                onChange={(e) => setQuickTaskTitle(e.target.value)}
+                                autoFocus
+                            />
+                        </div>
+                    )}
+                    <Button 
+                        className="w-full" 
+                        disabled={!selectedCompanyId || !quickTaskTitle.trim() || isSubmitting}
+                        onClick={handleAddQuickTask}
+                    >
+                        Create Quick Task
+                    </Button>
+                </div>
+            );
         case 'project':
             return (
                 <div>
@@ -146,7 +210,7 @@ export function GlobalQuickAdd() {
                     {selectedCompanyId && projects && (
                         <div className="mt-4">
                             <Label>Select Project</Label>
-                            <Select onValueChange={(val) => { setSelectedProjectId(val); setSelectedSiloId(null); }} value={selectedProjectId || undefined}>
+                            <Select onValueChange={setSelectedProjectId} value={selectedProjectId || undefined}>
                                 <SelectTrigger><SelectValue placeholder="Choose a project..." /></SelectTrigger>
                                 <SelectContent>
                                     {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
@@ -180,6 +244,7 @@ export function GlobalQuickAdd() {
 
   const getDialogTitle = () => {
     switch (selectedEntityType) {
+        case 'quick-task': return 'Quick Task';
         case 'project': return 'Add New Project';
         case 'silo': return 'Add New Silo';
         case 'task': return 'Add New Task';
@@ -199,6 +264,11 @@ export function GlobalQuickAdd() {
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Quick Add</DropdownMenuLabel>
           <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => openDialog('quick-task')} className="text-primary font-medium">
+            <Zap className="mr-2 h-4 w-4 fill-current" />
+            Quick Task
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           {isUserAdmin && (
              <AddCompanyDialog>
                 <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
@@ -217,7 +287,9 @@ export function GlobalQuickAdd() {
             <DialogHeader>
                 <DialogTitle>{getDialogTitle()}</DialogTitle>
                 <DialogDescription>
-                    Select the hierarchy to add your new item.
+                    {selectedEntityType === 'quick-task' 
+                        ? 'Add a task directly to a company without silos.' 
+                        : 'Select the hierarchy to add your new item.'}
                 </DialogDescription>
             </DialogHeader>
             <div className="py-4">
