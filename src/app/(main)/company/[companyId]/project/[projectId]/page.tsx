@@ -63,6 +63,16 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 
 async function updateProjectProgress(firestore: any, workspaceId: string, companyId: string, projectId: string, toast?: any, isUserAdmin?: boolean) {
@@ -105,20 +115,8 @@ async function updateProjectProgress(firestore: any, workspaceId: string, compan
 
         const updates: any = { progress: newOverallProgress };
         
-        // Check for project completion
-        if (newOverallProgress === 100 && (projectData.status === 'active' || !projectData.status)) {
-            updates.status = 'completed';
-            updates.completedAt = serverTimestamp();
-            if (toast) {
-                 setTimeout(() => {
-                    toast({
-                        title: 'Project Completed!',
-                        description: 'This project has reached 100% completion.',
-                        duration: 10000,
-                    });
-                }, 500);
-            }
-        }
+        // Manual Status Change: We no longer auto-update status to 'completed' here.
+        // Instead, the UI will prompt the user to mark it as complete if they wish.
         
         transaction.update(projectRef, updates);
     });
@@ -689,6 +687,37 @@ export default function ProjectPage() {
 
   const { data: company, isLoading: isCompanyLoading } = useDoc<Company>(companyRef);
 
+  const [showCompletionDialog, setShowCompletionDialog] = useState(false);
+  const [promptedForId, setPromptedForId] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Prompt the user if the project hits 100% and is still 'active'
+    if (project && project.progress === 100 && (project.status === 'active' || !project.status)) {
+        if (promptedForId !== project.id) {
+            setShowCompletionDialog(true);
+            setPromptedForId(project.id);
+        }
+    } else if (project && project.progress < 100) {
+        // Reset the prompt tracker if progress drops below 100
+        setPromptedForId(null);
+    }
+  }, [project?.progress, project?.status, project?.id, promptedForId]);
+
+  const handleMarkAsComplete = async () => {
+      if (!selectedWorkspace || !project) return;
+      const ref = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', projectId);
+      try {
+          await updateDoc(ref, { 
+              status: 'completed',
+              completedAt: serverTimestamp()
+          });
+          toast({ title: "Project Completed", description: `"${project.name}" has been marked as completed.` });
+          setShowCompletionDialog(false);
+      } catch (e: any) {
+          toast({ variant: 'destructive', title: "Update Failed", description: e.message });
+      }
+  }
+
   const isLoading = isProjectLoading || isCompanyLoading;
 
   // Initial progress calculation on load
@@ -726,6 +755,21 @@ export default function ProjectPage() {
         {(project.hasMonetaryValue || project.monetaryValue) && <SalesProgress project={project} companyId={companyId} />}
         <SilosList companyId={companyId} projectId={projectId} />
       </div>
+
+      <AlertDialog open={showCompletionDialog} onOpenChange={setShowCompletionDialog}>
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Mark Project as Complete?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    Congratulations! "{project.name}" has reached 100% progress. Would you like to move it to the completed projects list?
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setShowCompletionDialog(false)}>Not Yet</AlertDialogCancel>
+                <AlertDialogAction onClick={handleMarkAsComplete}>Yes, Mark as Complete</AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -19,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFirestore, useUser, errorEmitter, FirestorePermissionError } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { CalendarIcon } from 'lucide-react';
 import { Switch } from '../ui/switch';
@@ -28,6 +27,13 @@ import { Calendar } from '../ui/calendar';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { Project } from '@/lib/types';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 
 const formSchema = z.object({
@@ -38,6 +44,7 @@ const formSchema = z.object({
     (a) => (a === '' || a === undefined ? undefined : parseFloat(String(a))),
     z.number().positive('Value must be a positive number.').optional()
   ),
+  status: z.enum(['active', 'completed', 'archived']),
 }).refine(data => {
     if (data.hasMonetaryValue) {
         return data.monetaryValue !== undefined && Number(data.monetaryValue) > 0;
@@ -84,6 +91,7 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
         deadline: new Date(project.deadline),
         hasMonetaryValue: project.hasMonetaryValue,
         monetaryValue: project.monetaryValue,
+        status: project.status || 'active',
       });
     }
   }, [isOpen, project, reset]);
@@ -100,13 +108,23 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
 
     const projectRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', project.id);
     
-    const updatedData = {
+    const updatedData: any = {
       name: data.name,
       deadline: data.deadline.toISOString(),
       hasMonetaryValue: data.hasMonetaryValue,
       monetaryValue: data.hasMonetaryValue ? Number(data.monetaryValue) : null,
+      status: data.status,
       updatedBy: user.uid,
     };
+
+    // Handle completedAt timestamp
+    if (data.status === 'completed') {
+        if (project.status !== 'completed') {
+            updatedData.completedAt = serverTimestamp();
+        }
+    } else {
+        updatedData.completedAt = null;
+    }
 
     updateDoc(projectRef, updatedData)
       .then(() => {
@@ -118,7 +136,6 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
       })
       .catch((serverError) => {
         console.error("Update failed:", serverError);
-        // Create and emit a detailed error for debugging.
         const permissionError = new FirestorePermissionError({
           path: projectRef.path,
           operation: 'update',
@@ -126,7 +143,6 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
         });
         errorEmitter.emit('permission-error', permissionError);
         
-        // Also show a user-friendly toast.
         toast({
           variant: 'destructive',
           title: 'Update Failed',
@@ -154,6 +170,27 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
                   <Label htmlFor="name">Project Name</Label>
                   <Input id="name" {...register('name')} />
                   {errors.name && <p className="text-sm text-destructive mt-1">{errors.name.message}</p>}
+                </div>
+
+                <div className="space-y-2">
+                    <Label>Status</Label>
+                    <Controller
+                        name="status"
+                        control={control}
+                        render={({ field }) => (
+                            <Select onValueChange={field.onChange} value={field.value}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="active">Active</SelectItem>
+                                    <SelectItem value="completed">Completed</SelectItem>
+                                    <SelectItem value="archived">Archived</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        )}
+                    />
+                    {errors.status && <p className="text-sm text-destructive mt-1">{errors.status.message}</p>}
                 </div>
 
                 <Controller
