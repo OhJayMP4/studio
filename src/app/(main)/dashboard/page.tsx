@@ -13,21 +13,34 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, AlertCircle, ArrowRight } from "lucide-react";
-import { format, isPast, isToday } from "date-fns";
+import { Calendar, AlertCircle, ArrowRight, Zap } from "lucide-react";
+import { format, isPast, isToday, addDays, isBefore } from "date-fns";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 function TaskListRow({ task }: { task: Task }) {
   const dueDate = new Date(task.dueDate);
   const overdue = !task.completed && isPast(dueDate) && !isToday(dueDate);
+  const isQuickTask = task.projectId === 'general-tasks';
   
   return (
     <div className="flex items-center justify-between py-3 border-b last:border-0">
       <div className="flex flex-col gap-1 min-w-0">
-        <span className={cn("font-medium text-sm truncate", task.completed && "line-through text-muted-foreground")}>
-          {task.title}
-        </span>
+        <div className="flex items-center gap-2">
+            <span className={cn("font-medium text-sm truncate", task.completed && "line-through text-muted-foreground")}>
+            {task.title}
+            </span>
+            {isQuickTask && (
+                <TooltipProvider>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Zap className="h-3 w-3 text-primary fill-current" />
+                        </TooltipTrigger>
+                        <TooltipContent>Quick Task</TooltipContent>
+                    </Tooltip>
+                </TooltipProvider>
+            )}
+        </div>
         <div className="flex items-center gap-2">
           <Badge variant={task.priority === 'high' ? 'destructive' : 'secondary'} className="text-[10px] px-1.5 py-0 uppercase">
             {task.priority}
@@ -46,6 +59,9 @@ function TaskListRow({ task }: { task: Task }) {
     </div>
   );
 }
+
+// Internal wrapper for tooltips used in row
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 function DashboardView() {
   const { selectedWorkspace } = useSelectedWorkspace();
@@ -71,10 +87,14 @@ function DashboardView() {
 
         for (const companyDoc of companiesSnapshot.docs) {
           const projectsRef = collection(companyDoc.ref, 'projects');
-          const projectsSnapshot = await getDocs(query(projectsRef, where('status', '!=', 'archived')));
+          // Fetch all projects and filter in JS to avoid index issues with != queries during prototyping
+          const projectsSnapshot = await getDocs(projectsRef);
           
           for (const projectDoc of projectsSnapshot.docs) {
-            allProjects.push({ id: projectDoc.id, ...projectDoc.data() } as Project);
+            const projectData = { id: projectDoc.id, ...projectDoc.data() } as Project;
+            if (projectData.status === 'archived') continue;
+            
+            allProjects.push(projectData);
             
             const projectSilosRef = collection(projectDoc.ref, 'silos');
             const silosSnapshot = await getDocs(projectSilosRef);
@@ -106,8 +126,16 @@ function DashboardView() {
     const completedProjects = projects.filter(p => p.status === 'completed' || p.progress === 100).length;
     const overdueTasks = tasks.filter(t => !t.completed && isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate))).length;
     
+    const now = new Date();
+    const urgentThreshold = addDays(now, 2); // Tasks due within 48 hours are considered urgent
+
     const highPriorityUpcoming = tasks
-      .filter(t => !t.completed && t.priority === 'high')
+      .filter(t => {
+          if (t.completed) return false;
+          const dueDate = new Date(t.dueDate);
+          // Show if high priority OR if it's due very soon (within 48 hours)
+          return t.priority === 'high' || isBefore(dueDate, urgentThreshold);
+      })
       .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
       .slice(0, 5);
 
@@ -122,7 +150,7 @@ function DashboardView() {
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
-         <h1 className="text-3xl font-headline">Dashboard</h1>
+         <h1 className="text-3xl font-headline font-bold">Dashboard</h1>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -131,7 +159,7 @@ function DashboardView() {
             <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Active Projects</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? <Skeleton className="h-8 w-16"/> : <p className="text-3xl font-bold">{projects.length}</p>}
+            {isLoading ? <Skeleton className="h-8 w-16"/> : <p className="text-3xl font-bold">{projects.filter(p => p.status === 'active' || !p.status).length}</p>}
           </CardContent>
         </Card>
         <Card>
@@ -167,7 +195,7 @@ function DashboardView() {
               <AlertCircle className="h-5 w-5 fill-current" />
               <CardTitle>Urgent & High Priority</CardTitle>
             </div>
-            <CardDescription>Top 5 high importance tasks with closest deadlines.</CardDescription>
+            <CardDescription>Top 5 high importance or time-critical tasks.</CardDescription>
           </CardHeader>
           <CardContent className="flex-grow">
             {isLoading ? (
@@ -182,7 +210,7 @@ function DashboardView() {
               </div>
             ) : (
               <div className="py-8 text-center text-muted-foreground text-sm">
-                No high priority tasks found.
+                No urgent tasks found.
               </div>
             )}
           </CardContent>
