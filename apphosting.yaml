@@ -50,7 +50,7 @@ env:
       - BUILD
       - RUNTIME
   - variable: NEXT_PUBLIC_FB_APP_ID
-    value: "1351069092929808"
+    value: "847457334950618"
     availability:
       - BUILD
       - RUNTIME

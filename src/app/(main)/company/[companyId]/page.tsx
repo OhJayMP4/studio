@@ -22,7 +22,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { MoreVertical, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, MoreVertical, Trash2 } from "lucide-react";
 import { EditProjectDialog } from "@/components/common/edit-project-dialog";
 import { DeleteDialog } from "@/components/common/delete-dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -91,6 +91,42 @@ function ProjectActions({ project, companyId }: { project: Project, companyId: s
             });
         }
     };
+
+    const handleArchive = async () => {
+        if (!selectedWorkspace) return;
+        const projectRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', project.id);
+        try {
+            await updateDoc(projectRef, { status: 'archived' });
+            toast({
+                title: "Project Archived",
+                description: `"${project.name}" has been moved to archives.`,
+            });
+        } catch (error: any) {
+            toast({
+                variant: 'destructive',
+                title: "Error Archiving Project",
+                description: error.message,
+            });
+        }
+    };
+
+    const handleRestore = async () => {
+        if (!selectedWorkspace) return;
+        const projectRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', project.id);
+        try {
+            await updateDoc(projectRef, { status: project.progress === 100 ? 'completed' : 'active' });
+            toast({
+                title: "Project Restored",
+                description: `"${project.name}" has been restored.`,
+            });
+        } catch (error: any) {
+            toast({
+                variant: 'destructive',
+                title: "Error Restoring Project",
+                description: error.message,
+            });
+        }
+    };
     
     return (
         <div className="absolute top-2 right-2">
@@ -106,6 +142,17 @@ function ProjectActions({ project, companyId }: { project: Project, companyId: s
                             Edit
                         </DropdownMenuItem>
                     </EditProjectDialog>
+                    {project.status === 'archived' ? (
+                        <DropdownMenuItem onClick={handleRestore}>
+                            <ArchiveRestore className="mr-2 h-4 w-4" />
+                            Restore
+                        </DropdownMenuItem>
+                    ) : (
+                        <DropdownMenuItem onClick={handleArchive}>
+                            <Archive className="mr-2 h-4 w-4" />
+                            Archive
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
                     <DeleteDialog onConfirm={handleDelete} itemName={project.name}>
                         <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
@@ -122,7 +169,7 @@ function ProjectActions({ project, companyId }: { project: Project, companyId: s
 function ProjectsList({ companyId }: { companyId: string }) {
     const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
     const firestore = useFirestore();
-    const [filter, setFilter] = useState<'active' | 'completed'>('active');
+    const [filter, setFilter] = useState<'active' | 'completed' | 'archived'>('active');
     
     const projectsQuery = useMemoFirebase(() => {
         if (!selectedWorkspace) return null;
@@ -135,91 +182,76 @@ function ProjectsList({ companyId }: { companyId: string }) {
     if (isLoading) {
         return (
              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                <Card>
-                    <CardHeader>
-                        <Skeleton className="h-6 w-3/4" />
-                        <Skeleton className="h-4 w-1/2" />
-                    </CardHeader>
-                    <CardContent>
-                        <Skeleton className="h-4 w-full" />
-                    </CardContent>
-                </Card>
-                 <Card>
-                    <CardHeader>
-                        <Skeleton className="h-6 w-3/4" />
-                        <Skeleton className="h-4 w-1/2" />
-                    </CardHeader>
-                    <CardContent>
-                        <Skeleton className="h-4 w-full" />
-                    </CardContent>
-                </Card>
-                 <Card>
-                    <CardHeader>
-                        <Skeleton className="h-6 w-3/4" />
-                        <Skeleton className="h-4 w-1/2" />
-                    </CardHeader>
-                    <CardContent>
-                        <Skeleton className="h-4 w-full" />
-                    </CardContent>
-                </Card>
+                {[...Array(3)].map((_, i) => (
+                    <Card key={i}>
+                        <CardHeader>
+                            <Skeleton className="h-6 w-3/4" />
+                            <Skeleton className="h-4 w-1/2" />
+                        </CardHeader>
+                        <CardContent>
+                            <Skeleton className="h-4 w-full" />
+                        </CardContent>
+                    </Card>
+                ))}
             </div>
         )
     }
 
-    if (!projects || projects.length === 0) {
-        return <NoProjectsView companyId={companyId} filter={filter} />;
-    }
-
     return (
         <Tabs value={filter} onValueChange={(value) => setFilter(value as any)}>
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                 <TabsList>
                     <TabsTrigger value="active">Active</TabsTrigger>
                     <TabsTrigger value="completed">Completed</TabsTrigger>
+                    <TabsTrigger value="archived">Archived</TabsTrigger>
                 </TabsList>
                 {isUserAdmin && <AddProjectDialog companyId={companyId} />}
             </div>
             <TabsContent value={filter}>
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {projects.map(project => (
-                        <Card key={project.id} className="flex flex-col relative">
-                            {isUserAdmin && <ProjectActions project={project} companyId={companyId} />}
-                            <CardHeader>
-                                <CardTitle className="flex justify-between items-start pr-8">
-                                    <Link href={`/company/${companyId}/project/${project.id}`} className="hover:underline">
-                                        {project.name}
-                                    </Link>
-                                    {project.hasMonetaryValue && project.monetaryValue && (
-                                        <span className="text-lg font-semibold text-green-500">
-                                            R{project.monetaryValue.toLocaleString()}
-                                        </span>
-                                    )}
-                                </CardTitle>
-                                <CardDescription>
-                                    Deadline: {format(new Date(project.deadline), 'PPP')}
-                                    {project.status === 'completed' && project.completedAt &&
-                                        ` • Completed: ${format((project.completedAt as Timestamp).toDate(), 'PPP')}`
-                                    }
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent className="flex-grow">
-                                {/* Content can go here if needed in the future */}
-                            </CardContent>
-                            <CardFooter className="flex-col items-start gap-4">
-                                <div className="w-full space-y-2">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">Progress</span>
-                                        <span className="text-sm font-medium">{project.progress}%</span>
+                {!projects || projects.length === 0 ? (
+                    <NoProjectsView companyId={companyId} filter={filter} />
+                ) : (
+                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        {projects.map(project => (
+                            <Card key={project.id} className="flex flex-col relative">
+                                {isUserAdmin && <ProjectActions project={project} companyId={companyId} />}
+                                <CardHeader>
+                                    <CardTitle className="flex justify-between items-start pr-8">
+                                        <Link href={`/company/${companyId}/project/${project.id}`} className="hover:underline">
+                                            {project.name}
+                                        </Link>
+                                        {project.hasMonetaryValue && project.monetaryValue && (
+                                            <span className="text-lg font-semibold text-green-500">
+                                                R{project.monetaryValue.toLocaleString()}
+                                            </span>
+                                        )}
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Deadline: {format(new Date(project.deadline), 'PPP')}
+                                        {project.status === 'completed' && project.completedAt &&
+                                            ` • Completed: ${format((project.completedAt as Timestamp).toDate(), 'PPP')}`
+                                        }
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="flex-grow">
+                                    {/* Content can go here if needed in the future */}
+                                </CardContent>
+                                <CardFooter className="flex-col items-start gap-4">
+                                    <div className="w-full space-y-2">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm text-muted-foreground">Progress</span>
+                                            <span className="text-sm font-medium">{project.progress}%</span>
+                                        </div>
+                                        <Progress value={project.progress} />
                                     </div>
-                                    <Progress value={project.progress} />
-                                </div>
-                                <Button variant="outline" className="w-full" asChild>
-                                    <Link href={`/company/${companyId}/project/${project.id}`}>View Project</Link>
-                                </Button>
-                            </CardFooter>
-                        </Card>
-                    ))}
-                </div>
+                                    <Button variant="outline" className="w-full" asChild>
+                                        <Link href={`/company/${companyId}/project/${project.id}`}>View Project</Link>
+                                    </Button>
+                                </CardFooter>
+                            </Card>
+                        ))}
+                    </div>
+                )}
             </TabsContent>
         </Tabs>
     )

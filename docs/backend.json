@@ -204,7 +204,7 @@
         },
         "status": {
           "type": "string",
-          "enum": ["active", "completed"],
+          "enum": ["active", "completed", "archived"],
           "description": "The current status of the project."
         },
         "completedAt": {

@@ -1,5 +1,4 @@
 
-
 export type UserProfile = {
   uid: string;
   name: string | null;
@@ -53,7 +52,7 @@ export type Project = {
   workspaceId: string;
   totalSalesValue: number;
   createdBy: string;
-  status: 'active' | 'completed';
+  status: 'active' | 'completed' | 'archived';
   completedAt: any | null; // Firestore Timestamp
 };
 
