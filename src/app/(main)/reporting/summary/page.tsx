@@ -1,9 +1,9 @@
 'use client';
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
-import { useFirestore } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { Company, Project, Silo, Task, UserProfile } from "@/lib/types";
-import { collection, getDocs, query, orderBy, where } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, where, doc } from "firebase/firestore";
 import { useEffect, useState, useMemo } from "react";
 import { format, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { Progress } from "@/components/ui/progress";
@@ -13,10 +13,13 @@ import { formatDuration } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, FileText, Printer, ArrowLeft, BarChart3 } from "lucide-react";
+import { CalendarIcon, FileText, Printer, ArrowLeft, BarChart3, Building2, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Cell } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 type ReportData = {
     companies: (Company & { 
@@ -52,30 +55,43 @@ export default function SummaryReportPage() {
     const { selectedWorkspace } = useSelectedWorkspace();
     const firestore = useFirestore();
     
-    // UI State
+    // Configuration State
     const [isConfiguring, setIsConfiguring] = useState(true);
     const [startDate, setStartDate] = useState<Date | undefined>(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
     const [endDate, setEndDate] = useState<Date | undefined>(new Date());
+    const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
     
     // Data State
     const [reportData, setReportData] = useState<ReportData | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
+    // Fetch available companies for selection
+    const companiesListQuery = useMemoFirebase(() => {
+        if (!selectedWorkspace) return null;
+        return collection(firestore, 'workspaces', selectedWorkspace.id, 'companies');
+    }, [firestore, selectedWorkspace]);
+    const { data: availableCompanies, isLoading: isLoadingCompanies } = useCollection<Company>(companiesListQuery);
+
+    // Default to selecting all companies when they load
+    useEffect(() => {
+        if (availableCompanies && selectedCompanyIds.length === 0) {
+            setSelectedCompanyIds(availableCompanies.map(c => c.id));
+        }
+    }, [availableCompanies]);
+
     const handleGenerateReport = async () => {
-        if (!selectedWorkspace || !firestore || !startDate || !endDate) return;
+        if (!selectedWorkspace || !firestore || !startDate || !endDate || selectedCompanyIds.length === 0) return;
 
         setIsLoading(true);
         setIsConfiguring(false);
         
         try {
-            const companiesRef = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies');
-            const companiesSnap = await getDocs(companiesRef);
+            const companiesToFetch = availableCompanies?.filter(c => selectedCompanyIds.includes(c.id)) || [];
             
-            const companiesData = await Promise.all(companiesSnap.docs.map(async (companyDoc) => {
-                const company = { id: companyDoc.id, ...companyDoc.data() } as Company;
+            const companiesData = await Promise.all(companiesToFetch.map(async (company) => {
                 let companyTotalMinutes = 0;
                 
-                const projectsRef = collection(companyDoc.ref, 'projects');
+                const projectsRef = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies', company.id, 'projects');
                 const projectsQuery = query(projectsRef, where('status', '!=', 'archived'));
                 const projectsSnap = await getDocs(projectsQuery);
 
@@ -152,49 +168,93 @@ export default function SummaryReportPage() {
         },
     };
 
+    const toggleCompany = (id: string) => {
+        setSelectedCompanyIds(prev => 
+            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+        );
+    };
+
     if (isConfiguring) {
         return (
             <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-                <Card className="w-full max-w-md shadow-xl border-t-4 border-t-primary">
+                <Card className="w-full max-w-2xl shadow-xl border-t-4 border-t-primary">
                     <CardHeader className="text-center">
                         <div className="mx-auto bg-primary/10 p-3 rounded-full w-fit mb-4">
                             <FileText className="h-8 w-8 text-primary" />
                         </div>
                         <CardTitle className="text-2xl font-headline">Generate Weekly Summary</CardTitle>
-                        <CardDescription>Select the period you would like to report on.</CardDescription>
+                        <CardDescription>Select the period and companies you would like to report on.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
-                        <div className="grid gap-4">
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium">Start Date</label>
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !startDate && "text-muted-foreground")}>
-                                            <CalendarIcon className="mr-2 h-4 w-4" />
-                                            {startDate ? format(startDate, "PPP") : <span>Pick a date</span>}
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={startDate} onSelect={setStartDate} initialFocus /></PopoverContent>
-                                </Popover>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-4">
+                                <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Reporting Period</h3>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold">Start Date</label>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !startDate && "text-muted-foreground")}>
+                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                {startDate ? format(startDate, "PPP") : <span>Pick a date</span>}
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={startDate} onSelect={setStartDate} initialFocus /></PopoverContent>
+                                    </Popover>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold">End Date</label>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !endDate && "text-muted-foreground")}>
+                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                {endDate ? format(endDate, "PPP") : <span>Pick a date</span>}
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={endDate} onSelect={setEndDate} initialFocus /></PopoverContent>
+                                    </Popover>
+                                </div>
                             </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium">End Date</label>
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !endDate && "text-muted-foreground")}>
-                                            <CalendarIcon className="mr-2 h-4 w-4" />
-                                            {endDate ? format(endDate, "PPP") : <span>Pick a date</span>}
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={endDate} onSelect={setEndDate} initialFocus /></PopoverContent>
-                                </Popover>
+
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Include Companies</h3>
+                                    <span className="text-[10px] font-bold bg-muted px-1.5 py-0.5 rounded uppercase">
+                                        {selectedCompanyIds.length} Selected
+                                    </span>
+                                </div>
+                                <ScrollArea className="h-[180px] border rounded-md p-4 bg-background">
+                                    {isLoadingCompanies ? (
+                                        <div className="space-y-2">
+                                            <Skeleton className="h-8 w-full" />
+                                            <Skeleton className="h-8 w-full" />
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {availableCompanies?.map(company => (
+                                                <div key={company.id} className="flex items-center space-x-3">
+                                                    <Checkbox 
+                                                        id={`co-${company.id}`} 
+                                                        checked={selectedCompanyIds.includes(company.id)}
+                                                        onCheckedChange={() => toggleCompany(company.id)}
+                                                    />
+                                                    <Label htmlFor={`co-${company.id}`} className="text-sm cursor-pointer truncate flex-1">
+                                                        {company.name}
+                                                    </Label>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </ScrollArea>
                             </div>
                         </div>
                     </CardContent>
-                    <CardFooter>
-                        <Button className="w-full" size="lg" onClick={handleGenerateReport} disabled={!startDate || !endDate}>
-                            Generate Report
+                    <CardFooter className="flex-col gap-3">
+                        <Button className="w-full" size="lg" onClick={handleGenerateReport} disabled={!startDate || !endDate || selectedCompanyIds.length === 0}>
+                            Generate Full Report
                         </Button>
+                        <p className="text-[10px] text-muted-foreground text-center uppercase tracking-widest font-semibold">
+                            Archived projects are automatically excluded
+                        </p>
                     </CardFooter>
                 </Card>
             </div>
@@ -205,11 +265,15 @@ export default function SummaryReportPage() {
 
     if (!reportData || !selectedWorkspace) {
         return (
-            <div className="p-8 text-center space-y-4">
-                <p className="text-muted-foreground">No data found for the selected date range.</p>
+            <div className="min-h-screen flex flex-col items-center justify-center p-8 text-center space-y-4">
+                <div className="bg-muted p-6 rounded-full mb-2">
+                    <FileText className="h-12 w-12 text-muted-foreground" />
+                </div>
+                <h2 className="text-2xl font-bold">No Data Found</h2>
+                <p className="text-muted-foreground max-w-md">No tasks or activity were found for the selected companies within this date range.</p>
                 <Button onClick={() => setIsConfiguring(true)} variant="outline">
                     <ArrowLeft className="mr-2 h-4 w-4" />
-                    Try Different Dates
+                    Adjust Settings
                 </Button>
             </div>
         );
@@ -231,47 +295,53 @@ export default function SummaryReportPage() {
             <div className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-8">
                  <div>
                     <h1 className="text-4xl font-bold font-headline tracking-tight">Workspace Summary</h1>
-                    <p className="text-slate-500 font-medium mt-1">
+                    <p className="text-slate-500 font-medium mt-1 uppercase tracking-wide text-xs">
                         {selectedWorkspace.name} • {format(startDate!, 'MMM d')} - {format(endDate!, 'MMM d, yyyy')}
                     </p>
                  </div>
                  <div className="flex gap-2 no-print">
-                    <Button onClick={() => setIsConfiguring(true)} variant="ghost">
-                        <ArrowLeft className="mr-2 h-4 w-4" /> Change Dates
+                    <Button onClick={() => setIsConfiguring(true)} variant="ghost" size="sm">
+                        <ArrowLeft className="mr-2 h-4 w-4" /> Adjust Report
                     </Button>
-                    <Button onClick={() => window.print()} className="bg-slate-900 text-white hover:bg-slate-800 shadow-md">
-                        <Printer className="mr-2 h-4 w-4" /> Print Report
+                    <Button onClick={() => window.print()} size="sm" className="bg-slate-900 text-white hover:bg-slate-800 shadow-md">
+                        <Printer className="mr-2 h-4 w-4" /> Print PDF
                     </Button>
                  </div>
             </div>
 
             {/* Chart Section */}
             <div className="mb-12 break-inside-avoid bg-slate-50/50 p-6 rounded-xl border border-slate-100">
-                <div className="flex items-center gap-2 mb-6">
-                    <BarChart3 className="h-5 w-5 text-primary" />
-                    <h2 className="text-xl font-bold font-headline">Resource Allocation (Hours per Company)</h2>
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-2">
+                        <BarChart3 className="h-5 w-5 text-primary" />
+                        <h2 className="text-xl font-bold font-headline">Resource Allocation (Hours)</h2>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Aggregate View</span>
                 </div>
-                <div className="h-[300px] w-full">
+                <div className="h-[350px] w-full">
                     <ChartContainer config={chartConfig} className="h-full w-full">
-                        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                             <XAxis 
                                 dataKey="name" 
                                 axisLine={false} 
                                 tickLine={false} 
-                                tick={{ fill: '#64748b', fontSize: 12 }}
+                                tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }}
                                 interval={0}
+                                angle={-45}
+                                textAnchor="end"
+                                height={80}
                             />
                             <YAxis 
                                 axisLine={false} 
                                 tickLine={false} 
-                                tick={{ fill: '#64748b', fontSize: 12 }}
-                                label={{ value: 'Hours', angle: -90, position: 'insideLeft', style: { fill: '#64748b', fontWeight: 500 } }}
+                                tick={{ fill: '#64748b', fontSize: 11 }}
+                                label={{ value: 'Total Hours', angle: -90, position: 'insideLeft', style: { fill: '#64748b', fontWeight: 700, fontSize: 10, textTransform: 'uppercase' } }}
                             />
                             <ChartTooltip content={<ChartTooltipContent />} />
-                            <Bar dataKey="hours" radius={[4, 4, 0, 0]} barSize={40}>
+                            <Bar dataKey="hours" radius={[4, 4, 0, 0]} barSize={45}>
                                 {chartData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={`hsl(var(--primary))`} fillOpacity={1 - (index * 0.15)} />
+                                    <Cell key={`cell-${index}`} fill={`hsl(var(--primary))`} fillOpacity={1 - (index * 0.1)} />
                                 ))}
                             </Bar>
                         </BarChart>
@@ -282,12 +352,15 @@ export default function SummaryReportPage() {
             {/* Main Content */}
             <div className="space-y-12">
                 {reportData.companies.map(company => (
-                    <div key={company.id} className="mb-12">
+                    <div key={company.id} className="mb-12 break-inside-avoid">
                         <div className="flex justify-between items-baseline border-b-2 border-slate-200 pb-2 mb-6">
-                            <h2 className="text-2xl font-bold text-slate-900">{company.name}</h2>
+                            <div className="flex items-center gap-3">
+                                <Building2 className="h-6 w-6 text-slate-400" />
+                                <h2 className="text-2xl font-bold text-slate-900">{company.name}</h2>
+                            </div>
                             <div className="text-right">
-                                <p className="text-xs uppercase tracking-wider text-slate-500 font-bold">Company Total</p>
-                                <p className="text-xl font-mono font-bold text-primary">{formatDuration(company.totalMinutes)}</p>
+                                <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">Company Total</p>
+                                <p className="text-2xl font-mono font-bold text-primary">{formatDuration(company.totalMinutes)}</p>
                             </div>
                         </div>
 
@@ -301,8 +374,8 @@ export default function SummaryReportPage() {
                                         <h3 className="text-xl font-bold text-slate-800">{projectName}</h3>
                                         {!isQuickTaskProject && (
                                             <div className="flex items-center gap-4 w-64">
-                                                <span className="text-xs font-bold text-slate-500 whitespace-nowrap">Progress: {project.progress}%</span>
-                                                <Progress value={project.progress} className="h-2 bg-slate-100 [&>div]:bg-slate-900" />
+                                                <span className="text-[10px] font-black text-slate-400 whitespace-nowrap uppercase">Progress: {project.progress}%</span>
+                                                <Progress value={project.progress} className="h-1.5 bg-slate-100 [&>div]:bg-slate-900" />
                                             </div>
                                         )}
                                     </div>
@@ -312,37 +385,40 @@ export default function SummaryReportPage() {
                                             silo.tasks.length > 0 && (
                                                 <div key={silo.id} className="break-inside-avoid">
                                                     <div className="flex justify-between items-center bg-slate-50 px-3 py-2 rounded-t-lg border-x border-t border-slate-200">
-                                                        <h4 className="text-sm font-bold uppercase tracking-wide text-slate-700">{silo.name}</h4>
-                                                        <span className="text-xs font-mono font-bold bg-white px-2 py-1 rounded border border-slate-200">
-                                                            Silo Total: {formatDuration(silo.siloMinutes)}
+                                                        <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">{silo.name}</h4>
+                                                        <span className="text-[10px] font-mono font-bold bg-white px-2 py-1 rounded border border-slate-200 uppercase">
+                                                            Silo Subtotal: {formatDuration(silo.siloMinutes)}
                                                         </span>
                                                     </div>
                                                     <div className="border border-slate-200 rounded-b-lg overflow-hidden">
-                                                        <table className="w-full text-left border-collapse text-xs">
+                                                        <table className="w-full text-left border-collapse text-[11px]">
                                                             <thead>
                                                                 <tr className="bg-white border-b border-slate-200">
-                                                                    <th className="p-3 font-bold text-slate-500 w-[40%]">Task</th>
-                                                                    <th className="p-3 font-bold text-slate-500">Assignee</th>
-                                                                    <th className="p-3 font-bold text-slate-500 text-right">Time</th>
-                                                                    <th className="p-3 font-bold text-slate-500">Due Date</th>
-                                                                    <th className="p-3 font-bold text-slate-500 text-center">Priority</th>
+                                                                    <th className="p-3 font-black uppercase tracking-wider text-slate-400 w-[40%]">Task Item</th>
+                                                                    <th className="p-3 font-black uppercase tracking-wider text-slate-400">Owner</th>
+                                                                    <th className="p-3 font-black uppercase tracking-wider text-slate-400 text-right">Time Spent</th>
+                                                                    <th className="p-3 font-black uppercase tracking-wider text-slate-400">Timeline</th>
+                                                                    <th className="p-3 font-black uppercase tracking-wider text-slate-400 text-center">Priority</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
                                                                 {silo.tasks.map(task => {
                                                                     const assignee = reportData.users[task.assigneeId]?.name || 'Unassigned';
                                                                     return (
-                                                                        <tr key={task.id} className={cn("border-b border-slate-100 last:border-0", task.completed && "bg-slate-50/50")}>
+                                                                        <tr key={task.id} className={cn("border-b border-slate-100 last:border-0", task.completed && "bg-slate-50/30")}>
                                                                             <td className="p-3">
-                                                                                <p className={cn("font-medium", task.completed && "line-through text-slate-400")}>
-                                                                                    {task.title}
-                                                                                </p>
+                                                                                <div className="flex items-center gap-2">
+                                                                                    {task.completed && <CheckCircle2 className="h-3 w-3 text-green-500" />}
+                                                                                    <p className={cn("font-semibold", task.completed && "line-through text-slate-400")}>
+                                                                                        {task.title}
+                                                                                    </p>
+                                                                                </div>
                                                                             </td>
                                                                             <td className="p-3 text-slate-600 font-medium">{assignee}</td>
                                                                             <td className="p-3 text-right font-mono font-bold text-slate-700">{formatDuration(task.timeSpentMinutes)}</td>
-                                                                            <td className="p-3 text-slate-500">{format(new Date(task.dueDate), 'MMM d, yyyy')}</td>
+                                                                            <td className="p-3 text-slate-500 font-medium">{format(new Date(task.dueDate), 'MMM d')}</td>
                                                                             <td className="p-3 text-center">
-                                                                                <span className={cn("text-[10px] uppercase font-black px-2 py-0.5 rounded-full border", 
+                                                                                <span className={cn("text-[9px] uppercase font-black px-2 py-0.5 rounded-full border", 
                                                                                     task.priority === 'high' ? "bg-red-50 border-red-200 text-red-700" :
                                                                                     task.priority === 'medium' ? "bg-amber-50 border-amber-200 text-amber-700" :
                                                                                     "bg-slate-50 border-slate-200 text-slate-700"
@@ -368,8 +444,8 @@ export default function SummaryReportPage() {
             </div>
 
             {/* Footer */}
-            <div className="mt-16 pt-8 border-t border-slate-200 text-center text-slate-400 text-xs font-medium uppercase tracking-widest break-inside-avoid">
-                End of Report • Generated by SaturnSync • {format(new Date(), 'PPP')}
+            <div className="mt-16 pt-8 border-t border-slate-200 text-center text-slate-400 text-[10px] font-black uppercase tracking-[0.2em] break-inside-avoid">
+                Report Finalized • SaturnSync Intelligence • {format(new Date(), 'PPP')}
             </div>
         </div>
     );
