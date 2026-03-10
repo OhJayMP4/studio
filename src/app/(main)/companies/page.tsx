@@ -4,25 +4,26 @@ import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, doc, deleteDoc } from "firebase/firestore";
-import type { Company } from "@/lib/types";
+import { collection, doc, deleteDoc, collectionGroup, query, where } from "firebase/firestore";
+import type { Company, Project } from "@/lib/types";
 import { AddCompanyDialog } from "@/components/common/add-company-dialog";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { MoreVertical } from "lucide-react";
+import { MoreVertical, LayoutGrid, List, Building } from "lucide-react";
 import { EditCompanyDialog } from "@/components/common/edit-company-dialog";
 import { DeleteDialog } from "@/components/common/delete-dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
   Breadcrumb,
   BreadcrumbItem,
-  BreadcrumbLink,
   BreadcrumbList,
   BreadcrumbPage,
-  BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { CompanyProgressCard } from "@/components/common/company-progress-card";
-
+import { useState, useMemo } from "react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Progress } from "@/components/ui/progress";
+import Link from "next/link";
 
 function CompaniesBreadcrumb() {
   return (
@@ -60,48 +61,93 @@ function CompanyActions({ company }: { company: Company }) {
     };
 
     return (
-        <div className="absolute top-2 right-2 z-10">
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon">
-                        <MoreVertical className="h-4 w-4" />
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                    <EditCompanyDialog company={company}>
-                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                            Edit
-                        </DropdownMenuItem>
-                    </EditCompanyDialog>
-                    <DeleteDialog onConfirm={handleDelete} itemName={company.name}>
-                        <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
-                            Delete
-                        </DropdownMenuItem>
-                    </DeleteDialog>
-                </DropdownMenuContent>
-            </DropdownMenu>
-        </div>
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                    <MoreVertical className="h-4 w-4" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <EditCompanyDialog company={company}>
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                        Edit
+                    </DropdownMenuItem>
+                </EditCompanyDialog>
+                <DeleteDialog onConfirm={handleDelete} itemName={company.name}>
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
+                        Delete
+                    </DropdownMenuItem>
+                </DeleteDialog>
+            </DropdownMenuContent>
+        </DropdownMenu>
     );
 }
 
 function WorkspaceView() {
   const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
+  // Fetch all companies
   const companiesQuery = useMemoFirebase(() => {
     if (!selectedWorkspace) return null;
     return collection(firestore, 'workspaces', selectedWorkspace.id, 'companies');
   }, [firestore, selectedWorkspace]);
 
-  const { data: companies, isLoading } = useCollection<Company>(companiesQuery);
+  const { data: companies, isLoading: isCompaniesLoading } = useCollection<Company>(companiesQuery);
+
+  // Fetch all projects in the workspace to calculate progress centrally
+  const projectsQuery = useMemoFirebase(() => {
+    if (!selectedWorkspace) return null;
+    return query(
+        collectionGroup(firestore, 'projects'),
+        where('workspaceId', '==', selectedWorkspace.id),
+        where('status', '!=', 'archived')
+    );
+  }, [firestore, selectedWorkspace]);
+
+  const { data: allProjects, isLoading: isProjectsLoading } = useCollection<Project>(projectsQuery);
+
+  const enrichedCompanies = useMemo(() => {
+    if (!companies) return [];
+    
+    const results = companies.map(company => {
+        const companyProjects = allProjects?.filter(p => p.companyId === company.id) || [];
+        const averageProgress = companyProjects.length > 0
+            ? Math.round(companyProjects.reduce((acc, p) => acc + (p.progress || 0), 0) / companyProjects.length)
+            : 0;
+        
+        return {
+            ...company,
+            averageProgress,
+            projectCount: companyProjects.length
+        };
+    });
+
+    // Auto sort by progress descending (most progress first)
+    return results.sort((a, b) => b.averageProgress - a.averageProgress);
+  }, [companies, allProjects]);
+
+  const isLoading = isCompaniesLoading || isProjectsLoading;
 
   if (isLoading) {
-    return <div>Loading companies...</div>;
+    return (
+        <div className="space-y-6">
+            <CompaniesBreadcrumb />
+            <div className="flex justify-between items-center">
+                <div className="h-10 w-48 bg-muted animate-pulse rounded-md" />
+                <div className="h-10 w-32 bg-muted animate-pulse rounded-md" />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {[1, 2, 3].map(i => <div key={i} className="h-48 bg-muted animate-pulse rounded-lg" />)}
+            </div>
+        </div>
+    );
   }
 
-  if (!companies || companies.length === 0) {
+  if (!enrichedCompanies || enrichedCompanies.length === 0) {
     return (
-      <Card className="w-full max-w-md text-center mx-auto">
+      <Card className="w-full max-w-md text-center mx-auto mt-12">
         <CardHeader>
           <CardTitle>No Companies Found</CardTitle>
           <CardDescription>Get started by adding your first company to this workspace.</CardDescription>
@@ -118,17 +164,86 @@ function WorkspaceView() {
   return (
     <div className="space-y-6">
         <CompaniesBreadcrumb />
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <h1 className="text-3xl font-headline">Companies</h1>
-            <AddCompanyDialog />
+            <div className="flex items-center gap-2">
+                <div className="flex gap-1 bg-muted p-1 rounded-md">
+                    <Button
+                        size="sm"
+                        variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                        onClick={() => setViewMode('grid')}
+                        className="h-8 w-8 p-0"
+                    >
+                        <LayoutGrid className="h-4 w-4" />
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                        onClick={() => setViewMode('list')}
+                        className="h-8 w-8 p-0"
+                    >
+                        <List className="h-4 w-4" />
+                    </Button>
+                </div>
+                <AddCompanyDialog />
+            </div>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {companies.map((company) => (
-                <CompanyProgressCard key={company.id} company={company}>
-                    <CompanyActions company={company} />
-                </CompanyProgressCard>
-            ))}
-        </div>
+
+        {viewMode === 'grid' ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {enrichedCompanies.map((company) => (
+                    <CompanyProgressCard 
+                        key={company.id} 
+                        company={company}
+                        progressOverride={company.averageProgress}
+                    >
+                        <div className="absolute top-2 right-2 z-10">
+                            <CompanyActions company={company} />
+                        </div>
+                    </CompanyProgressCard>
+                ))}
+            </div>
+        ) : (
+            <div className="border rounded-md bg-card">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead className="w-[50px]"></TableHead>
+                            <TableHead>Company</TableHead>
+                            <TableHead>Projects</TableHead>
+                            <TableHead className="w-[30%]">Progress</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {enrichedCompanies.map((company) => (
+                            <TableRow key={company.id}>
+                                <TableCell>
+                                    <Building className="h-5 w-5 text-muted-foreground" />
+                                </TableCell>
+                                <TableCell className="font-medium">
+                                    <Link href={`/company/${company.id}`} className="hover:underline">
+                                        {company.name}
+                                    </Link>
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">
+                                    {company.projectCount} active projects
+                                </TableCell>
+                                <TableCell>
+                                    <div className="flex items-center gap-3">
+                                        <Progress value={company.averageProgress} className="h-2" />
+                                        <span className="text-xs font-medium tabular-nums w-8">{company.averageProgress}%</span>
+                                    </div>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                    <CompanyActions company={company} />
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
+        )}
     </div>
   );
 }
