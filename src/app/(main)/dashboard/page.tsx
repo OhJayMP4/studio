@@ -12,11 +12,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, AlertCircle, ArrowRight, Zap } from "lucide-react";
+import { Calendar, AlertCircle, ArrowRight, Zap, ArrowLeft, Building, Folder, CheckCircle2 } from "lucide-react";
 import { format, isPast, isToday, addDays, isBefore } from "date-fns";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
+type DashboardDetailView = 'main' | 'active-projects' | 'completed-projects' | 'total-tasks' | 'overdue-tasks';
 
 function TaskListRow({ task }: { task: Task }) {
   const dueDate = new Date(task.dueDate);
@@ -60,12 +63,24 @@ function TaskListRow({ task }: { task: Task }) {
   );
 }
 
+function DetailHeader({ title, onBack }: { title: string, onBack: () => void }) {
+    return (
+        <div className="flex items-center gap-4 mb-6">
+            <Button variant="outline" size="icon" onClick={onBack}>
+                <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <h2 className="text-2xl font-headline font-bold">{title}</h2>
+        </div>
+    );
+}
+
 function DashboardView() {
   const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [detailView, setDetailView] = useState<DashboardDetailView>('main');
 
   useEffect(() => {
     if (!selectedWorkspace?.id || !firestore) {
@@ -119,9 +134,9 @@ function DashboardView() {
   }, [selectedWorkspace, firestore]);
   
   const stats = useMemo(() => {
-    const activeTasks = tasks.filter(t => !t.completed);
-    const completedProjectsCount = projects.filter(p => p.status === 'completed' || p.progress === 100).length;
-    const overdueTasksCount = tasks.filter(t => !t.completed && isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate))).length;
+    const activeProjectsList = projects.filter(p => p.status === 'active' || !p.status);
+    const completedProjectsList = projects.filter(p => p.status === 'completed' || p.progress === 100);
+    const overdueTasksList = tasks.filter(t => !t.completed && isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate)));
     
     const now = new Date();
     const urgentThreshold = addDays(now, 2);
@@ -135,24 +150,198 @@ function DashboardView() {
       .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
       .slice(0, 5);
 
-    const overdueList = tasks
-      .filter(t => !t.completed && isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate)))
-      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
-      .slice(0, 5);
-
     const quickTasksList = tasks
       .filter(t => !t.completed && t.projectId === 'general-tasks')
       .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
       .slice(0, 5);
 
     return { 
-        completedProjects: completedProjectsCount, 
-        overdueTasks: overdueTasksCount, 
+        activeProjects: activeProjectsList,
+        completedProjects: completedProjectsList, 
+        overdueTasks: overdueTasksList, 
         highPriorityUpcoming, 
-        overdueList,
         quickTasksList
     };
   }, [projects, tasks]);
+
+  if (detailView === 'active-projects') {
+      return (
+          <div className="space-y-6">
+              <DetailHeader title="Active Projects" onBack={() => setDetailView('main')} />
+              <Card>
+                  <CardContent className="p-0">
+                      <Table>
+                          <TableHeader>
+                              <TableRow>
+                                  <TableHead>Project</TableHead>
+                                  <TableHead>Company</TableHead>
+                                  <TableHead>Deadline</TableHead>
+                                  <TableHead className="text-right">Progress</TableHead>
+                              </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                              {stats.activeProjects.map(p => (
+                                  <TableRow key={p.id}>
+                                      <TableCell className="font-medium">
+                                          <Link href={`/company/${p.companyId}/project/${p.id}`} className="flex items-center gap-2 hover:underline">
+                                              <Folder className="h-4 w-4 text-primary" />
+                                              {p.name}
+                                          </Link>
+                                      </TableCell>
+                                      <TableCell>
+                                          <Link href={`/company/${p.companyId}`} className="text-muted-foreground hover:underline">
+                                              {p.companyId === 'general-tasks' ? 'General' : 'View Company'}
+                                          </Link>
+                                      </TableCell>
+                                      <TableCell className="text-muted-foreground">
+                                          {p.deadline ? format(new Date(p.deadline), 'MMM d, yyyy') : '-'}
+                                      </TableCell>
+                                      <TableCell className="text-right tabular-nums">
+                                          {p.progress}%
+                                      </TableCell>
+                                  </TableRow>
+                              ))}
+                          </TableBody>
+                      </Table>
+                  </CardContent>
+              </Card>
+          </div>
+      );
+  }
+
+  if (detailView === 'completed-projects') {
+    return (
+        <div className="space-y-6">
+            <DetailHeader title="Completed Projects" onBack={() => setDetailView('main')} />
+            <Card>
+                <CardContent className="p-0">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Project</TableHead>
+                                <TableHead>Company</TableHead>
+                                <TableHead>Completed Date</TableHead>
+                                <TableHead className="text-right">Value</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {stats.completedProjects.map(p => (
+                                <TableRow key={p.id}>
+                                    <TableCell className="font-medium">
+                                        <Link href={`/company/${p.companyId}/project/${p.id}`} className="flex items-center gap-2 hover:underline">
+                                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                            {p.name}
+                                        </Link>
+                                    </TableCell>
+                                    <TableCell className="text-muted-foreground">
+                                        {p.companyId === 'general-tasks' ? 'General' : 'Workspace Company'}
+                                    </TableCell>
+                                    <TableCell className="text-muted-foreground">
+                                        {p.completedAt ? format(p.completedAt.toDate(), 'MMM d, yyyy') : 'Recently'}
+                                    </TableCell>
+                                    <TableCell className="text-right font-medium">
+                                        {p.hasMonetaryValue ? `R${p.monetaryValue?.toLocaleString()}` : '-'}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+        </div>
+    );
+  }
+
+  if (detailView === 'total-tasks') {
+    return (
+        <div className="space-y-6">
+            <DetailHeader title="Total Workspace Tasks" onBack={() => setDetailView('main')} />
+            <Card>
+                <CardContent className="p-0">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Task</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Due Date</TableHead>
+                                <TableHead className="text-right">Priority</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {tasks.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).map(t => (
+                                <TableRow key={t.id}>
+                                    <TableCell className="font-medium">
+                                        <div className="flex items-center gap-2">
+                                            {t.projectId === 'general-tasks' && <Zap className="h-3 w-3 text-primary fill-current" />}
+                                            <span className={cn(t.completed && "line-through text-muted-foreground")}>{t.title}</span>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Badge variant={t.completed ? "secondary" : "outline"}>
+                                            {t.completed ? "Completed" : "In Progress"}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-muted-foreground">
+                                        {format(new Date(t.dueDate), 'MMM d, yyyy')}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <Badge variant={t.priority === 'high' ? 'destructive' : 'secondary'} className="uppercase text-[10px]">
+                                            {t.priority}
+                                        </Badge>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+        </div>
+    );
+  }
+
+  if (detailView === 'overdue-tasks') {
+    return (
+        <div className="space-y-6">
+            <DetailHeader title="Overdue Tasks" onBack={() => setDetailView('main')} />
+            <Card>
+                <CardContent className="p-0">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Task</TableHead>
+                                <TableHead>Due Date</TableHead>
+                                <TableHead>Priority</TableHead>
+                                <TableHead className="text-right">Action</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {stats.overdueTasks.map(t => (
+                                <TableRow key={t.id}>
+                                    <TableCell className="font-medium text-destructive">
+                                        {t.title}
+                                    </TableCell>
+                                    <TableCell className="font-semibold text-destructive">
+                                        {format(new Date(t.dueDate), 'MMM d, yyyy')}
+                                    </TableCell>
+                                    <TableCell>
+                                        <Badge variant="destructive" className="uppercase text-[10px]">
+                                            {t.priority}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="sm" asChild>
+                                            <Link href="/my-tasks">Complete Task</Link>
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+        </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -161,23 +350,32 @@ function DashboardView() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card 
+            className="cursor-pointer hover:bg-accent transition-colors"
+            onClick={() => setDetailView('active-projects')}
+        >
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Active Projects</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? <Skeleton className="h-8 w-16"/> : <p className="text-3xl font-bold">{projects.filter(p => p.status === 'active' || !p.status).length}</p>}
+            {isLoading ? <Skeleton className="h-8 w-16"/> : <p className="text-3xl font-bold">{stats.activeProjects.length}</p>}
           </CardContent>
         </Card>
-        <Card>
+        <Card 
+            className="cursor-pointer hover:bg-accent transition-colors"
+            onClick={() => setDetailView('completed-projects')}
+        >
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Completed</CardTitle>
           </CardHeader>
           <CardContent>
-             {isLoading ? <Skeleton className="h-8 w-16"/> : <p className="text-3xl font-bold">{stats.completedProjects}</p>}
+             {isLoading ? <Skeleton className="h-8 w-16"/> : <p className="text-3xl font-bold">{stats.completedProjects.length}</p>}
           </CardContent>
         </Card>
-        <Card>
+        <Card 
+            className="cursor-pointer hover:bg-accent transition-colors"
+            onClick={() => setDetailView('total-tasks')}
+        >
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Tasks</CardTitle>
           </CardHeader>
@@ -185,12 +383,15 @@ function DashboardView() {
              {isLoading ? <Skeleton className="h-8 w-16"/> : <p className="text-3xl font-bold">{tasks.length}</p>}
           </CardContent>
         </Card>
-        <Card>
+        <Card 
+            className="cursor-pointer hover:bg-accent transition-colors"
+            onClick={() => setDetailView('overdue-tasks')}
+        >
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-destructive uppercase tracking-wider">Overdue</CardTitle>
           </CardHeader>
           <CardContent>
-             {isLoading ? <Skeleton className="h-8 w-16"/> : <p className="text-3xl font-bold text-destructive">{stats.overdueTasks}</p>}
+             {isLoading ? <Skeleton className="h-8 w-16"/> : <p className="text-3xl font-bold text-destructive">{stats.overdueTasks.length}</p>}
           </CardContent>
         </Card>
       </div>
@@ -241,9 +442,9 @@ function DashboardView() {
               <div className="space-y-4">
                 {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
               </div>
-            ) : stats.overdueList.length > 0 ? (
+            ) : stats.overdueTasks.length > 0 ? (
               <div className="flex flex-col">
-                {stats.overdueList.map(task => (
+                {stats.overdueTasks.slice(0, 5).map(task => (
                   <TaskListRow key={task.id} task={task} />
                 ))}
               </div>
