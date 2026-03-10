@@ -29,6 +29,7 @@ function TaskListRow({ task }: { task: TaskWithContext }) {
   const dueDate = new Date(task.dueDate);
   const overdue = !task.completed && isPast(dueDate) && !isToday(dueDate);
   const isQuickTask = task.projectId === 'general-tasks';
+  const projectName = isQuickTask ? 'Quick Tasks' : task.projectName;
   
   return (
     <div className="flex items-center justify-between py-3 border-b last:border-0">
@@ -57,7 +58,7 @@ function TaskListRow({ task }: { task: TaskWithContext }) {
             {format(dueDate, 'MMM d')}
           </span>
           <span className="text-[10px] text-muted-foreground truncate opacity-70">
-            • {task.companyName}
+            • {task.companyName} / {projectName}
           </span>
         </div>
       </div>
@@ -113,7 +114,10 @@ function DashboardView() {
           
           for (const projectDoc of projectsSnapshot.docs) {
             const projectDataRaw = projectDoc.data();
-            const projectData = { id: projectDoc.id, ...projectDataRaw, companyName } as ProjectWithContext;
+            const isQuickTaskProject = projectDoc.id === 'general-tasks';
+            const projectName = isQuickTaskProject ? 'Quick Tasks' : projectDataRaw.name;
+            
+            const projectData = { id: projectDoc.id, ...projectDataRaw, companyName, name: projectName } as ProjectWithContext;
             if (projectData.status === 'archived') continue;
             
             allProjects.push(projectData);
@@ -129,7 +133,7 @@ function DashboardView() {
                     id: taskDoc.id, 
                     ...taskDoc.data(), 
                     companyName, 
-                    projectName: projectData.name 
+                    projectName: projectName 
                 } as TaskWithContext);
               });
             }
@@ -429,7 +433,7 @@ function DashboardView() {
           <CardHeader>
             <div className="flex items-center gap-2 text-primary">
               <AlertCircle className="h-5 w-5 fill-current" />
-              <CardTitle>Urgent & High Priority</CardTitle>
+              <AlertTitle>Urgent & High Priority</AlertTitle>
             </div>
             <CardDescription>Top upcoming or high priority items.</CardDescription>
           </CardHeader>

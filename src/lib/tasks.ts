@@ -1,5 +1,5 @@
 'use client';
-import { collection, doc, writeBatch, getDoc, setDoc, Firestore, query, where, getDocs } from "firebase/firestore";
+import { collection, doc, writeBatch, getDoc, setDoc, Firestore, query, where, getDocs, updateDoc } from "firebase/firestore";
 import type { Company, Project, Silo, Task, Workspace } from "./types";
 
 interface AddTaskParams {
@@ -39,6 +39,9 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
     const projectData = projectSnap.data() as Project;
     const siloData = siloSnap.data() as Silo;
     
+    // Use "Quick Tasks" for the display name if it's the internal reserved project
+    const projectName = projectId === 'general-tasks' ? 'Quick Tasks' : projectData.name;
+
     // 2. Create the original task
     batch.set(taskRef, {...taskData, projectId, workspaceId, timeSpentMinutes: 0});
 
@@ -59,7 +62,7 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
             priority: taskData.priority,
             assigneeId: taskData.assigneeId,
             companyName: companyData.name,
-            projectName: projectData.name,
+            projectName: projectName,
             siloName: siloData.name,
             timeSpentMinutes: 0,
         });
@@ -107,6 +110,9 @@ export async function updateTask(
         const originalSnap = await getDoc(originalTaskRef);
         const taskData = originalSnap.data() as Task;
         
+        const projectId = originalTaskPath.split('/')[5];
+        const isQuickTask = projectId === 'general-tasks';
+
         // Since we are in a batch and haven't committed the original update yet, 
         // we manually merge the new updates for the denormalized copy
         const denormalizedData = {
@@ -121,10 +127,8 @@ export async function updateTask(
             dueDate: updates.dueDate ?? taskData.dueDate,
             priority: updates.priority ?? taskData.priority,
             assigneeId: updates.assigneeId,
-            // These names are hard to get without more reads, we keep existing if possible
-            // or fetch them. For simplicity in this sync, we assume names don't change often.
             companyName: (oldUserTasksSnap.docs[0]?.data() as any)?.companyName || 'Company',
-            projectName: (oldUserTasksSnap.docs[0]?.data() as any)?.projectName || 'Project',
+            projectName: isQuickTask ? 'Quick Tasks' : ((oldUserTasksSnap.docs[0]?.data() as any)?.projectName || 'Project'),
             siloName: (oldUserTasksSnap.docs[0]?.data() as any)?.siloName || 'Silo',
             timeSpentMinutes: taskData.timeSpentMinutes ?? 0,
         };
@@ -172,6 +176,9 @@ export async function addQuickTask(firestore: Firestore, params: {
             status: 'active',
             completedAt: null,
         });
+    } else if (projectSnap.data().name !== 'Quick Tasks') {
+        // Self-healing: Update name if it's still 'General Tasks'
+        await updateDoc(projectRef, { name: 'Quick Tasks' });
     }
 
     const siloSnap = await getDoc(siloRef);

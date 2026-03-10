@@ -1,4 +1,3 @@
-
 'use client';
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { useFirestore } from "@/firebase";
@@ -143,52 +142,59 @@ export default function SummaryReportPage() {
             {reportData.companies.map(company => (
                 <div key={company.id} className="mb-12 break-inside-avoid">
                     <h2 className="text-2xl font-semibold border-b-2 border-gray-800 pb-2 mb-4">{company.name}</h2>
-                    {company.projects.map(project => (
-                        <div key={project.id} className="mb-8 pl-4 break-inside-avoid">
-                            <h3 className="text-xl font-medium">{project.name}</h3>
-                             <div className="flex items-center gap-4 my-2">
-                                <span className="text-sm text-gray-600">Overall Progress: {project.progress}%</span>
-                                <Progress value={project.progress} className="w-1/2 h-3 bg-gray-200 [&>div]:bg-gray-800" />
-                            </div>
-                            <div className="pl-4">
-                                {project.silos.map(silo => (
-                                     <div key={silo.id} className="mt-4 break-inside-avoid-page">
-                                         <h4 className="text-lg font-medium text-gray-800">{silo.name}</h4>
-                                         <table className="w-full text-left mt-2 border-collapse text-sm">
-                                            <thead>
-                                                <tr className="border-b border-gray-400">
-                                                    <th className="p-2 w-2/5">Task</th>
-                                                    <th className="p-2 w-1/5">Assignee</th>
-                                                    <th className="p-2 w-1/10 text-right">Time</th>
-                                                    <th className="p-2 w-1/5">Due Date</th>
-                                                    <th className="p-2 w-1/10">Priority</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {silo.tasks.length > 0 ? silo.tasks.map(task => {
-                                                    const isOverdue = new Date(task.dueDate) < new Date() && !task.completed;
-                                                    const assignee = reportData.users[task.assigneeId]?.name || 'Unassigned';
-                                                    return (
-                                                        <tr key={task.id} className={`border-b border-gray-200 ${task.completed ? 'text-gray-400 line-through' : ''}`}>
-                                                            <td className="p-2">{task.title}</td>
-                                                            <td className="p-2">{assignee}</td>
-                                                            <td className="p-2 text-right font-mono">{formatDuration(task.timeSpentMinutes)}</td>
-                                                            <td className={`p-2 ${isOverdue ? 'text-red-500 font-bold' : ''}`}>{format(new Date(task.dueDate), 'MMM d, yyyy')}</td>
-                                                            <td className={`p-2 font-medium ${priorityStyles[task.priority]}`}>{task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}</td>
-                                                        </tr>
-                                                    )
-                                                }) : (
-                                                    <tr>
-                                                        <td colSpan={5} className="p-2 text-center text-gray-500">No tasks in this silo.</td>
+                    {company.projects.map(project => {
+                        const isQuickTaskProject = project.id === 'general-tasks';
+                        const projectName = isQuickTaskProject ? 'Quick Tasks' : project.name;
+                        
+                        return (
+                            <div key={project.id} className="mb-8 pl-4 break-inside-avoid">
+                                <h3 className="text-xl font-medium">{projectName}</h3>
+                                 {!isQuickTaskProject && (
+                                    <div className="flex items-center gap-4 my-2">
+                                        <span className="text-sm text-gray-600">Overall Progress: {project.progress}%</span>
+                                        <Progress value={project.progress} className="w-1/2 h-3 bg-gray-200 [&>div]:bg-gray-800" />
+                                    </div>
+                                 )}
+                                <div className="pl-4">
+                                    {project.silos.map(silo => (
+                                         <div key={silo.id} className="mt-4 break-inside-avoid-page">
+                                             <h4 className="text-lg font-medium text-gray-800">{silo.name}</h4>
+                                             <table className="w-full text-left mt-2 border-collapse text-sm">
+                                                <thead>
+                                                    <tr className="border-b border-gray-400">
+                                                        <th className="p-2 w-2/5">Task</th>
+                                                        <th className="p-2 w-1/5">Assignee</th>
+                                                        <th className="p-2 w-1/10 text-right">Time</th>
+                                                        <th className="p-2 w-1/5">Due Date</th>
+                                                        <th className="p-2 w-1/10">Priority</th>
                                                     </tr>
-                                                )}
-                                            </tbody>
-                                         </table>
-                                     </div>
-                                ))}
+                                                </thead>
+                                                <tbody>
+                                                    {silo.tasks.length > 0 ? silo.tasks.map(task => {
+                                                        const isOverdue = new Date(task.dueDate) < new Date() && !task.completed;
+                                                        const assignee = reportData.users[task.assigneeId]?.name || 'Unassigned';
+                                                        return (
+                                                            <tr key={task.id} className={`border-b border-gray-200 ${task.completed ? 'text-gray-400 line-through' : ''}`}>
+                                                                <td className="p-2">{task.title}</td>
+                                                                <td className="p-2">{assignee}</td>
+                                                                <td className="p-2 text-right font-mono">{formatDuration(task.timeSpentMinutes)}</td>
+                                                                <td className={`p-2 ${isOverdue ? 'text-red-500 font-bold' : ''}`}>{format(new Date(task.dueDate), 'MMM d, yyyy')}</td>
+                                                                <td className={`p-2 font-medium ${priorityStyles[task.priority]}`}>{task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}</td>
+                                                            </tr>
+                                                        )
+                                                    }) : (
+                                                        <tr>
+                                                            <td colSpan={5} className="p-2 text-center text-gray-500">No tasks in this silo.</td>
+                                                        </tr>
+                                                    )}
+                                                </tbody>
+                                             </table>
+                                         </div>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        )
+                    })}
                     {company.projects.length === 0 && <p className="text-gray-500 pl-4">No projects in this company.</p>}
                 </div>
             ))}

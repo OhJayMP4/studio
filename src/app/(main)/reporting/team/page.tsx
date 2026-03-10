@@ -1,4 +1,3 @@
-
 'use client';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -136,6 +135,8 @@ function TeamReportContent() {
                             <tbody>
                                 {tasks.map(task => {
                                     const isOverdue = new Date(task.dueDate) < new Date() && !task.completed;
+                                    const projectName = task.projectId === 'general-tasks' ? 'Quick Tasks' : task.projectName;
+                                    
                                     return (
                                         <tr key={task.id} className={cn('border-b border-gray-200 align-top', { 'text-gray-400 bg-gray-50 line-through': task.completed })}>
                                             <td className="p-2">
@@ -143,7 +144,7 @@ function TeamReportContent() {
                                                 {task.description && <p className="text-xs text-gray-500 mt-1">{task.description}</p>}
                                             </td>
                                             <td className="p-2 text-xs text-gray-600">
-                                                {task.companyName} / {task.projectName} / {task.siloName}
+                                                {task.companyName} / {projectName} / {task.siloName}
                                             </td>
                                             <td className="p-2 text-right font-mono">{formatDuration(task.timeSpentMinutes)}</td>
                                             <td className={cn('p-2', { 'text-red-500 font-bold': isOverdue })}>{format(new Date(task.dueDate), 'MMM d, yyyy')}</td>
