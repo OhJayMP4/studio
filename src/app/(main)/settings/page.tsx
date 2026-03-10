@@ -79,7 +79,6 @@ export default function SettingsPage() {
         email: userProfile.email || '',
       });
     } else if (user) {
-      // Fallback to basic auth info if profile doc doesn't exist yet
       profileForm.reset({
         name: user.displayName || '',
         email: user.email || '',
@@ -156,7 +155,6 @@ export default function SettingsPage() {
     
     const file = event.target.files[0];
     
-    // Basic validation
     if (file.size > 2 * 1024 * 1024) {
         toast({ variant: 'destructive', title: 'File too large', description: 'Please select an image smaller than 2MB.' });
         return;
@@ -168,7 +166,6 @@ export default function SettingsPage() {
     const { dismiss } = toast({ title: "Uploading avatar...", description: "Please wait while your image is being processed." });
     
     try {
-        // Use resumable upload for better reliability
         const uploadTask = uploadBytesResumable(avatarRef, file);
 
         return new Promise<void>((resolve, reject) => {
@@ -183,17 +180,12 @@ export default function SettingsPage() {
                 }, 
                 async () => {
                     const downloadURL = await getDownloadURL(avatarRef);
-                    
-                    // Update Firestore Profile
                     await updateDoc(userProfileRef, { avatarUrl: downloadURL });
-
-                    // Update Auth Profile
                     try {
                         await updateProfile(user, { photoURL: downloadURL });
                     } catch (authErr) {
                         console.warn("Auth profile update failed, but Firestore is updated:", authErr);
                     }
-
                     dismiss();
                     toast({ title: 'Avatar Updated', description: 'Your profile picture has been updated.' });
                     setIsUploading(false);
@@ -221,10 +213,6 @@ export default function SettingsPage() {
         <Skeleton className="h-64 w-full" />
       </div>
     )
-  }
-
-  if (error) {
-    return <div>Error loading profile: {error.message}</div>
   }
 
   const name = userProfile?.name || user?.displayName || '';
