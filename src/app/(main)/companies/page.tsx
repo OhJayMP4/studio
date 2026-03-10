@@ -133,20 +133,20 @@ function WorkspaceView() {
     if (!companies) return [];
     
     const results = companies.map(company => {
-        // Filter projects for this company and exclude archived ones manually
-        const companyProjects = allProjects.filter(p => 
+        // Filter projects for this company and include ONLY active ones for progress calculation
+        const activeProjects = allProjects.filter(p => 
             p.companyId === company.id && 
-            (p.status || 'active') !== 'archived'
+            (p.status || 'active') === 'active'
         );
         
-        const averageProgress = companyProjects.length > 0
-            ? Math.round(companyProjects.reduce((acc, p) => acc + (p.progress || 0), 0) / companyProjects.length)
+        const averageProgress = activeProjects.length > 0
+            ? Math.round(activeProjects.reduce((acc, p) => acc + (p.progress || 0), 0) / activeProjects.length)
             : 0;
         
         return {
             ...company,
             averageProgress,
-            projectCount: companyProjects.length
+            projectCount: activeProjects.length
         };
     });
 
