@@ -495,7 +495,7 @@ function DashboardView() {
               <Zap className="h-5 w-5 fill-current" />
               <CardTitle>Quick Tasks</CardTitle>
             </div>
-            <CardDescription>One-off items from General Tasks.</CardDescription>
+            <CardDescription>One-off items from Quick Tasks project.</CardDescription>
           </CardHeader>
           <CardContent className="flex-grow">
             {isLoading ? (

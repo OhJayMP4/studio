@@ -1,4 +1,3 @@
-
 'use client';
 import { collection, doc, writeBatch, getDoc, setDoc, Firestore, query, where, getDocs } from "firebase/firestore";
 import type { Company, Project, Silo, Task, Workspace } from "./types";
@@ -142,7 +141,7 @@ export async function updateTask(
 }
 
 /**
- * Adds a task to a "General Tasks" container for a company, creating the container if it doesn't exist.
+ * Adds a task to a "Quick Tasks" container for a company, creating the container if it doesn't exist.
  * This satisfies the need for quick tasks without forcing users to navigate silos.
  */
 export async function addQuickTask(firestore: Firestore, params: {
@@ -152,7 +151,7 @@ export async function addQuickTask(firestore: Firestore, params: {
 }) {
     const { workspaceId, companyId, taskData } = params;
     
-    // We use a reserved ID for the general project and silo to make lookup instant and consistent
+    // We use a reserved ID for the quick tasks project and silo to make lookup instant and consistent
     const projectId = 'general-tasks';
     const siloId = 'inbox';
 
@@ -162,7 +161,7 @@ export async function addQuickTask(firestore: Firestore, params: {
     const projectSnap = await getDoc(projectRef);
     if (!projectSnap.exists()) {
         await setDoc(projectRef, {
-            name: 'General Tasks',
+            name: 'Quick Tasks',
             deadline: new Date(2099, 11, 31).toISOString(), // Far future
             hasMonetaryValue: false,
             progress: 0,

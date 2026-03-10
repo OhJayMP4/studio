@@ -99,7 +99,7 @@ function QuickTaskSection({ companyId }: { companyId: string }) {
             });
             setTitle('');
             setDueDate(new Date());
-            toast({ title: "Quick Task Added", description: "Task created in General Tasks." });
+            toast({ title: "Quick Task Added", description: "Task created in Quick Tasks." });
         } catch (error: any) {
             toast({ variant: 'destructive', title: "Failed to add task", description: error.message });
         } finally {
