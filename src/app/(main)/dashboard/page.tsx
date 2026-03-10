@@ -1,11 +1,10 @@
-
 'use client';
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 import { useFirestore } from "@/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import type { Project, Task } from "@/lib/types";
 import ProjectStatusChart from "@/components/reporting/project-status-chart";
 import TaskPriorityChart from "@/components/reporting/task-priority-chart";
@@ -17,6 +16,7 @@ import { Calendar, AlertCircle, ArrowRight, Zap } from "lucide-react";
 import { format, isPast, isToday, addDays, isBefore } from "date-fns";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 function TaskListRow({ task }: { task: Task }) {
   const dueDate = new Date(task.dueDate);
@@ -60,9 +60,6 @@ function TaskListRow({ task }: { task: Task }) {
   );
 }
 
-// Internal wrapper for tooltips used in row
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-
 function DashboardView() {
   const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
@@ -87,7 +84,6 @@ function DashboardView() {
 
         for (const companyDoc of companiesSnapshot.docs) {
           const projectsRef = collection(companyDoc.ref, 'projects');
-          // Fetch all projects and filter in JS to avoid index issues with != queries during prototyping
           const projectsSnapshot = await getDocs(projectsRef);
           
           for (const projectDoc of projectsSnapshot.docs) {
@@ -123,17 +119,17 @@ function DashboardView() {
   }, [selectedWorkspace, firestore]);
   
   const stats = useMemo(() => {
-    const completedProjects = projects.filter(p => p.status === 'completed' || p.progress === 100).length;
-    const overdueTasks = tasks.filter(t => !t.completed && isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate))).length;
+    const activeTasks = tasks.filter(t => !t.completed);
+    const completedProjectsCount = projects.filter(p => p.status === 'completed' || p.progress === 100).length;
+    const overdueTasksCount = tasks.filter(t => !t.completed && isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate))).length;
     
     const now = new Date();
-    const urgentThreshold = addDays(now, 2); // Tasks due within 48 hours are considered urgent
+    const urgentThreshold = addDays(now, 2);
 
     const highPriorityUpcoming = tasks
       .filter(t => {
           if (t.completed) return false;
           const dueDate = new Date(t.dueDate);
-          // Show if high priority OR if it's due very soon (within 48 hours)
           return t.priority === 'high' || isBefore(dueDate, urgentThreshold);
       })
       .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
@@ -144,7 +140,18 @@ function DashboardView() {
       .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
       .slice(0, 5);
 
-    return { completedProjects, overdueTasks, highPriorityUpcoming, overdueList };
+    const quickTasksList = tasks
+      .filter(t => !t.completed && t.projectId === 'general-tasks')
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+      .slice(0, 5);
+
+    return { 
+        completedProjects: completedProjectsCount, 
+        overdueTasks: overdueTasksCount, 
+        highPriorityUpcoming, 
+        overdueList,
+        quickTasksList
+    };
   }, [projects, tasks]);
 
   return (
@@ -188,14 +195,14 @@ function DashboardView() {
         </Card>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-3">
         <Card className="flex flex-col border-primary/20">
           <CardHeader>
             <div className="flex items-center gap-2 text-primary">
               <AlertCircle className="h-5 w-5 fill-current" />
-              <CardTitle>Urgent & High Priority</CardTitle>
+              <CardTitle>Priority & Urgent</CardTitle>
             </div>
-            <CardDescription>Top 5 high importance or time-critical tasks.</CardDescription>
+            <CardDescription>Top upcoming or high priority items.</CardDescription>
           </CardHeader>
           <CardContent className="flex-grow">
             {isLoading ? (
@@ -216,7 +223,7 @@ function DashboardView() {
           </CardContent>
           <CardHeader className="pt-0">
             <Button variant="link" className="px-0 h-auto justify-start text-primary" asChild>
-              <Link href="/my-tasks">See more tasks <ArrowRight className="ml-2 h-4 w-4" /></Link>
+              <Link href="/my-tasks">Full task list <ArrowRight className="ml-2 h-4 w-4" /></Link>
             </Button>
           </CardHeader>
         </Card>
@@ -225,9 +232,9 @@ function DashboardView() {
           <CardHeader>
             <div className="flex items-center gap-2 text-destructive">
               <AlertCircle className="h-5 w-5" />
-              <CardTitle>Overdue Action Items</CardTitle>
+              <CardTitle>Overdue Action</CardTitle>
             </div>
-            <CardDescription>Tasks that have passed their deadline.</CardDescription>
+            <CardDescription>Tasks past their deadline.</CardDescription>
           </CardHeader>
           <CardContent className="flex-grow">
             {isLoading ? (
@@ -248,7 +255,39 @@ function DashboardView() {
           </CardContent>
           <CardHeader className="pt-0">
             <Button variant="link" className="px-0 h-auto justify-start text-destructive" asChild>
-              <Link href="/my-tasks">View all tasks <ArrowRight className="ml-2 h-4 w-4" /></Link>
+              <Link href="/my-tasks">View all <ArrowRight className="ml-2 h-4 w-4" /></Link>
+            </Button>
+          </CardHeader>
+        </Card>
+
+        <Card className="flex flex-col border-accent-foreground/20">
+          <CardHeader>
+            <div className="flex items-center gap-2 text-primary">
+              <Zap className="h-5 w-5 fill-current" />
+              <CardTitle>Quick Tasks</CardTitle>
+            </div>
+            <CardDescription>One-off items from General Tasks.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex-grow">
+            {isLoading ? (
+              <div className="space-y-4">
+                {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+              </div>
+            ) : stats.quickTasksList.length > 0 ? (
+              <div className="flex flex-col">
+                {stats.quickTasksList.map(task => (
+                  <TaskListRow key={task.id} task={task} />
+                ))}
+              </div>
+            ) : (
+              <div className="py-8 text-center text-muted-foreground text-sm">
+                No active quick tasks.
+              </div>
+            )}
+          </CardContent>
+          <CardHeader className="pt-0">
+            <Button variant="link" className="px-0 h-auto justify-start" asChild>
+              <Link href="/my-tasks">Manage all tasks <ArrowRight className="ml-2 h-4 w-4" /></Link>
             </Button>
           </CardHeader>
         </Card>
