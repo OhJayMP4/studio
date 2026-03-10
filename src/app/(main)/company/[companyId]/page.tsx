@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase";
 import type { Company, Project } from "@/lib/types";
-import { collection, doc, deleteDoc, updateDoc, serverTimestamp, query, where, Timestamp } from "firebase/firestore";
+import { collection, doc, deleteDoc, updateDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { format } from "date-fns";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -21,12 +21,20 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Archive, ArchiveRestore, MoreVertical, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, MoreVertical, Trash2, LayoutGrid, List } from "lucide-react";
 import { EditProjectDialog } from "@/components/common/edit-project-dialog";
 import { DeleteDialog } from "@/components/common/delete-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useMemo, useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 function CompanyBreadcrumb({ companyName }: { companyName?: string }) {
   return (
@@ -128,40 +136,38 @@ function ProjectActions({ project, companyId }: { project: Project, companyId: s
     };
     
     return (
-        <div className="absolute top-2 right-2">
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon">
-                        <MoreVertical className="h-4 w-4" />
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                     <EditProjectDialog project={project} companyId={companyId}>
-                         <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                            Edit
-                        </DropdownMenuItem>
-                    </EditProjectDialog>
-                    {project.status === 'archived' ? (
-                        <DropdownMenuItem onClick={handleRestore}>
-                            <ArchiveRestore className="mr-2 h-4 w-4" />
-                            Restore
-                        </DropdownMenuItem>
-                    ) : (
-                        <DropdownMenuItem onClick={handleArchive}>
-                            <Archive className="mr-2 h-4 w-4" />
-                            Archive
-                        </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSeparator />
-                    <DeleteDialog onConfirm={handleDelete} itemName={project.name}>
-                        <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
-                            <Trash2 className="mr-2 h-4 w-4"/>
-                            Delete
-                        </DropdownMenuItem>
-                    </DeleteDialog>
-                </DropdownMenuContent>
-            </DropdownMenu>
-        </div>
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                    <MoreVertical className="h-4 w-4" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                    <EditProjectDialog project={project} companyId={companyId}>
+                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                        Edit
+                    </DropdownMenuItem>
+                </EditProjectDialog>
+                {project.status === 'archived' ? (
+                    <DropdownMenuItem onClick={handleRestore}>
+                        <ArchiveRestore className="mr-2 h-4 w-4" />
+                        Restore
+                    </DropdownMenuItem>
+                ) : (
+                    <DropdownMenuItem onClick={handleArchive}>
+                        <Archive className="mr-2 h-4 w-4" />
+                        Archive
+                    </DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DeleteDialog onConfirm={handleDelete} itemName={project.name}>
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
+                        <Trash2 className="mr-2 h-4 w-4"/>
+                        Delete
+                    </DropdownMenuItem>
+                </DeleteDialog>
+            </DropdownMenuContent>
+        </DropdownMenu>
     );
 }
 
@@ -169,9 +175,8 @@ function ProjectsList({ companyId }: { companyId: string }) {
     const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
     const firestore = useFirestore();
     const [filter, setFilter] = useState<'active' | 'completed' | 'archived'>('active');
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     
-    // We fetch ALL projects for the company and filter client-side.
-    // This is more resilient to missing fields in older data.
     const projectsQuery = useMemoFirebase(() => {
         if (!selectedWorkspace) return null;
         return collection(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects');
@@ -182,7 +187,7 @@ function ProjectsList({ companyId }: { companyId: string }) {
     const filteredProjects = useMemo(() => {
         if (!allProjects) return [];
         return allProjects.filter(project => {
-            const status = project.status || 'active'; // Default to active if status is missing
+            const status = project.status || 'active';
             return status === filter;
         });
     }, [allProjects, filter]);
@@ -213,52 +218,121 @@ function ProjectsList({ companyId }: { companyId: string }) {
                     <TabsTrigger value="completed">Completed</TabsTrigger>
                     <TabsTrigger value="archived">Archived</TabsTrigger>
                 </TabsList>
-                {isUserAdmin && <AddProjectDialog companyId={companyId} />}
+                
+                <div className="flex items-center gap-2">
+                    <div className="flex gap-1 bg-muted p-1 rounded-md">
+                        <Button
+                            size="sm"
+                            variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                            onClick={() => setViewMode('grid')}
+                            className="h-8 w-8 p-0"
+                        >
+                            <LayoutGrid className="h-4 w-4" />
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                            onClick={() => setViewMode('list')}
+                            className="h-8 w-8 p-0"
+                        >
+                            <List className="h-4 w-4" />
+                        </Button>
+                    </div>
+                    {isUserAdmin && <AddProjectDialog companyId={companyId} />}
+                </div>
             </div>
+
             <TabsContent value={filter}>
                 {filteredProjects.length === 0 ? (
                     <NoProjectsView companyId={companyId} filter={filter} />
                 ) : (
-                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        {filteredProjects.map(project => (
-                            <Card key={project.id} className="flex flex-col relative">
-                                {isUserAdmin && <ProjectActions project={project} companyId={companyId} />}
-                                <CardHeader>
-                                    <CardTitle className="flex justify-between items-start pr-8">
-                                        <Link href={`/company/${companyId}/project/${project.id}`} className="hover:underline">
-                                            {project.name}
-                                        </Link>
-                                        {project.hasMonetaryValue && project.monetaryValue && (
-                                            <span className="text-lg font-semibold text-green-500">
-                                                R{project.monetaryValue.toLocaleString()}
-                                            </span>
-                                        )}
-                                    </CardTitle>
-                                    <CardDescription>
-                                        Deadline: {project.deadline ? format(new Date(project.deadline), 'PPP') : 'No deadline'}
-                                        {project.status === 'completed' && project.completedAt &&
-                                            ` • Completed: ${format((project.completedAt as Timestamp).toDate(), 'PPP')}`
-                                        }
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent className="flex-grow">
-                                    {/* Content can go here if needed in the future */}
-                                </CardContent>
-                                <CardFooter className="flex-col items-start gap-4">
-                                    <div className="w-full space-y-2">
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-sm text-muted-foreground">Progress</span>
-                                            <span className="text-sm font-medium">{project.progress || 0}%</span>
+                    <>
+                        {viewMode === 'grid' ? (
+                            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                                {filteredProjects.map(project => (
+                                    <Card key={project.id} className="flex flex-col relative">
+                                        <div className="absolute top-2 right-2">
+                                            {isUserAdmin && <ProjectActions project={project} companyId={companyId} />}
                                         </div>
-                                        <Progress value={project.progress || 0} />
-                                    </div>
-                                    <Button variant="outline" className="w-full" asChild>
-                                        <Link href={`/company/${companyId}/project/${project.id}`}>View Project</Link>
-                                    </Button>
-                                </CardFooter>
-                            </Card>
-                        ))}
-                    </div>
+                                        <CardHeader>
+                                            <CardTitle className="flex justify-between items-start pr-8">
+                                                <Link href={`/company/${companyId}/project/${project.id}`} className="hover:underline">
+                                                    {project.name}
+                                                </Link>
+                                                {project.hasMonetaryValue && project.monetaryValue && (
+                                                    <span className="text-lg font-semibold text-green-500">
+                                                        R{project.monetaryValue.toLocaleString()}
+                                                    </span>
+                                                )}
+                                            </CardTitle>
+                                            <CardDescription>
+                                                Deadline: {project.deadline ? format(new Date(project.deadline), 'PPP') : 'No deadline'}
+                                                {project.status === 'completed' && project.completedAt &&
+                                                    ` • Completed: ${format((project.completedAt as Timestamp).toDate(), 'PPP')}`
+                                                }
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent className="flex-grow">
+                                        </CardContent>
+                                        <CardFooter className="flex-col items-start gap-4">
+                                            <div className="w-full space-y-2">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-sm text-muted-foreground">Progress</span>
+                                                    <span className="text-sm font-medium">{project.progress || 0}%</span>
+                                                </div>
+                                                <Progress value={project.progress || 0} />
+                                            </div>
+                                            <Button variant="outline" className="w-full" asChild>
+                                                <Link href={`/company/${companyId}/project/${project.id}`}>View Project</Link>
+                                            </Button>
+                                        </CardFooter>
+                                    </Card>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="border rounded-md bg-card">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Project</TableHead>
+                                            <TableHead>Deadline</TableHead>
+                                            <TableHead className="w-[25%]">Progress</TableHead>
+                                            <TableHead className="text-right">Value</TableHead>
+                                            <TableHead className="w-[50px]"></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {filteredProjects.map((project) => (
+                                            <TableRow key={project.id}>
+                                                <TableCell className="font-medium">
+                                                    <Link href={`/company/${companyId}/project/${project.id}`} className="hover:underline">
+                                                        {project.name}
+                                                    </Link>
+                                                </TableCell>
+                                                <TableCell className="text-muted-foreground whitespace-nowrap">
+                                                    {project.deadline ? format(new Date(project.deadline), 'MMM d, yyyy') : '-'}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex items-center gap-3">
+                                                        <Progress value={project.progress || 0} className="h-2" />
+                                                        <span className="text-xs font-medium tabular-nums w-8">{project.progress || 0}%</span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right font-medium">
+                                                    {project.hasMonetaryValue && project.monetaryValue 
+                                                        ? `R${project.monetaryValue.toLocaleString()}` 
+                                                        : '-'}
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    {isUserAdmin && <ProjectActions project={project} companyId={companyId} />}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        )}
+                    </>
                 )}
             </TabsContent>
         </Tabs>
