@@ -50,7 +50,7 @@ export function useDoc<T = any>(
   useEffect(() => {
     if (!memoizedDocRef) {
       setData(null);
-      setIsLoading(true);
+      setIsLoading(false); // Correctly set loading to false as nothing is being fetched
       setError(null);
       return;
     }

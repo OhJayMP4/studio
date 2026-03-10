@@ -78,8 +78,14 @@ export default function SettingsPage() {
         name: userProfile.name || '',
         email: userProfile.email || '',
       });
+    } else if (user) {
+      // Fallback to basic auth info if profile doc doesn't exist yet
+      profileForm.reset({
+        name: user.displayName || '',
+        email: user.email || '',
+      });
     }
-  }, [userProfile, profileForm]);
+  }, [userProfile, user, profileForm]);
   
   const handleUpdateProfile = async (data: ProfileFormValues) => {
     if (!user || !userProfileRef) {
@@ -162,7 +168,7 @@ export default function SettingsPage() {
     const { dismiss } = toast({ title: "Uploading avatar...", description: "Please wait while your image is being processed." });
     
     try {
-        // Use resumable upload for better reliability in cloud environments
+        // Use resumable upload for better reliability
         const uploadTask = uploadBytesResumable(avatarRef, file);
 
         return new Promise<void>((resolve, reject) => {
@@ -221,7 +227,7 @@ export default function SettingsPage() {
     return <div>Error loading profile: {error.message}</div>
   }
 
-  const name = userProfile?.name || '';
+  const name = userProfile?.name || user?.displayName || '';
   const avatarUrl = userProfile?.avatarUrl || user?.photoURL || '';
   const fallback = name ? name.charAt(0).toUpperCase() : '?';
 
