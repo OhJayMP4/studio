@@ -1,11 +1,10 @@
-
 'use client';
 
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { AddSiloDialog } from '@/components/common/add-silo-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Skeleton } from '@/skeleton';
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from '@/firebase';
 import type { Company, Project, Sale, Silo, Task } from '@/lib/types';
 import { collection, doc, query, orderBy, getDocs, runTransaction, deleteDoc, writeBatch, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
@@ -18,7 +17,7 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb';
+} from "@/components/ui/breadcrumb";
 import { AddTaskDialog } from '@/components/common/add-task-dialog';
 import { TaskItem } from '@/components/common/task-item';
 import { Progress } from '@/components/ui/progress';
@@ -107,7 +106,7 @@ async function updateProjectProgress(firestore: any, workspaceId: string, compan
         const updates: any = { progress: newOverallProgress };
         
         // Check for project completion
-        if (newOverallProgress === 100 && projectData.status === 'active') {
+        if (newOverallProgress === 100 && (projectData.status === 'active' || !projectData.status)) {
             updates.status = 'completed';
             updates.completedAt = serverTimestamp();
             if (toast) {
@@ -259,8 +258,8 @@ function SortableSiloItem({ silo, companyId, projectId }: { silo: Silo; companyI
         return [...rawTasks].sort((a, b) => {
             if (a.completed && !b.completed) return 1;
             if (!a.completed && b.completed) return -1;
-            const dateA = new Date(a.dueDate).getTime();
-            const dateB = new Date(b.dueDate).getTime();
+            const dateA = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+            const dateB = b.dueDate ? new Date(b.dueDate).getTime() : 0;
             if (dateA !== dateB) return dateA - dateB;
             return priorityOrder[b.priority] - priorityOrder[a.priority];
         });
@@ -338,9 +337,10 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
   const firestore = useFirestore();
   const { toast } = useToast();
 
+  // We fetch all silos and sort them in code to be resilient to documents missing the 'order' field.
   const silosQuery = useMemoFirebase(() => {
     if (!selectedWorkspace) return null;
-    const silosRef = collection(
+    return collection(
       firestore,
       'workspaces',
       selectedWorkspace.id,
@@ -350,10 +350,15 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
       projectId,
       'silos'
     );
-    return query(silosRef, orderBy('order'));
   }, [firestore, selectedWorkspace, companyId, projectId]);
 
-  const { data: silos, isLoading } = useCollection<Silo>(silosQuery);
+  const { data: rawSilos, isLoading } = useCollection<Silo>(silosQuery);
+  
+  const silos = useMemo(() => {
+      if (!rawSilos) return [];
+      return [...rawSilos].sort((a, b) => (a.order || 0) - (b.order || 0));
+  }, [rawSilos]);
+
   const [activeItem, setActiveItem] = useState<{id: string; type: 'Silo' | 'Task'; data: any} | null>(null);
 
   const sensors = useSensors(
@@ -420,9 +425,6 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
         const sourceSiloId = active.data.current.siloId as string;
 
         if (sourceSiloId === targetSiloId) return;
-
-        // Optimistically update UI - This is complex, so we will rely on Firestore's real-time updates for now
-        // For a smoother UX, you would move the item in the local state here.
 
         const sourceTaskRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', projectId, 'silos', sourceSiloId, 'tasks', task.id);
         const targetTasksColRef = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects', projectId, 'silos', targetSiloId, 'tasks');
@@ -607,12 +609,12 @@ function SalesProgress({ project, companyId }: { project: Project, companyId: st
                                 {sales && sales.length > 0 ? (
                                     sales.map(sale => (
                                         <TableRow key={sale.id}>
-                                            <TableCell>{format(new Date(sale.date), 'PPP')}</TableCell>
+                                            <TableCell>{sale.date ? format(new Date(sale.date), 'PPP') : 'Unknown date'}</TableCell>
                                             <TableCell className="font-medium">{sale.source}</TableCell>
-                                            <TableCell className="text-right">R{sale.value.toLocaleString()}</TableCell>
+                                            <TableCell className="text-right">R{(sale.value || 0).toLocaleString()}</TableCell>
                                             {isUserAdmin && (
                                                 <TableCell className="text-right">
-                                                     <DeleteDialog onConfirm={() => handleDeleteSale(sale)} itemName={`sale of R${sale.value.toLocaleString()}`}>
+                                                     <DeleteDialog onConfirm={() => handleDeleteSale(sale)} itemName={`sale of R${(sale.value || 0).toLocaleString()}`}>
                                                         <Button variant="ghost" size="icon">
                                                             <Trash2 className="h-4 w-4 text-destructive" />
                                                         </Button>
@@ -648,9 +650,9 @@ function ProjectProgress({ project }: { project: Project }) {
                  <div className="space-y-2">
                    <div className="flex justify-between items-center text-sm mb-1">
                       <span className="text-muted-foreground">Total Progress</span>
-                      <span className="font-medium">{project.progress}%</span>
+                      <span className="font-medium">{project.progress || 0}%</span>
                   </div>
-                  <Progress value={project.progress} />
+                  <Progress value={project.progress || 0} />
                 </div>
             </CardContent>
         </Card>
@@ -721,7 +723,7 @@ export default function ProjectPage() {
 
       <div className="mt-8 space-y-8">
         <ProjectProgress project={project} />
-        {project.hasMonetaryValue && <SalesProgress project={project} companyId={companyId} />}
+        {(project.hasMonetaryValue || project.monetaryValue) && <SalesProgress project={project} companyId={companyId} />}
         <SilosList companyId={companyId} projectId={projectId} />
       </div>
     </div>

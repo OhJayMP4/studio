@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
@@ -26,7 +25,7 @@ import { Archive, ArchiveRestore, MoreVertical, Trash2 } from "lucide-react";
 import { EditProjectDialog } from "@/components/common/edit-project-dialog";
 import { DeleteDialog } from "@/components/common/delete-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 function CompanyBreadcrumb({ companyName }: { companyName?: string }) {
@@ -171,13 +170,22 @@ function ProjectsList({ companyId }: { companyId: string }) {
     const firestore = useFirestore();
     const [filter, setFilter] = useState<'active' | 'completed' | 'archived'>('active');
     
+    // We fetch ALL projects for the company and filter client-side.
+    // This is more resilient to missing fields in older data.
     const projectsQuery = useMemoFirebase(() => {
         if (!selectedWorkspace) return null;
-        const projectsRef = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects');
-        return query(projectsRef, where('status', '==', filter));
-    }, [firestore, selectedWorkspace, companyId, filter]);
+        return collection(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects');
+    }, [firestore, selectedWorkspace, companyId]);
 
-    const { data: projects, isLoading } = useCollection<Project>(projectsQuery);
+    const { data: allProjects, isLoading } = useCollection<Project>(projectsQuery);
+
+    const filteredProjects = useMemo(() => {
+        if (!allProjects) return [];
+        return allProjects.filter(project => {
+            const status = project.status || 'active'; // Default to active if status is missing
+            return status === filter;
+        });
+    }, [allProjects, filter]);
 
     if (isLoading) {
         return (
@@ -208,11 +216,11 @@ function ProjectsList({ companyId }: { companyId: string }) {
                 {isUserAdmin && <AddProjectDialog companyId={companyId} />}
             </div>
             <TabsContent value={filter}>
-                {!projects || projects.length === 0 ? (
+                {filteredProjects.length === 0 ? (
                     <NoProjectsView companyId={companyId} filter={filter} />
                 ) : (
                     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        {projects.map(project => (
+                        {filteredProjects.map(project => (
                             <Card key={project.id} className="flex flex-col relative">
                                 {isUserAdmin && <ProjectActions project={project} companyId={companyId} />}
                                 <CardHeader>
@@ -227,7 +235,7 @@ function ProjectsList({ companyId }: { companyId: string }) {
                                         )}
                                     </CardTitle>
                                     <CardDescription>
-                                        Deadline: {format(new Date(project.deadline), 'PPP')}
+                                        Deadline: {project.deadline ? format(new Date(project.deadline), 'PPP') : 'No deadline'}
                                         {project.status === 'completed' && project.completedAt &&
                                             ` • Completed: ${format((project.completedAt as Timestamp).toDate(), 'PPP')}`
                                         }
@@ -240,9 +248,9 @@ function ProjectsList({ companyId }: { companyId: string }) {
                                     <div className="w-full space-y-2">
                                         <div className="flex justify-between items-center">
                                             <span className="text-sm text-muted-foreground">Progress</span>
-                                            <span className="text-sm font-medium">{project.progress}%</span>
+                                            <span className="text-sm font-medium">{project.progress || 0}%</span>
                                         </div>
-                                        <Progress value={project.progress} />
+                                        <Progress value={project.progress || 0} />
                                     </div>
                                     <Button variant="outline" className="w-full" asChild>
                                         <Link href={`/company/${companyId}/project/${project.id}`}>View Project</Link>
