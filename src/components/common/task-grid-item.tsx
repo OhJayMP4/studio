@@ -24,6 +24,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { TaskCompletionDialog } from "./task-completion-dialog";
+import { useSelectedWorkspace } from "@/app/(main)/layout";
 
 interface TaskGridItemProps {
     userTask: UserTask;
@@ -37,6 +38,7 @@ const priorityStyles = {
 
 export function TaskGridItem({ userTask }: TaskGridItemProps) {
     const [showCompletionDialog, setShowCompletionDialog] = useState(false);
+    const { selectedWorkspace } = useSelectedWorkspace();
     const firestore = useFirestore();
     const { originalTaskId, workspaceId, companyId, projectId, siloId } = userTask;
 
@@ -48,7 +50,16 @@ export function TaskGridItem({ userTask }: TaskGridItemProps) {
 
     const handleCheckChanged = async (checked: boolean) => {
         if (checked) {
-            setShowCompletionDialog(true);
+            if (selectedWorkspace?.isTimeTrackingEnabled) {
+                setShowCompletionDialog(true);
+            } else {
+                const originalTaskPath = `workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks/${originalTaskId}`;
+                try {
+                    await updateTaskCompletion(firestore, originalTaskPath, userTask.assigneeId, originalTaskId, true, 0);
+                } catch (error) {
+                    console.error("Failed to update task:", error);
+                }
+            }
         } else {
             const originalTaskPath = `workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks/${originalTaskId}`;
             try {

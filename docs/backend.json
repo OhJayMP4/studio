@@ -53,6 +53,10 @@
           "type": "string",
           "description": "URL of the workspace logo"
         },
+        "isTimeTrackingEnabled": {
+          "type": "boolean",
+          "description": "Whether to require time spent entry when completing tasks."
+        },
         "memberIds": {
           "type": "array",
           "description": "An array of UIDs for all members of the workspace, for querying.",

@@ -12,6 +12,7 @@ export type Workspace = {
   name: string;
   ownerId: string;
   logoUrl?: string | null;
+  isTimeTrackingEnabled?: boolean;
   memberIds: string[];
   users: {
     [uid: string]: {

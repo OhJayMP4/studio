@@ -85,6 +85,7 @@ function TaskActions({ task, path }: { task: Task, path: string }) {
 
 export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
     const [showCompletionDialog, setShowCompletionDialog] = useState(false);
+    const { selectedWorkspace } = useSelectedWorkspace();
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ 
         id: task.id,
         data: {
@@ -111,7 +112,15 @@ export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
 
     const handleCheckChanged = async (checked: boolean) => {
         if (checked) {
-            setShowCompletionDialog(true);
+            if (selectedWorkspace?.isTimeTrackingEnabled) {
+                setShowCompletionDialog(true);
+            } else {
+                try {
+                    await updateTaskCompletion(firestore, path, task.assigneeId, task.id, true, 0);
+                } catch (error) {
+                    console.error("Failed to update task:", error);
+                }
+            }
         } else {
             try {
                 await updateTaskCompletion(firestore, path, task.assigneeId, task.id, false, 0);
