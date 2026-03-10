@@ -69,7 +69,7 @@ service cloud.firestore {
      * @principle Authorization: Enforces workspace membership for access.
      */
     function isWorkspaceMember(workspaceId) {
-      return isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users;
+      return isSignedIn() && workspaceId != null && request.auth.uid in get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users;
     }
     
     /**
@@ -125,23 +125,22 @@ service cloud.firestore {
     // --- Global Collection Group Queries ---
     // These rules allow cross-project searches (e.g., in GlobalSearch, Archive)
     // but are secured by checking if the user is a member of the item's workspace.
+    // Note: request.query.workspaceId is used to verify the scoped query.
     match /{path=**}/companies/{companyId} {
-      // Rule for single document GET requests
       allow get: if isWorkspaceMember(resource.data.workspaceId);
-      // Rule for LIST (query) requests
-      allow list: if isWorkspaceMember(request.query.get("workspaceId"));
+      allow list: if isWorkspaceMember(request.query.workspaceId);
     }
     match /{path=**}/projects/{projectId} {
       allow get: if isWorkspaceMember(resource.data.workspaceId);
-      allow list: if isWorkspaceMember(request.query.get("workspaceId"));
+      allow list: if isWorkspaceMember(request.query.workspaceId);
     }
     match /{path=**}/silos/{siloId} {
       allow get: if isWorkspaceMember(resource.data.workspaceId);
-      allow list: if isWorkspaceMember(request.query.get("workspaceId"));
+      allow list: if isWorkspaceMember(request.query.workspaceId);
     }
     match /{path=**}/tasks/{taskId} {
       allow get: if isWorkspaceMember(resource.data.workspaceId);
-      allow list: if isWorkspaceMember(request.query.get("workspaceId"));
+      allow list: if isWorkspaceMember(request.query.workspaceId);
     }
 
     /**
@@ -250,6 +249,24 @@ service cloud.firestore {
             allow delete: if isWorkspaceMember(workspaceId);
           }
         }
+        
+        /**
+         * @description Rules for social media post documents within a company.
+         * @path /workspaces/{workspaceId}/companies/{companyId}/socialPosts/{postId}
+         * @allow (get, list, create, update, delete) Authenticated workspace member can manage social posts.
+         */
+        match /socialPosts/{postId} {
+          allow read, list, create, update, delete: if isWorkspaceMember(workspaceId);
+        }
+
+        /**
+         * @description Rules for connected social media accounts within a company.
+         * @path /workspaces/{workspaceId}/companies/{companyId}/socialAccounts/{accountId}
+         * @allow (get, list, create, update, delete) Authenticated workspace admin can manage social accounts.
+         */
+        match /socialAccounts/{accountId} {
+          allow read, list, create, update, delete: if isWorkspaceAdmin(workspaceId);
+        }
       }
     }
     
@@ -351,5 +368,3 @@ service cloud.firestore {
     }
   }
 }
-
-    

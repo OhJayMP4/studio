@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
@@ -90,22 +91,20 @@ function WorkspaceView() {
 
   // Fetch all companies
   const companiesQuery = useMemoFirebase(() => {
-    if (!selectedWorkspace) return null;
+    if (!selectedWorkspace?.id) return null;
     return collection(firestore, 'workspaces', selectedWorkspace.id, 'companies');
-  }, [firestore, selectedWorkspace]);
+  }, [firestore, selectedWorkspace?.id]);
 
   const { data: companies, isLoading: isCompaniesLoading } = useCollection<Company>(companiesQuery);
 
-  // Fetch all projects in the workspace. 
-  // We remove the status != archived filter here to be safer with security rules 
-  // and handle filtering in the useMemo below.
+  // Fetch all projects in the workspace scoped by workspaceId for collectionGroup security.
   const projectsQuery = useMemoFirebase(() => {
-    if (!selectedWorkspace) return null;
+    if (!selectedWorkspace?.id) return null;
     return query(
         collectionGroup(firestore, 'projects'),
         where('workspaceId', '==', selectedWorkspace.id)
     );
-  }, [firestore, selectedWorkspace]);
+  }, [firestore, selectedWorkspace?.id]);
 
   const { data: allProjects, isLoading: isProjectsLoading } = useCollection<Project>(projectsQuery);
 
