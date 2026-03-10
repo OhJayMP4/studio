@@ -77,6 +77,7 @@ export type Task = {
     workspaceId: string;
     createdBy: string;
     updatedBy?: string;
+    timeSpentMinutes?: number;
 };
 
 export type Comment = {
@@ -107,6 +108,7 @@ export type UserTask = {
     companyName: string;
     projectName: string;
     siloName: string;
+    timeSpentMinutes?: number;
 }
 
 export type Sale = {

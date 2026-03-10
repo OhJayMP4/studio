@@ -1,6 +1,7 @@
+
 'use client';
 
-import React from "react";
+import React, { useState } from "react";
 import { useFirestore, useMemoFirebase } from "@/firebase";
 import { UserProfile, UserTask } from "@/lib/types";
 import { doc } from "firebase/firestore";
@@ -21,12 +22,14 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { TaskCompletionDialog } from "./task-completion-dialog";
 
 interface TaskListItemProps {
     userTask: UserTask;
 }
 
 export function TaskListItem({ userTask }: TaskListItemProps) {
+    const [showCompletionDialog, setShowCompletionDialog] = useState(false);
     const firestore = useFirestore();
     const { originalTaskId, workspaceId, companyId, projectId, siloId } = userTask;
 
@@ -37,12 +40,21 @@ export function TaskListItem({ userTask }: TaskListItemProps) {
     const { data: assignee } = useDoc<UserProfile>(assigneeRef);
 
     const handleCheckChanged = async (checked: boolean) => {
-        const originalTaskPath = `workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks/${originalTaskId}`;
-        try {
-            await updateTaskCompletion(firestore, originalTaskPath, userTask.assigneeId, originalTaskId, checked);
-        } catch (error) {
-            console.error("Failed to update task:", error);
+        if (checked) {
+            setShowCompletionDialog(true);
+        } else {
+            const originalTaskPath = `workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks/${originalTaskId}`;
+            try {
+                await updateTaskCompletion(firestore, originalTaskPath, userTask.assigneeId, originalTaskId, false, 0);
+            } catch (error) {
+                console.error("Failed to update task:", error);
+            }
         }
+    }
+
+    const onConfirmCompletion = async (minutes: number) => {
+        const originalTaskPath = `workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks/${originalTaskId}`;
+        await updateTaskCompletion(firestore, originalTaskPath, userTask.assigneeId, originalTaskId, true, minutes);
     }
 
     const name = assignee?.name || 'N/A';
@@ -111,6 +123,13 @@ export function TaskListItem({ userTask }: TaskListItemProps) {
                     </Tooltip>
                 </TooltipProvider>
             </TableCell>
+            
+            <TaskCompletionDialog 
+                open={showCompletionDialog}
+                onOpenChange={setShowCompletionDialog}
+                onConfirm={onConfirmCompletion}
+                taskTitle={userTask.title}
+            />
        </TableRow>
     )
 }

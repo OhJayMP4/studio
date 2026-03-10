@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useFirestore, useMemoFirebase } from "@/firebase";
@@ -22,6 +23,8 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { updateTaskCompletion } from "@/lib/tasks";
 import { TaskDetailsDialog } from "./task-details-dialog";
+import { TaskCompletionDialog } from "./task-completion-dialog";
+import { useState } from "react";
 
 interface TaskItemProps {
     task: Task;
@@ -81,6 +84,7 @@ function TaskActions({ task, path }: { task: Task, path: string }) {
 }
 
 export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
+    const [showCompletionDialog, setShowCompletionDialog] = useState(false);
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ 
         id: task.id,
         data: {
@@ -106,11 +110,19 @@ export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
     const { data: assignee } = useDoc<UserProfile>(assigneeRef);
 
     const handleCheckChanged = async (checked: boolean) => {
-        try {
-            await updateTaskCompletion(firestore, path, task.assigneeId, task.id, checked);
-        } catch (error) {
-            console.error("Failed to update task:", error);
+        if (checked) {
+            setShowCompletionDialog(true);
+        } else {
+            try {
+                await updateTaskCompletion(firestore, path, task.assigneeId, task.id, false, 0);
+            } catch (error) {
+                console.error("Failed to update task:", error);
+            }
         }
+    }
+
+    const onConfirmCompletion = async (minutes: number) => {
+        await updateTaskCompletion(firestore, path, task.assigneeId, task.id, true, minutes);
     }
 
     const name = assignee?.name || 'N/A';
@@ -180,7 +192,13 @@ export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
                 </TooltipProvider>
                 <div className="opacity-0 group-hover:opacity-100 transition-opacity"><TaskActions task={task} path={path} /></div>
             </div>
+
+            <TaskCompletionDialog 
+                open={showCompletionDialog}
+                onOpenChange={setShowCompletionDialog}
+                onConfirm={onConfirmCompletion}
+                taskTitle={task.title}
+            />
         </div>
     )
 }
-    

@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { formatDuration } from "@/lib/utils";
 
 type ReportData = {
     companies: (Company & { projects: (Project & { silos: (Silo & { tasks: Task[] })[] })[] })[];
@@ -158,8 +159,9 @@ export default function SummaryReportPage() {
                                                 <tr className="border-b border-gray-400">
                                                     <th className="p-2 w-2/5">Task</th>
                                                     <th className="p-2 w-1/5">Assignee</th>
+                                                    <th className="p-2 w-1/10 text-right">Time</th>
                                                     <th className="p-2 w-1/5">Due Date</th>
-                                                    <th className="p-2 w-1/5">Priority</th>
+                                                    <th className="p-2 w-1/10">Priority</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -170,13 +172,14 @@ export default function SummaryReportPage() {
                                                         <tr key={task.id} className={`border-b border-gray-200 ${task.completed ? 'text-gray-400 line-through' : ''}`}>
                                                             <td className="p-2">{task.title}</td>
                                                             <td className="p-2">{assignee}</td>
+                                                            <td className="p-2 text-right font-mono">{formatDuration(task.timeSpentMinutes)}</td>
                                                             <td className={`p-2 ${isOverdue ? 'text-red-500 font-bold' : ''}`}>{format(new Date(task.dueDate), 'MMM d, yyyy')}</td>
                                                             <td className={`p-2 font-medium ${priorityStyles[task.priority]}`}>{task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}</td>
                                                         </tr>
                                                     )
                                                 }) : (
                                                     <tr>
-                                                        <td colSpan={4} className="p-2 text-center text-gray-500">No tasks in this silo.</td>
+                                                        <td colSpan={5} className="p-2 text-center text-gray-500">No tasks in this silo.</td>
                                                     </tr>
                                                 )}
                                             </tbody>

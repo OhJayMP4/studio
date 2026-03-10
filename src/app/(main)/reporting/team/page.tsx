@@ -1,3 +1,4 @@
+
 'use client';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -7,7 +8,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { format } from 'date-fns';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { cn } from '@/lib/utils';
+import { cn, formatDuration } from '@/lib/utils';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useToast } from '@/hooks/use-toast';
 
@@ -110,18 +111,24 @@ function TeamReportContent() {
                     <h1 className="text-3xl font-bold">Team Task Report for {selectedWorkspace?.name}</h1>
                     <p className="text-gray-500">Generated on: {format(new Date(), 'PPP p')}</p>
                  </div>
-                 <Button onClick={() => window.print()} className="no-print bg-gray-800 text-white hover:bg-gray-700">Print Report</Button>
+                 <div className="text-right no-print">
+                    <Button onClick={() => window.print()} className="bg-gray-800 text-white hover:bg-gray-700">Print Report</Button>
+                 </div>
             </div>
 
             {reportData.map(({ user, tasks }) => (
                 <div key={user.uid} className="mb-12 break-inside-avoid">
-                    <h2 className="text-2xl font-semibold border-b-2 border-gray-800 pb-2 mb-4">Tasks for {user.name}</h2>
+                    <div className="flex justify-between items-baseline border-b-2 border-gray-800 pb-2 mb-4">
+                        <h2 className="text-2xl font-semibold">Tasks for {user.name}</h2>
+                        <span className="text-sm font-medium">Total Time: {formatDuration(tasks.reduce((acc, t) => acc + (t.timeSpentMinutes || 0), 0))}</span>
+                    </div>
                     {tasks.length > 0 ? (
                         <table className="w-full text-left mt-2 border-collapse text-sm">
                             <thead>
                                 <tr className="border-b border-gray-400">
                                     <th className="p-2 w-2/6">Task</th>
                                     <th className="p-2 w-2/6">Path</th>
+                                    <th className="p-2 w-1/6 text-right">Time</th>
                                     <th className="p-2 w-1/6">Due Date</th>
                                     <th className="p-2 w-1/6">Priority</th>
                                 </tr>
@@ -138,6 +145,7 @@ function TeamReportContent() {
                                             <td className="p-2 text-xs text-gray-600">
                                                 {task.companyName} / {task.projectName} / {task.siloName}
                                             </td>
+                                            <td className="p-2 text-right font-mono">{formatDuration(task.timeSpentMinutes)}</td>
                                             <td className={cn('p-2', { 'text-red-500 font-bold': isOverdue })}>{format(new Date(task.dueDate), 'MMM d, yyyy')}</td>
                                             <td className={cn('p-2 font-medium', priorityStyles[task.priority])}>{task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}</td>
                                         </tr>
@@ -162,5 +170,3 @@ export default function TeamReportPage() {
         </Suspense>
     );
 }
-
-    

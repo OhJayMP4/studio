@@ -290,6 +290,10 @@
         "createdBy": {
           "type": "string",
           "description": "The UID of the user who created the task."
+        },
+        "timeSpentMinutes": {
+          "type": "number",
+          "description": "Total time spent on the task in minutes."
         }
       },
       "required": [
@@ -381,6 +385,10 @@
         },
         "siloName": {
           "type": "string"
+        },
+        "timeSpentMinutes": {
+          "type": "number",
+          "description": "Total time spent on the task in minutes."
         }
       },
       "required": [
@@ -635,7 +643,7 @@
                 "type": "string",
                 "description": "Lucide icon name"
               },
-              "route": {
+              "role": {
                 "type": "string"
               },
               "hidden": {

@@ -1,3 +1,4 @@
+
 'use client';
 import { collection, doc, writeBatch, getDoc, setDoc, Firestore } from "firebase/firestore";
 import type { Company, Project, Silo, Task, Workspace } from "./types";
@@ -40,7 +41,7 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
     const siloData = siloSnap.data() as Silo;
     
     // 2. Create the original task
-    batch.set(taskRef, {...taskData, projectId, workspaceId});
+    batch.set(taskRef, {...taskData, projectId, workspaceId, timeSpentMinutes: 0});
 
     // 3. SECURITY CHECK: Verify assignee is a member of the workspace before denormalizing
     if (workspaceData.users && workspaceData.users[taskData.assigneeId]) {
@@ -61,6 +62,7 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
             companyName: companyData.name,
             projectName: projectData.name,
             siloName: siloData.name,
+            timeSpentMinutes: 0,
         });
     } else {
         console.warn(`Skipping task denormalization: User ${taskData.assigneeId} is not a member of workspace ${workspaceId}.`);
@@ -126,7 +128,14 @@ export async function addQuickTask(firestore: Firestore, params: {
 }
 
 
-export async function updateTaskCompletion(firestore: Firestore, originalTaskPath: string, userId: string, originalTaskId: string, completed: boolean) {
+export async function updateTaskCompletion(
+    firestore: Firestore, 
+    originalTaskPath: string, 
+    userId: string, 
+    originalTaskId: string, 
+    completed: boolean,
+    timeSpentMinutes?: number
+) {
     const originalTaskRef = doc(firestore, originalTaskPath);
     
     // Find the denormalized task to update. We need to query for it.
@@ -155,11 +164,20 @@ export async function updateTaskCompletion(firestore: Firestore, originalTaskPat
     const auth = (await import('firebase/auth')).getAuth();
     const currentUser = auth.currentUser;
     
-    batch.update(originalTaskRef, { completed, updatedBy: currentUser?.uid });
+    const updateData: any = { completed, updatedBy: currentUser?.uid };
+    if (completed) {
+        updateData.timeSpentMinutes = timeSpentMinutes || 0;
+    }
+
+    batch.update(originalTaskRef, updateData);
 
     // Update denormalized task(s) - should only be one
     userTasksSnap.forEach(document => {
-        batch.update(document.ref, { "completed": completed });
+        const userTaskUpdate: any = { "completed": completed };
+        if (completed) {
+            userTaskUpdate.timeSpentMinutes = timeSpentMinutes || 0;
+        }
+        batch.update(document.ref, userTaskUpdate);
     });
 
     await batch.commit();
