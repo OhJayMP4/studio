@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
+import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
 import { collection, query, serverTimestamp, setDoc, doc, Timestamp, onSnapshot } from 'firebase/firestore';
-import type { Presence } from '@/lib/types';
+import type { Presence, UserProfile } from '@/lib/types';
 
 const PRESENCE_COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD'];
 const HEARTBEAT_INTERVAL = 30000; // 30 seconds
@@ -21,9 +21,19 @@ export const usePresence = () => {
     const workspaceId = selectedWorkspace?.id;
     const userId = user?.uid;
 
+    // Fetch profile to get real-time avatar updates for presence
+    const profileRef = useMemoFirebase(() => {
+        return userId ? doc(firestore, 'users', userId) : null;
+    }, [firestore, userId]);
+    const { data: profile } = useDoc<UserProfile>(profileRef);
+
     // --- Write user's own presence ---
     useEffect(() => {
-        if (!workspaceId || !userId || !user?.displayName || !firestore) return;
+        if (!workspaceId || !userId || !firestore) return;
+
+        // Use name from profile if available, fallback to user object
+        const displayName = profile?.name || user?.displayName || 'Anonymous';
+        const avatarUrl = profile?.avatarUrl || user?.photoURL || null;
 
         const presenceRef = doc(firestore, `presence/${workspaceId}/users/${userId}`);
         let heartbeatInterval: NodeJS.Timeout | null = null;
@@ -33,8 +43,8 @@ export const usePresence = () => {
                 lastSeen: serverTimestamp(),
                 color: userColor,
                 user: {
-                    name: user.displayName,
-                    avatarUrl: user.photoURL || null,
+                    name: displayName,
+                    avatarUrl: avatarUrl,
                 }
             }, { merge: true }).catch(err => console.error("Presence update failed:", err));
         };
@@ -64,7 +74,7 @@ export const usePresence = () => {
                 clearInterval(heartbeatInterval);
             }
         };
-    }, [workspaceId, userId, userColor, firestore, user?.displayName, user?.photoURL]);
+    }, [workspaceId, userId, userColor, firestore, user?.displayName, user?.photoURL, profile?.name, profile?.avatarUrl]);
     
     
     // --- Read presence data for the workspace ---
