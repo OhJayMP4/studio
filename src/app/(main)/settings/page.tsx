@@ -18,7 +18,7 @@ import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { WorkspaceManager } from '@/components/settings/workspace-manager';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Pencil } from 'lucide-react';
+import { Pencil, KeyRound, User } from 'lucide-react';
 
 
 const profileFormSchema = z.object({
@@ -99,7 +99,7 @@ export default function SettingsPage() {
       
       toast({
         title: 'Profile Updated',
-        description: 'Your name has been successfully updated.',
+        description: 'Your information has been successfully updated.',
       });
     } catch (error: any) {
       console.error('Error updating profile:', error);
@@ -157,10 +157,13 @@ export default function SettingsPage() {
         await uploadBytes(avatarRef, file);
         const downloadURL = await getDownloadURL(avatarRef);
 
+        // Update Auth Profile
         await updateProfile(user, { photoURL: downloadURL });
+        
+        // Update Firestore Profile
         await updateDoc(userProfileRef, { avatarUrl: downloadURL });
 
-        toast({ title: 'Avatar Updated', description: 'Your profile picture has been updated.' });
+        toast({ title: 'Avatar Updated', description: 'Your profile picture has been updated across the app.' });
     } catch (error: any) {
          toast({ variant: 'destructive', title: 'Upload Failed', description: error.message });
     } finally {
@@ -187,7 +190,7 @@ export default function SettingsPage() {
   }
 
   const name = userProfile?.name || '';
-  const avatarUrl = userProfile?.avatarUrl || '';
+  const avatarUrl = user?.photoURL || userProfile?.avatarUrl || '';
   const fallback = name ? name.charAt(0).toUpperCase() : '?';
 
   return (
@@ -198,30 +201,36 @@ export default function SettingsPage() {
       </div>
       <Card>
         <CardHeader>
-          <CardTitle>My Profile</CardTitle>
-          <CardDescription>This is how others will see you on the site.</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <User className="h-5 w-5 text-primary" />
+            My Profile
+          </CardTitle>
+          <CardDescription>Update your personal information and profile picture.</CardDescription>
         </CardHeader>
         <FormProvider {...profileForm}>
           <form onSubmit={profileForm.handleSubmit(handleUpdateProfile)}>
-            <CardContent className="space-y-4">
-               <div className="flex items-center gap-6">
+            <CardContent className="space-y-6">
+               <div className="flex flex-col sm:flex-row items-center gap-6 pb-6 border-b">
                  <div className="relative group">
-                    <Avatar className="h-24 w-24 text-4xl">
-                        <AvatarImage src={avatarUrl} alt={name} />
-                        <AvatarFallback>{fallback}</AvatarFallback>
+                    <Avatar className="h-24 w-24 text-4xl border-4 border-background shadow-xl">
+                        <AvatarImage src={avatarUrl} alt={name} className="object-cover" />
+                        <AvatarFallback className="bg-muted text-muted-foreground">{fallback}</AvatarFallback>
                     </Avatar>
-                     <label htmlFor="avatar-upload" className="absolute inset-0 bg-black/50 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-full">
-                        <Pencil className="h-8 w-8" />
+                     <label htmlFor="avatar-upload" className="absolute inset-0 bg-black/60 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-full border-2 border-white/20 backdrop-blur-sm">
+                        <div className="flex flex-col items-center">
+                            <Pencil className="h-6 w-6 mb-1" />
+                            <span className="text-[10px] font-bold uppercase tracking-wider">Change</span>
+                        </div>
                         <input type="file" id="avatar-upload" className="hidden" onChange={handleImageUpload} accept="image/*" disabled={isUploading} />
                     </label>
                 </div>
-                <div className="flex-1 space-y-4">
+                <div className="flex-1 w-full space-y-4">
                   <FormField
                     control={profileForm.control}
                     name="name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Name</FormLabel>
+                        <FormLabel>Display Name</FormLabel>
                         <FormControl>
                           <Input placeholder="Your Name" {...field} />
                         </FormControl>
@@ -234,10 +243,11 @@ export default function SettingsPage() {
                     name="email"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Email</FormLabel>
+                        <FormLabel>Email Address</FormLabel>
                         <FormControl>
                           <Input type="email" placeholder="you@example.com" {...field} disabled />
                         </FormControl>
+                        <p className="text-[10px] text-muted-foreground italic">Email changes are handled via support for security.</p>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -256,8 +266,11 @@ export default function SettingsPage() {
 
        <Card>
         <CardHeader>
-          <CardTitle>Password Settings</CardTitle>
-          <CardDescription>Update your password here. Please choose a strong password.</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <KeyRound className="h-5 w-5 text-primary" />
+            Security & Password
+          </CardTitle>
+          <CardDescription>Update your password to keep your account secure.</CardDescription>
         </CardHeader>
         <FormProvider {...passwordForm}>
           <form onSubmit={passwordForm.handleSubmit(handlePasswordUpdate)}>
@@ -269,38 +282,41 @@ export default function SettingsPage() {
                   <FormItem>
                     <FormLabel>Current Password</FormLabel>
                     <FormControl>
-                      <Input type="password" {...field} />
+                      <Input type="password" placeholder="Confirm your old password" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <FormField
-                control={passwordForm.control}
-                name="newPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>New Password</FormLabel>
-                    <FormControl>
-                      <Input type="password" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-               <FormField
-                control={passwordForm.control}
-                name="confirmPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Confirm New Password</FormLabel>
-                    <FormControl>
-                      <Input type="password" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <Separator className="my-2" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={passwordForm.control}
+                    name="newPassword"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>New Password</FormLabel>
+                        <FormControl>
+                          <Input type="password" placeholder="Min. 6 characters" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                   <FormField
+                    control={passwordForm.control}
+                    name="confirmPassword"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Confirm New Password</FormLabel>
+                        <FormControl>
+                          <Input type="password" placeholder="Repeat new password" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+              </div>
             </CardContent>
             <CardFooter>
                <Button type="submit" disabled={passwordForm.formState.isSubmitting}>
