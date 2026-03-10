@@ -5,12 +5,12 @@ import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, doc, deleteDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, deleteDoc, getDocs, query, where, Timestamp } from "firebase/firestore";
 import type { Company, Project } from "@/lib/types";
 import { AddCompanyDialog } from "@/components/common/add-company-dialog";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { MoreVertical, LayoutGrid, List, Building } from "lucide-react";
+import { MoreVertical, LayoutGrid, List, Building, SortAsc } from "lucide-react";
 import { EditCompanyDialog } from "@/components/common/edit-company-dialog";
 import { DeleteDialog } from "@/components/common/delete-dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -24,6 +24,13 @@ import { CompanyProgressCard } from "@/components/common/company-progress-card";
 import { useState, useMemo, useEffect } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import Link from "next/link";
 
 function CompaniesBreadcrumb() {
@@ -84,10 +91,13 @@ function CompanyActions({ company }: { company: Company }) {
     );
 }
 
+type SortOption = 'alphabetical' | 'progress' | 'lastUsed';
+
 function WorkspaceView() {
   const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [sortBy, setSortBy] = useState<SortOption>('progress');
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [isProjectsLoading, setIsProjectsLoading] = useState(false);
 
@@ -99,8 +109,7 @@ function WorkspaceView() {
 
   const { data: companies, isLoading: isCompaniesLoading } = useCollection<Company>(companiesQuery);
 
-  // Instead of a broad collectionGroup query which is failing permissions,
-  // we fetch projects for each company hierachically.
+  // Fetch projects for each company hierachically
   useEffect(() => {
     if (!companies || companies.length === 0 || !selectedWorkspace) {
         setAllProjects([]);
@@ -112,7 +121,6 @@ function WorkspaceView() {
         try {
             const projectPromises = companies.map(async (company) => {
                 const projectsRef = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies', company.id, 'projects');
-                // We fetch all projects including archived ones for counting, but we can filter later
                 const snap = await getDocs(projectsRef);
                 return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
             });
@@ -129,11 +137,10 @@ function WorkspaceView() {
     fetchProjectsHierarchically();
   }, [companies, selectedWorkspace, firestore]);
 
-  const enrichedCompanies = useMemo(() => {
+  const sortedEnrichedCompanies = useMemo(() => {
     if (!companies) return [];
     
-    const results = companies.map(company => {
-        // Filter projects for this company and include ONLY active ones for progress calculation
+    const enriched = companies.map(company => {
         const activeProjects = allProjects.filter(p => 
             p.companyId === company.id && 
             (p.status || 'active') === 'active'
@@ -150,9 +157,21 @@ function WorkspaceView() {
         };
     });
 
-    // Auto sort by progress descending (most progress first)
-    return results.sort((a, b) => b.averageProgress - a.averageProgress);
-  }, [companies, allProjects]);
+    return enriched.sort((a, b) => {
+        switch (sortBy) {
+            case 'alphabetical':
+                return a.name.localeCompare(b.name);
+            case 'lastUsed': {
+                const timeA = a.updatedAt instanceof Timestamp ? a.updatedAt.toMillis() : (a.updatedAt?.seconds ? a.updatedAt.seconds * 1000 : 0);
+                const timeB = b.updatedAt instanceof Timestamp ? b.updatedAt.toMillis() : (b.updatedAt?.seconds ? b.updatedAt.seconds * 1000 : 0);
+                return timeB - timeA;
+            }
+            case 'progress':
+            default:
+                return b.averageProgress - a.averageProgress;
+        }
+    });
+  }, [companies, allProjects, sortBy]);
 
   const isLoading = isCompaniesLoading || (companies && companies.length > 0 && isProjectsLoading && allProjects.length === 0);
 
@@ -171,7 +190,7 @@ function WorkspaceView() {
     );
   }
 
-  if (!enrichedCompanies || enrichedCompanies.length === 0) {
+  if (!sortedEnrichedCompanies || sortedEnrichedCompanies.length === 0) {
     return (
       <Card className="w-full max-w-md text-center mx-auto mt-12">
         <CardHeader>
@@ -192,7 +211,20 @@ function WorkspaceView() {
         <CompaniesBreadcrumb />
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <h1 className="text-3xl font-headline">Companies</h1>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-2 mr-2">
+                    <SortAsc className="h-4 w-4 text-muted-foreground" />
+                    <Select value={sortBy} onValueChange={(val) => setSortBy(val as SortOption)}>
+                        <SelectTrigger className="w-[160px] h-9">
+                            <SelectValue placeholder="Sort by..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="progress">Most Progress</SelectItem>
+                            <SelectItem value="alphabetical">Alphabetical (A-Z)</SelectItem>
+                            <SelectItem value="lastUsed">Recently Modified</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
                 <div className="flex gap-1 bg-muted p-1 rounded-md">
                     <Button
                         size="sm"
@@ -217,7 +249,7 @@ function WorkspaceView() {
 
         {viewMode === 'grid' ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {enrichedCompanies.map((company) => (
+                {sortedEnrichedCompanies.map((company) => (
                     <CompanyProgressCard 
                         key={company.id} 
                         company={company}
@@ -242,7 +274,7 @@ function WorkspaceView() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {enrichedCompanies.map((company) => (
+                        {sortedEnrichedCompanies.map((company) => (
                             <TableRow key={company.id}>
                                 <TableCell>
                                     <Building className="h-5 w-5 text-muted-foreground" />

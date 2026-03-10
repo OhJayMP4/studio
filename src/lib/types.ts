@@ -30,6 +30,7 @@ export type Company = {
   yearlyTurnoverTarget?: number;
   workspaceId: string;
   createdBy: string;
+  updatedAt?: any; // Firestore Timestamp
   socialIntegration?: {
     facebook?: {
       pageId: string | null;

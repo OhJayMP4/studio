@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -18,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFirestore } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Textarea } from '../ui/textarea';
 import type { Company } from '@/lib/types';
@@ -81,6 +82,7 @@ export function EditCompanyDialog({ company, children }: EditCompanyDialogProps)
         ...data,
         logoUrl: data.logoUrl || null,
         yearlyTurnoverTarget: data.yearlyTurnoverTarget || null,
+        updatedAt: serverTimestamp(),
       });
       
       toast({

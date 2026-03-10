@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -18,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFirestore, useUser } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { addDoc, collection } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle } from 'lucide-react';
 import { Textarea } from '../ui/textarea';
@@ -70,6 +71,7 @@ export function AddCompanyDialog({ children }: { children?: React.ReactNode }) {
         yearlyTurnoverTarget: data.yearlyTurnoverTarget || null,
         workspaceId: selectedWorkspace.id,
         createdBy: user.uid,
+        updatedAt: serverTimestamp(),
       });
       
       toast({
