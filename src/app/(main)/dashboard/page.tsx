@@ -3,29 +3,26 @@
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
-import { useFirestore, useUser } from "@/firebase";
-import { collection, getDocs } from "firebase/firestore";
-import type { Company, Project, Task } from "@/lib/types";
+import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase";
+import { collection, query, where, getDocs, collectionGroup } from "firebase/firestore";
+import type { Company, Project, Task, UserTask } from "@/lib/types";
 import ProjectStatusChart from "@/components/reporting/project-status-chart";
 import TaskPriorityChart from "@/components/reporting/task-priority-chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, AlertCircle, ArrowRight, Zap, ArrowLeft, Building, Folder, CheckCircle2 } from "lucide-react";
+import { Calendar, AlertCircle, ArrowRight, Zap, ArrowLeft, Folder, CheckCircle2 } from "lucide-react";
 import { format, isPast, isToday, addDays, isBefore } from "date-fns";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useUserTasks } from "@/hooks/use-user-tasks";
 
 type DashboardDetailView = 'main' | 'active-projects' | 'completed-projects' | 'total-tasks' | 'overdue-tasks';
 
-// Extended types to include names for display in lists
-type ProjectWithContext = Project & { companyName: string };
-type TaskWithContext = Task & { companyName: string; projectName: string };
-
-function TaskListRow({ task }: { task: TaskWithContext }) {
+function TaskListRow({ task }: { task: UserTask }) {
   const dueDate = new Date(task.dueDate);
   const overdue = !task.completed && isPast(dueDate) && !isToday(dueDate);
   const isQuickTask = task.projectId === 'general-tasks';
@@ -86,102 +83,40 @@ function DashboardView() {
   const { selectedWorkspace } = useSelectedWorkspace();
   const { user } = useUser();
   const firestore = useFirestore();
-  const [projects, setProjects] = useState<ProjectWithContext[]>([]);
-  const [tasks, setTasks] = useState<TaskWithContext[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [detailView, setDetailView] = useState<DashboardDetailView>('main');
-
-  useEffect(() => {
-    if (!selectedWorkspace?.id || !firestore) {
-      setIsLoading(false);
-      return;
-    }
-
-    const fetchWorkspaceData = async () => {
-      setIsLoading(true);
-      try {
-        const workspaceCompaniesRef = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies');
-        const companiesSnapshot = await getDocs(workspaceCompaniesRef);
-        
-        let allProjects: ProjectWithContext[] = [];
-        let allTasks: TaskWithContext[] = [];
-
-        for (const companyDoc of companiesSnapshot.docs) {
-          const companyData = companyDoc.data() as Company;
-          const companyName = companyData.name;
-          
-          const projectsRef = collection(companyDoc.ref, 'projects');
-          const projectsSnapshot = await getDocs(projectsRef);
-          
-          for (const projectDoc of projectsSnapshot.docs) {
-            const projectDataRaw = projectDoc.data();
-            const isQuickTaskProject = projectDoc.id === 'general-tasks';
-            const projectName = isQuickTaskProject ? 'Quick Tasks' : projectDataRaw.name;
-            
-            const projectData = { id: projectDoc.id, ...projectDataRaw, companyName, name: projectName } as ProjectWithContext;
-            if (projectData.status === 'archived') continue;
-            
-            allProjects.push(projectData);
-            
-            const projectSilosRef = collection(projectDoc.ref, 'silos');
-            const silosSnapshot = await getDocs(projectSilosRef);
-
-            for (const siloDoc of silosSnapshot.docs) {
-              const siloTasksRef = collection(siloDoc.ref, 'tasks');
-              const tasksSnapshot = await getDocs(siloTasksRef);
-              tasksSnapshot.forEach(taskDoc => {
-                allTasks.push({ 
-                    id: taskDoc.id, 
-                    ...taskDoc.data(), 
-                    companyName, 
-                    projectName: projectName 
-                } as TaskWithContext);
-              });
-            }
-          }
-        }
-
-        setProjects(allProjects);
-        setTasks(allTasks);
-
-      } catch (error) {
-        console.error("Error fetching dashboard data: ", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    fetchWorkspaceData();
-  }, [selectedWorkspace, firestore]);
   
-  // Filter tasks to only include those assigned to the current user
-  const userTasks = useMemo(() => {
-    if (!user) return [];
-    return tasks.filter(t => t.assigneeId === user.uid);
-  }, [tasks, user]);
+  // 1. Optimized User Task Fetching (Personalized)
+  const { tasks: userTaskGroups, isLoading: isTasksLoading } = useUserTasks(selectedWorkspace?.id);
+  const userTasks = useMemo(() => [...userTaskGroups.active, ...userTaskGroups.completed], [userTaskGroups]);
+
+  // 2. Optimized Project Summary (Workspace-wide)
+  const projectsQuery = useMemoFirebase(() => {
+    if (!selectedWorkspace?.id) return null;
+    return query(
+        collectionGroup(firestore, 'projects'),
+        where('workspaceId', '==', selectedWorkspace.id),
+        where('status', '!=', 'archived')
+    );
+  }, [firestore, selectedWorkspace?.id]);
+
+  const { data: projects, isLoading: isProjectsLoading } = useCollection<Project>(projectsQuery);
 
   const stats = useMemo(() => {
-    // Projects remain workspace-wide for overview
-    const activeProjectsList = projects.filter(p => p.id !== 'general-tasks' && (p.status === 'active' || !p.status));
-    const completedProjectsList = projects.filter(p => p.id !== 'general-tasks' && (p.status === 'completed' || p.progress === 100));
+    const activeProjectsList = projects?.filter(p => p.id !== 'general-tasks' && (p.status === 'active' || !p.status)) || [];
+    const completedProjectsList = projects?.filter(p => p.id !== 'general-tasks' && (p.status === 'completed' || p.progress === 100)) || [];
     
-    // Task-based stats are now strictly personal
-    const overdueTasksList = userTasks.filter(t => !t.completed && isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate)));
+    const overdueTasksList = userTaskGroups.active.filter(t => isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate)));
     
     const now = new Date();
     const urgentThreshold = addDays(now, 2);
 
-    const highPriorityUpcoming = userTasks
-      .filter(t => {
-          if (t.completed) return false;
-          const dueDate = new Date(t.dueDate);
-          return t.priority === 'high' || isBefore(dueDate, urgentThreshold);
-      })
+    const highPriorityUpcoming = userTaskGroups.active
+      .filter(t => t.priority === 'high' || isBefore(new Date(t.dueDate), urgentThreshold))
       .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
       .slice(0, 5);
 
-    const quickTasksList = userTasks
-      .filter(t => !t.completed && t.projectId === 'general-tasks')
+    const quickTasksList = userTaskGroups.active
+      .filter(t => t.projectId === 'general-tasks')
       .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
       .slice(0, 5);
 
@@ -193,7 +128,9 @@ function DashboardView() {
         quickTasksList,
         userTasksCount: userTasks.length
     };
-  }, [projects, userTasks]);
+  }, [projects, userTaskGroups, userTasks]);
+
+  const isLoading = isTasksLoading || isProjectsLoading;
 
   if (detailView === 'active-projects') {
       return (
@@ -205,7 +142,6 @@ function DashboardView() {
                           <TableHeader>
                               <TableRow>
                                   <TableHead>Project</TableHead>
-                                  <TableHead>Company</TableHead>
                                   <TableHead>Deadline</TableHead>
                                   <TableHead className="text-right">Progress</TableHead>
                               </TableRow>
@@ -217,11 +153,6 @@ function DashboardView() {
                                           <Link href={`/company/${p.companyId}/project/${p.id}`} className="flex items-center gap-2 hover:underline">
                                               <Folder className="h-4 w-4 text-primary" />
                                               {p.name}
-                                          </Link>
-                                      </TableCell>
-                                      <TableCell>
-                                          <Link href={`/company/${p.companyId}`} className="text-muted-foreground hover:underline">
-                                              {p.companyName}
                                           </Link>
                                       </TableCell>
                                       <TableCell className="text-muted-foreground">
@@ -250,7 +181,6 @@ function DashboardView() {
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Project</TableHead>
-                                <TableHead>Company</TableHead>
                                 <TableHead>Completed Date</TableHead>
                                 <TableHead className="text-right">Value</TableHead>
                             </TableRow>
@@ -262,11 +192,6 @@ function DashboardView() {
                                         <Link href={`/company/${p.companyId}/project/${p.id}`} className="flex items-center gap-2 hover:underline">
                                             <CheckCircle2 className="h-4 w-4 text-green-500" />
                                             {p.name}
-                                        </Link>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Link href={`/company/${p.companyId}`} className="text-muted-foreground hover:underline">
-                                            {p.companyName}
                                         </Link>
                                     </TableCell>
                                     <TableCell className="text-muted-foreground">
@@ -536,7 +461,7 @@ function DashboardView() {
       </div>
 
       <div className="grid gap-8 md:grid-cols-2">
-        <ProjectStatusChart projects={projects} isLoading={isLoading} />
+        <ProjectStatusChart projects={projects || []} isLoading={isLoading} />
         <TaskPriorityChart tasks={userTasks} isLoading={isLoading} />
       </div>
     </div>

@@ -3,7 +3,7 @@
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { Company, Project, Silo, Task, UserProfile } from "@/lib/types";
-import { collection, getDocs, query, orderBy, where, doc } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, where } from "firebase/firestore";
 import { useEffect, useState, useMemo } from "react";
 import { format, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { Progress } from "@/components/ui/progress";
@@ -31,7 +31,7 @@ type ReportData = {
             })[] 
         })[] 
     })[];
-    users: { [uid: string]: UserProfile };
+    users: { [uid: string]: string };
 }
 
 function ReportLoader() {
@@ -108,9 +108,6 @@ export default function SummaryReportPage() {
                         const tasksRef = collection(siloDoc.ref, 'tasks');
                         const tasksSnap = await getDocs(query(tasksRef));
                         
-                        // Filter tasks:
-                        // 1. Include if due in range
-                        // 2. OR include if incomplete (active work)
                         const tasksData = tasksSnap.docs
                             .map(taskDoc => ({ id: taskDoc.id, ...taskDoc.data() } as Task))
                             .filter(task => {
@@ -134,21 +131,15 @@ export default function SummaryReportPage() {
                 return { ...company, totalMinutes: companyTotalMinutes, projects: projectsData };
             }));
 
-            // Filter out companies with no matching tasks to keep report clean
             const filteredCompanies = companiesData.filter(c => c.projects.some(p => p.silos.some(s => s.tasks.length > 0)));
 
-            const users: { [uid: string]: UserProfile } = {};
+            const userNames: { [uid: string]: string } = {};
             if (selectedWorkspace.users) {
                 for (const uid in selectedWorkspace.users) {
-                    users[uid] = {
-                        uid: uid,
-                        name: selectedWorkspace.users[uid].name || 'Unknown',
-                        email: null,
-                        avatarUrl: selectedWorkspace.users[uid].avatarUrl || null,
-                    };
+                    userNames[uid] = selectedWorkspace.users[uid].name || 'Unnamed User';
                 }
             }
-            setReportData({ companies: filteredCompanies, users });
+            setReportData({ companies: filteredCompanies, users: userNames });
         } catch (error) {
             console.error("Error fetching report data:", error);
         } finally {
@@ -407,7 +398,7 @@ export default function SummaryReportPage() {
                                                             </thead>
                                                             <tbody>
                                                                 {silo.tasks.map(task => {
-                                                                    const assignee = reportData.users[task.assigneeId]?.name || 'Unassigned';
+                                                                    const assigneeName = reportData.users[task.assigneeId] || 'Unnamed User';
                                                                     return (
                                                                         <tr key={task.id} className={cn("border-b border-slate-100 last:border-0", task.completed && "bg-slate-50/30")}>
                                                                             <td className="p-3">
@@ -418,7 +409,7 @@ export default function SummaryReportPage() {
                                                                                     </p>
                                                                                 </div>
                                                                             </td>
-                                                                            <td className="p-3 text-slate-600 font-medium">{assignee}</td>
+                                                                            <td className="p-3 text-slate-600 font-medium">{assigneeName}</td>
                                                                             <td className="p-3 text-center">
                                                                                 <span className={cn("text-[9px] uppercase font-black px-2 py-0.5 rounded-full border", 
                                                                                     task.completed ? "bg-green-50 border-green-200 text-green-700" : "bg-blue-50 border-blue-200 text-blue-700"
