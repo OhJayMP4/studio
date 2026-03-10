@@ -5,7 +5,7 @@ import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, doc, deleteDoc, collectionGroup, query, where } from "firebase/firestore";
+import { collection, doc, deleteDoc, getDocs, query, where } from "firebase/firestore";
 import type { Company, Project } from "@/lib/types";
 import { AddCompanyDialog } from "@/components/common/add-company-dialog";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ import {
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb";
 import { CompanyProgressCard } from "@/components/common/company-progress-card";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import Link from "next/link";
@@ -88,6 +88,8 @@ function WorkspaceView() {
   const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [isProjectsLoading, setIsProjectsLoading] = useState(false);
 
   // Fetch all companies
   const companiesQuery = useMemoFirebase(() => {
@@ -97,26 +99,45 @@ function WorkspaceView() {
 
   const { data: companies, isLoading: isCompaniesLoading } = useCollection<Company>(companiesQuery);
 
-  // Fetch all projects in the workspace scoped by workspaceId for collectionGroup security.
-  const projectsQuery = useMemoFirebase(() => {
-    if (!selectedWorkspace?.id) return null;
-    return query(
-        collectionGroup(firestore, 'projects'),
-        where('workspaceId', '==', selectedWorkspace.id)
-    );
-  }, [firestore, selectedWorkspace?.id]);
+  // Instead of a broad collectionGroup query which is failing permissions,
+  // we fetch projects for each company hierachically.
+  useEffect(() => {
+    if (!companies || companies.length === 0 || !selectedWorkspace) {
+        setAllProjects([]);
+        return;
+    }
 
-  const { data: allProjects, isLoading: isProjectsLoading } = useCollection<Project>(projectsQuery);
+    const fetchProjectsHierarchically = async () => {
+        setIsProjectsLoading(true);
+        try {
+            const projectPromises = companies.map(async (company) => {
+                const projectsRef = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies', company.id, 'projects');
+                // We fetch all projects including archived ones for counting, but we can filter later
+                const snap = await getDocs(projectsRef);
+                return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+            });
+
+            const results = await Promise.all(projectPromises);
+            setAllProjects(results.flat());
+        } catch (error) {
+            console.error("Error fetching projects hierachically:", error);
+        } finally {
+            setIsProjectsLoading(false);
+        }
+    };
+
+    fetchProjectsHierarchically();
+  }, [companies, selectedWorkspace, firestore]);
 
   const enrichedCompanies = useMemo(() => {
     if (!companies) return [];
     
     const results = companies.map(company => {
         // Filter projects for this company and exclude archived ones manually
-        const companyProjects = allProjects?.filter(p => 
+        const companyProjects = allProjects.filter(p => 
             p.companyId === company.id && 
             (p.status || 'active') !== 'archived'
-        ) || [];
+        );
         
         const averageProgress = companyProjects.length > 0
             ? Math.round(companyProjects.reduce((acc, p) => acc + (p.progress || 0), 0) / companyProjects.length)
@@ -133,7 +154,7 @@ function WorkspaceView() {
     return results.sort((a, b) => b.averageProgress - a.averageProgress);
   }, [companies, allProjects]);
 
-  const isLoading = isCompaniesLoading || isProjectsLoading;
+  const isLoading = isCompaniesLoading || (companies && companies.length > 0 && isProjectsLoading && allProjects.length === 0);
 
   if (isLoading) {
     return (
