@@ -433,7 +433,7 @@ function DashboardView() {
           <CardHeader>
             <div className="flex items-center gap-2 text-primary">
               <AlertCircle className="h-5 w-5 fill-current" />
-              <AlertTitle>Urgent & High Priority</AlertTitle>
+              <CardTitle>Urgent & High Priority</CardTitle>
             </div>
             <CardDescription>Top upcoming or high priority items.</CardDescription>
           </CardHeader>
