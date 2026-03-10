@@ -15,7 +15,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, FileText, Printer, ArrowLeft, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer, Cell } from "recharts";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Cell } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 
 type ReportData = {
@@ -29,12 +29,6 @@ type ReportData = {
         })[] 
     })[];
     users: { [uid: string]: UserProfile };
-}
-
-const priorityStyles: { [key: string]: string } = {
-    high: 'text-red-600 font-bold',
-    medium: 'text-amber-600',
-    low: 'text-slate-500',
 }
 
 function ReportLoader() {
@@ -151,6 +145,13 @@ export default function SummaryReportPage() {
         })).sort((a, b) => b.hours - a.hours);
     }, [reportData]);
 
+    const chartConfig = {
+        hours: {
+            label: "Hours",
+            color: "hsl(var(--primary))",
+        },
+    };
+
     if (isConfiguring) {
         return (
             <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -251,7 +252,7 @@ export default function SummaryReportPage() {
                     <h2 className="text-xl font-bold font-headline">Resource Allocation (Hours per Company)</h2>
                 </div>
                 <div className="h-[300px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ChartContainer config={chartConfig} className="h-full w-full">
                         <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                             <XAxis 
@@ -274,7 +275,7 @@ export default function SummaryReportPage() {
                                 ))}
                             </Bar>
                         </BarChart>
-                    </ResponsiveContainer>
+                    </ChartContainer>
                 </div>
             </div>
 
