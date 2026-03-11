@@ -18,6 +18,7 @@ export type Workspace = {
     [uid: string]: {
       role: 'admin' | 'contributor' | 'viewer';
       name: string | null;
+      email: string | null;
       avatarUrl: string | null;
     };
   };

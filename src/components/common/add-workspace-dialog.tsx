@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -50,11 +51,12 @@ export function AddWorkspaceDialog({ open, onOpenChange }: AddWorkspaceDialogPro
       const workspaceRef = await addDoc(collection(firestore, 'workspaces'), {
         name: name,
         ownerId: user.uid,
-        memberIds: [user.uid], // This is the crucial fix
+        memberIds: [user.uid],
         users: { 
           [user.uid]: {
             role: 'admin',
             name: user.displayName,
+            email: user.email,
             avatarUrl: user.photoURL,
           }
         }, 

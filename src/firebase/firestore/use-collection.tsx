@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -88,7 +89,7 @@ export function useCollection<T = any>(
                 const internal = (memoizedTargetRefOrQuery as unknown as InternalQuery);
                 // For collection group queries, the canonical string might be empty if it's the root.
                 // We try to find the collection name from the query.
-                path = internal._query.path.canonicalString() || 'collection-group-query';
+                path = internal._query?.path?.canonicalString() || 'collection-group-query';
             }
         } catch (e) {
             path = 'unknown/query-path';
@@ -96,7 +97,7 @@ export function useCollection<T = any>(
 
         const contextualError = new FirestorePermissionError({
           operation: 'list',
-          path: path,
+          path: path || 'collection-group-query',
         });
 
         setError(contextualError);

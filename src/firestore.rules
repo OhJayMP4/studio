@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -46,7 +47,8 @@ service cloud.firestore {
     
     /**
      * @description Global Collection Group Queries.
-     * These must be carefully secured using request.query filter checks.
+     * These allow the cross-company dashboard and search views.
+     * They are secured by requiring a workspaceId equality filter in the query.
      */
     match /{path=**}/companies/{companyId} {
       allow get: if isWorkspaceMember(resource.data.workspaceId);

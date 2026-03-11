@@ -1,15 +1,16 @@
+
 'use client';
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, query, where, getDocs, collectionGroup } from "firebase/firestore";
-import type { Company, Project, Task, UserTask } from "@/lib/types";
+import { collection, query, where, collectionGroup } from "firebase/firestore";
+import type { Project, UserTask } from "@/lib/types";
 import ProjectStatusChart from "@/components/reporting/project-status-chart";
 import TaskPriorityChart from "@/components/reporting/task-priority-chart";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useEffect, useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar, AlertCircle, ArrowRight, Zap, ArrowLeft, Folder, CheckCircle2 } from "lucide-react";
@@ -90,20 +91,30 @@ function DashboardView() {
   const userTasks = useMemo(() => [...userTaskGroups.active, ...userTaskGroups.completed], [userTaskGroups]);
 
   // 2. Optimized Project Summary (Workspace-wide)
+  // Fix: Use simple equality filter for workspaceId to comply with Security Rules.
+  // Inequality filters on collectionGroup can often cause permission errors if documents are missing fields.
   const projectsQuery = useMemoFirebase(() => {
     if (!selectedWorkspace?.id) return null;
     return query(
         collectionGroup(firestore, 'projects'),
-        where('workspaceId', '==', selectedWorkspace.id),
-        where('status', '!=', 'archived')
+        where('workspaceId', '==', selectedWorkspace.id)
     );
   }, [firestore, selectedWorkspace?.id]);
 
-  const { data: projects, isLoading: isProjectsLoading } = useCollection<Project>(projectsQuery);
+  const { data: allWorkspaceProjects, isLoading: isProjectsLoading } = useCollection<Project>(projectsQuery);
 
   const stats = useMemo(() => {
-    const activeProjectsList = projects?.filter(p => p.id !== 'general-tasks' && (p.status === 'active' || !p.status)) || [];
-    const completedProjectsList = projects?.filter(p => p.id !== 'general-tasks' && (p.status === 'completed' || p.progress === 100)) || [];
+    const activeProjectsList = allWorkspaceProjects?.filter(p => 
+        p.id !== 'general-tasks' && 
+        (p.status === 'active' || !p.status) && 
+        p.status !== 'archived'
+    ) || [];
+    
+    const completedProjectsList = allWorkspaceProjects?.filter(p => 
+        p.id !== 'general-tasks' && 
+        (p.status === 'completed' || p.progress === 100) && 
+        p.status !== 'archived'
+    ) || [];
     
     const overdueTasksList = userTaskGroups.active.filter(t => isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate)));
     
@@ -128,7 +139,7 @@ function DashboardView() {
         quickTasksList,
         userTasksCount: userTasks.length
     };
-  }, [projects, userTaskGroups, userTasks]);
+  }, [allWorkspaceProjects, userTaskGroups, userTasks]);
 
   const isLoading = isTasksLoading || isProjectsLoading;
 
@@ -461,7 +472,7 @@ function DashboardView() {
       </div>
 
       <div className="grid gap-8 md:grid-cols-2">
-        <ProjectStatusChart projects={projects || []} isLoading={isLoading} />
+        <ProjectStatusChart projects={allWorkspaceProjects || []} isLoading={isLoading} />
         <TaskPriorityChart tasks={userTasks} isLoading={isLoading} />
       </div>
     </div>

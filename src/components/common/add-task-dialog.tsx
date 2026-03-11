@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -59,7 +60,7 @@ const getWorkspaceUsers = (workspace: Workspace | null) => {
     if (!workspace || !workspace.users) return [];
     return Object.entries(workspace.users).map(([uid, userData]) => ({
         id: uid,
-        name: userData.name || 'Unnamed User',
+        name: userData.name || userData.email || 'Unnamed User',
     }));
 }
 

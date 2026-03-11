@@ -41,7 +41,7 @@ const getActorAndRelevantUsers = async (workspaceId: string, actorUid: string) =
     }
     const workspaceData = workspaceSnap.data();
     const actor = workspaceData?.users?.[actorUid];
-    const actorName = actor?.name || 'A user';
+    const actorName = actor?.name || actor?.email || 'A user';
     const isRelevantTo = Object.keys(workspaceData?.users || {}).filter(uid => uid !== actorUid);
     return { actorName, isRelevantTo };
 };
@@ -191,7 +191,7 @@ exports.onSaleCreate = functions.firestore
 exports.onTaskWrite = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
     .onWrite(async (change, context) => {
-        const { workspaceId, companyId, projectId, siloId, taskId } = context.params;
+        const { workspaceId, companyId, projectId, siloId } = context.params;
         
         const beforeData = change.before.data();
         const afterData = change.after.data();
@@ -212,7 +212,7 @@ exports.onTaskWrite = functions.firestore
             const companyName = companySnap.data()?.name || '';
             const projectName = projectSnap.data()?.name || '';
             const siloName = siloSnap.data()?.name || '';
-            const assigneeName = assigneeSnap.exists ? assigneeSnap.data()?.name : 'an unknown user';
+            const assigneeName = assigneeSnap.exists ? (assigneeSnap.data()?.name || assigneeSnap.data()?.email) : 'an unknown user';
             
             await createNotification(workspaceId, {
                 type: 'task_assigned',
@@ -267,7 +267,7 @@ exports.onCompanyDelete = functions.firestore
 
         await createNotification(workspaceId, {
             type: 'company_deleted',
-            actorUid,
+            actorUid: companyData.createdBy,
             actorName,
             target: { id: snap.id, name: companyData.name, type: 'company', path: `/companies` },
             isRelevantTo,
@@ -540,6 +540,7 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
           [`users.${uid}`]: {
             role: "contributor", // Default role for invited users
             name: displayName,
+            email: authEmail,
             avatarUrl: photoURL,
           },
         });
