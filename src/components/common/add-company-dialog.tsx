@@ -101,9 +101,14 @@ export function AddCompanyDialog({ children }: { children?: React.ReactNode }) {
       });
 
       if (logoFile && storage) {
+        console.log("Starting logo upload for new company...", {
+            userId: user.uid,
+            bucket: storage.app.options.storageBucket,
+            path: `workspaces/${selectedWorkspace.id}/companies/${companyDoc.id}/logo`
+        });
+
         const logoRef = ref(storage, `workspaces/${selectedWorkspace.id}/companies/${companyDoc.id}/logo`);
         
-        // Use standard uploadBytes for simplicity and better CORS handling for small files
         const snapshot = await uploadBytes(logoRef, logoFile, {
             contentType: logoFile.type || 'image/png',
         });

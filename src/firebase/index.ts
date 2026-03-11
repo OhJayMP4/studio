@@ -21,12 +21,14 @@ export function initializeFirebase() {
       app = initializeApp(firebaseConfig);
       auth = getAuth(app);
       firestore = getFirestore(app);
-      storage = getStorage(app);
+      // Force the specific storage bucket domain
+      storage = getStorage(app, "gs://studio-1397195000-3cb07.firebasestorage.app");
     } else {
       app = getApp();
       auth = getAuth(app);
       firestore = getFirestore(app);
-      storage = getStorage(app);
+      // Ensure existing app instances also point to the correct bucket
+      storage = getStorage(app, "gs://studio-1397195000-3cb07.firebasestorage.app");
     }
   }
   // On the server, we return undefined. ClientProvider will handle this.

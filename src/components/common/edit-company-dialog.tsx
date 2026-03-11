@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFirestore, useStorage } from '@/firebase';
+import { useFirestore, useStorage, useUser } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -50,6 +50,7 @@ export function EditCompanyDialog({ company, children }: EditCompanyDialogProps)
 
   const firestore = useFirestore();
   const storage = useStorage();
+  const { user } = useUser();
   const { selectedWorkspace } = useSelectedWorkspace();
   const { toast } = useToast();
 
@@ -102,7 +103,7 @@ export function EditCompanyDialog({ company, children }: EditCompanyDialogProps)
   };
 
   const handleUpdateCompany = async (data: FormValues) => {
-    if (!selectedWorkspace) return;
+    if (!selectedWorkspace || !user) return;
 
     try {
       let finalLogoUrl = company.logoUrl || null;
@@ -110,8 +111,13 @@ export function EditCompanyDialog({ company, children }: EditCompanyDialogProps)
       if (logoPreview === null) {
           finalLogoUrl = null;
       } else if (logoFile && storage) {
+          console.log("Starting diagnostic logo update...", {
+              userId: user.uid,
+              bucket: storage.app.options.storageBucket,
+              path: `workspaces/${selectedWorkspace.id}/companies/${company.id}/logo`
+          });
+
           const logoRef = ref(storage, `workspaces/${selectedWorkspace.id}/companies/${company.id}/logo`);
-          // Use standard uploadBytes with explicit metadata for best CORS compatibility
           const snapshot = await uploadBytes(logoRef, logoFile, {
               contentType: logoFile.type || 'image/png',
           });
