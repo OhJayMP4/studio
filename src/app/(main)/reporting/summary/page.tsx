@@ -31,7 +31,7 @@ type ReportData = {
             })[] 
         })[] 
     })[];
-    users: { [uid: string]: string };
+    users: { [uid: string]: { name: string, email: string } };
 }
 
 function ReportLoader() {
@@ -133,13 +133,17 @@ export default function SummaryReportPage() {
 
             const filteredCompanies = companiesData.filter(c => c.projects.some(p => p.silos.some(s => s.tasks.length > 0)));
 
-            const userNames: { [uid: string]: string } = {};
+            const userMap: { [uid: string]: { name: string, email: string } } = {};
             if (selectedWorkspace.users) {
                 for (const uid in selectedWorkspace.users) {
-                    userNames[uid] = selectedWorkspace.users[uid].name || 'Unnamed User';
+                    const u = selectedWorkspace.users[uid];
+                    userMap[uid] = {
+                        name: u.name || 'Unnamed User',
+                        email: u.email || '',
+                    };
                 }
             }
-            setReportData({ companies: filteredCompanies, users: userNames });
+            setReportData({ companies: filteredCompanies, users: userMap });
         } catch (error) {
             console.error("Error fetching report data:", error);
         } finally {
@@ -398,7 +402,8 @@ export default function SummaryReportPage() {
                                                             </thead>
                                                             <tbody>
                                                                 {silo.tasks.map(task => {
-                                                                    const assigneeName = reportData.users[task.assigneeId] || 'Unnamed User';
+                                                                    const user = reportData.users[task.assigneeId];
+                                                                    const assigneeDisplayName = user?.name || user?.email || 'Unnamed User';
                                                                     return (
                                                                         <tr key={task.id} className={cn("border-b border-slate-100 last:border-0", task.completed && "bg-slate-50/30")}>
                                                                             <td className="p-3">
@@ -409,7 +414,7 @@ export default function SummaryReportPage() {
                                                                                     </p>
                                                                                 </div>
                                                                             </td>
-                                                                            <td className="p-3 text-slate-600 font-medium">{assigneeName}</td>
+                                                                            <td className="p-3 text-slate-600 font-medium">{assigneeDisplayName}</td>
                                                                             <td className="p-3 text-center">
                                                                                 <span className={cn("text-[9px] uppercase font-black px-2 py-0.5 rounded-full border", 
                                                                                     task.completed ? "bg-green-50 border-green-200 text-green-700" : "bg-blue-50 border-blue-200 text-blue-700"

@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useMemo, useState, useEffect, type ReactNode } from 'react';
@@ -21,9 +20,9 @@ export function FirebaseClientProvider({ children }: FirebaseClientProviderProps
     setMounted(true);
   }, []);
 
-  // Fix: Return a consistent loading state between server and client until hydration is complete.
-  // This prevents the "Hydration failed" error in Next.js.
-  if (!mounted || !firebaseServices.firebaseApp || !firebaseServices.auth || !firebaseServices.firestore || !firebaseServices.storage) {
+  // Return a consistent structure to prevent hydration mismatch.
+  // We render the provider only after mount to ensure client and server start from the same state.
+  if (!mounted) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-2">
@@ -32,6 +31,10 @@ export function FirebaseClientProvider({ children }: FirebaseClientProviderProps
         </div>
       </div>
     );
+  }
+
+  if (!firebaseServices.firebaseApp || !firebaseServices.auth || !firebaseServices.firestore || !firebaseServices.storage) {
+      return null;
   }
 
   return (

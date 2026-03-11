@@ -14,9 +14,10 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { useDoc, useMemoFirebase } from "@/firebase";
 import { UserProfile } from "@/lib/types";
 
-function TeamMemberRow({ uid, role, isOwner, canBeRemoved, onRoleChange, onRemove }: { 
+function TeamMemberRow({ uid, role, email, isOwner, canBeRemoved, onRoleChange, onRemove }: { 
     uid: string; 
     role: 'admin' | 'contributor' | 'viewer'; 
+    email: string | null;
     isOwner: boolean;
     canBeRemoved: boolean;
     onRoleChange: (uid: string, role: any) => void;
@@ -43,7 +44,8 @@ function TeamMemberRow({ uid, role, isOwner, canBeRemoved, onRoleChange, onRemov
                     </Avatar>
                     <div className="flex flex-col">
                         <span className="font-medium">{name} {isCurrentUser && '(You)'}</span>
-                        {isOwner && <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold uppercase tracking-wider w-fit">Owner</span>}
+                        <span className="text-xs text-muted-foreground">{email}</span>
+                        {isOwner && <span className="text-[10px] mt-1 bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold uppercase tracking-wider w-fit">Owner</span>}
                     </div>
                 </div>
             </TableCell>
@@ -156,7 +158,7 @@ export function TeamMemberTable() {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {members.map(({ uid, role }) => {
+                    {members.map(({ uid, role, email }) => {
                         const isCurrentUser = uid === currentUser.uid;
                         const isOwner = uid === selectedWorkspace.ownerId;
                         const canBeRemoved = !isCurrentUser && !isOwner;
@@ -165,7 +167,8 @@ export function TeamMemberTable() {
                             <TeamMemberRow 
                                 key={uid}
                                 uid={uid}
-                                role={role}
+                                role={role as any}
+                                email={email || null}
                                 isOwner={isOwner}
                                 canBeRemoved={canBeRemoved}
                                 onRoleChange={handleRoleChange}

@@ -1,16 +1,15 @@
-
 'use client';
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, query, where, collectionGroup } from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import type { Project, UserTask } from "@/lib/types";
 import ProjectStatusChart from "@/components/reporting/project-status-chart";
 import TaskPriorityChart from "@/components/reporting/task-priority-chart";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar, AlertCircle, ArrowRight, Zap, ArrowLeft, Folder, CheckCircle2 } from "lucide-react";
@@ -82,39 +81,57 @@ function DetailHeader({ title, onBack }: { title: string, onBack: () => void }) 
 
 function DashboardView() {
   const { selectedWorkspace } = useSelectedWorkspace();
-  const { user } = useUser();
   const firestore = useFirestore();
   const [detailView, setDetailView] = useState<DashboardDetailView>('main');
+  const [allWorkspaceProjects, setAllWorkspaceProjects] = useState<Project[]>([]);
+  const [isProjectsLoading, setIsProjectsLoading] = useState(false);
   
   // 1. Optimized User Task Fetching (Personalized)
   const { tasks: userTaskGroups, isLoading: isTasksLoading } = useUserTasks(selectedWorkspace?.id);
   const userTasks = useMemo(() => [...userTaskGroups.active, ...userTaskGroups.completed], [userTaskGroups]);
 
-  // 2. Optimized Project Summary (Workspace-wide)
-  // Fix: Use simple equality filter for workspaceId to comply with Security Rules.
-  // Inequality filters on collectionGroup can often cause permission errors if documents are missing fields.
-  const projectsQuery = useMemoFirebase(() => {
-    if (!selectedWorkspace?.id) return null;
-    return query(
-        collectionGroup(firestore, 'projects'),
-        where('workspaceId', '==', selectedWorkspace.id)
-    );
-  }, [firestore, selectedWorkspace?.id]);
+  // 2. Fetch all projects workspace-wide
+  // We avoid collectionGroup here to bypass brittle security rule condition errors.
+  // Instead, we fetch all companies and then fetch their projects in parallel.
+  useEffect(() => {
+    if (!selectedWorkspace?.id || !firestore) return;
 
-  const { data: allWorkspaceProjects, isLoading: isProjectsLoading } = useCollection<Project>(projectsQuery);
+    const fetchProjects = async () => {
+        setIsProjectsLoading(true);
+        try {
+            const companiesRef = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies');
+            const companiesSnap = await getDocs(companiesRef);
+            
+            const projectPromises = companiesSnap.docs.map(async (companyDoc) => {
+                const projectsRef = collection(companyDoc.ref, 'projects');
+                const projectsSnap = await getDocs(projectsRef);
+                return projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+            });
+
+            const results = await Promise.all(projectPromises);
+            setAllWorkspaceProjects(results.flat());
+        } catch (error) {
+            console.error("Error fetching projects for dashboard:", error);
+        } finally {
+            setIsProjectsLoading(false);
+        }
+    };
+
+    fetchProjects();
+  }, [selectedWorkspace?.id, firestore]);
 
   const stats = useMemo(() => {
-    const activeProjectsList = allWorkspaceProjects?.filter(p => 
+    const activeProjectsList = allWorkspaceProjects.filter(p => 
         p.id !== 'general-tasks' && 
         (p.status === 'active' || !p.status) && 
         p.status !== 'archived'
-    ) || [];
+    );
     
-    const completedProjectsList = allWorkspaceProjects?.filter(p => 
+    const completedProjectsList = allWorkspaceProjects.filter(p => 
         p.id !== 'general-tasks' && 
         (p.status === 'completed' || p.progress === 100) && 
         p.status !== 'archived'
-    ) || [];
+    );
     
     const overdueTasksList = userTaskGroups.active.filter(t => isPast(new Date(t.dueDate)) && !isToday(new Date(t.dueDate)));
     
@@ -472,7 +489,7 @@ function DashboardView() {
       </div>
 
       <div className="grid gap-8 md:grid-cols-2">
-        <ProjectStatusChart projects={allWorkspaceProjects || []} isLoading={isLoading} />
+        <ProjectStatusChart projects={allWorkspaceProjects} isLoading={isLoading} />
         <TaskPriorityChart tasks={userTasks} isLoading={isLoading} />
       </div>
     </div>

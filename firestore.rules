@@ -55,7 +55,7 @@ service cloud.firestore {
     
     // --- Global Collection Group Queries ---
     // These allow the cross-company dashboard and search views.
-    // They are secured by requiring a workspaceId filter in the query.
+    // We restrict these to ensure they are always filtered by a workspaceId the user belongs to.
     match /{path=**}/companies/{companyId} {
       allow get: if isWorkspaceMember(resource.data.workspaceId);
       allow list: if isWorkspaceMember(request.query.workspaceId);

@@ -1,4 +1,3 @@
-
 'use server';
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
@@ -267,7 +266,7 @@ exports.onCompanyDelete = functions.firestore
 
         await createNotification(workspaceId, {
             type: 'company_deleted',
-            actorUid: companyData.createdBy,
+            actorUid,
             actorName,
             target: { id: snap.id, name: companyData.name, type: 'company', path: `/companies` },
             isRelevantTo,
@@ -851,7 +850,7 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
             fullPath: finalFile.name,
             parentPath: targetParentPath,
             size: fileSize,
-            mimeType: mimeType,
+            mimeType: file.type,
             downloadURL: downloadURL,
             uploadedBy: uid,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
