@@ -34,6 +34,7 @@ import {
 import Link from "next/link";
 import { useUserPrefs } from "@/hooks/use-sidebar-prefs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 function CompaniesBreadcrumb() {
   return (
