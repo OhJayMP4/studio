@@ -16,15 +16,9 @@ let storage: FirebaseStorage | undefined;
 export function initializeFirebase() {
   if (typeof window !== 'undefined') {
     if (!getApps().length) {
-      // Important! initializeApp() can use environment variables for App Hosting.
-      try {
-        app = initializeApp();
-      } catch (e) {
-        if (process.env.NODE_ENV === "production") {
-          console.warn('Automatic initialization failed. Falling back to firebase config object.', e);
-        }
-        app = initializeApp(firebaseConfig);
-      }
+      // We explicitly pass firebaseConfig to ensure the correct storage bucket (.firebasestorage.app) 
+      // is used regardless of environment variable defaults.
+      app = initializeApp(firebaseConfig);
       auth = getAuth(app);
       firestore = getFirestore(app);
       storage = getStorage(app);

@@ -3,7 +3,7 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     // Allow authenticated users to read and write all files.
-    // Public read is allowed to prevent CORS issues on shared assets like logos.
+    // This broad rule ensures that logo uploads are not blocked by path-matching issues.
     match /{allPaths=**} {
       allow read: if true;
       allow write: if request.auth != null;
