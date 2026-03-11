@@ -111,9 +111,11 @@ export function EditCompanyDialog({ company, children }: EditCompanyDialogProps)
           finalLogoUrl = null;
       } else if (logoFile && storage) {
           const logoRef = ref(storage, `workspaces/${selectedWorkspace.id}/companies/${company.id}/logo`);
-          const snapshot = await uploadBytes(logoRef, logoFile, {
-              contentType: logoFile.type || 'image/png'
-          });
+          // Set metadata to help bypass some CORS issues
+          const metadata = {
+              contentType: logoFile.type || 'image/png',
+          };
+          const snapshot = await uploadBytes(logoRef, logoFile, metadata);
           finalLogoUrl = await getDownloadURL(snapshot.ref);
       }
 
