@@ -32,6 +32,7 @@ export interface InternalQuery extends Query<DocumentData> {
   _query: {
     path: {
       canonicalString(): string;
+      segments: string[];
       toString(): string;
     }
   }
@@ -40,16 +41,6 @@ export interface InternalQuery extends Query<DocumentData> {
 /**
  * React hook to subscribe to a Firestore collection or query in real-time.
  * Handles nullable references/queries.
- * 
- *
- * IMPORTANT! YOU MUST MEMOIZE the inputted memoizedTargetRefOrQuery or BAD THINGS WILL HAPPEN
- * use useMemo to memoize it per React guidence.  Also make sure that it's dependencies are stable
- * references
- *  
- * @template T Optional type for document data. Defaults to any.
- * @param {CollectionReference<DocumentData> | Query<DocumentData> | null | undefined} targetRefOrQuery -
- * The Firestore CollectionReference or Query. Waits if null/undefined.
- * @returns {UseCollectionResult<T>} Object with data, isLoading, error.
  */
 export function useCollection<T = any>(
     memoizedTargetRefOrQuery: ((CollectionReference<DocumentData> | Query<DocumentData>) & {__memo?: boolean})  | null | undefined,
@@ -89,34 +80,33 @@ export function useCollection<T = any>(
         setIsLoading(false);
       },
       (err: FirestoreError) => {
-        // Determine the path from the query object for error reporting.
-        // Collection group queries might have a root path in their internal structure.
         let path = '';
         try {
-            path = memoizedTargetRefOrQuery.type === 'collection'
-                ? (memoizedTargetRefOrQuery as CollectionReference).path
-                : (memoizedTargetRefOrQuery as unknown as InternalQuery)._query.path.canonicalString();
+            if (memoizedTargetRefOrQuery.type === 'collection') {
+                path = (memoizedTargetRefOrQuery as CollectionReference).path;
+            } else {
+                const internal = (memoizedTargetRefOrQuery as unknown as InternalQuery);
+                // For collection group queries, the canonical string might be empty if it's the root.
+                // We try to find the collection name from the query.
+                path = internal._query.path.canonicalString() || 'collection-group-query';
+            }
         } catch (e) {
-            path = 'unknown/collection-group';
+            path = 'unknown/query-path';
         }
 
-        // Create the rich, contextual error.
         const contextualError = new FirestorePermissionError({
           operation: 'list',
-          path: path || 'collection-group-root',
+          path: path,
         });
 
-        // Set local component state to show an error if needed, but don't log here.
         setError(contextualError);
         setData(null);
         setIsLoading(false);
 
-        // Emit the error to the global listener, which will throw it for Next.js overlay.
         errorEmitter.emit('permission-error', contextualError);
       }
     );
 
-    // Cleanup function to unsubscribe from the listener.
     return () => unsubscribe();
   }, [memoizedTargetRefOrQuery]);
 

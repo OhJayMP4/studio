@@ -45,7 +45,8 @@ service cloud.firestore {
     }
     
     /**
-     * @description Global Collection Group Queries (secured by workspaceId filter).
+     * @description Global Collection Group Queries.
+     * These must be carefully secured using request.query filter checks.
      */
     match /{path=**}/companies/{companyId} {
       allow get: if isWorkspaceMember(resource.data.workspaceId);
@@ -71,7 +72,7 @@ service cloud.firestore {
       allow get, list: if isWorkspaceMember(workspaceId);
       allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
       allow update: if isWorkspaceAdmin(workspaceId);
-      allow delete: if false; // Via Cloud Function only
+      allow delete: if false;
 
       match /companies/{companyId} {
         allow read, write: if isWorkspaceMember(workspaceId);
