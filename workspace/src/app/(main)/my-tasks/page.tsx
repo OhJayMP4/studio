@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useUserTasks } from "@/hooks/use-user-tasks";
@@ -12,9 +11,10 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb";
-import { List, Grid } from "lucide-react";
+import { List, Grid, Calendar as CalendarIcon } from "lucide-react";
 import { TaskGridItem } from "@/components/common/task-grid-item";
 import { TaskList } from "@/components/common/task-list";
+import { TaskCalendar } from "@/components/common/task-calendar";
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
 
@@ -35,7 +35,7 @@ export default function MyTasksPage() {
     const { selectedWorkspace } = useSelectedWorkspace();
     const { tasks, isLoading, error } = useUserTasks(selectedWorkspace?.id);
     const [view, setView] = useState<'active' | 'completed'>('active');
-    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+    const [viewMode, setViewMode] = useState<'grid' | 'list' | 'calendar'>('grid');
 
     if (!selectedWorkspace) {
         return (
@@ -94,6 +94,7 @@ export default function MyTasksPage() {
                                     variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
                                     onClick={() => setViewMode('grid')}
                                     className="h-8 w-8 p-0"
+                                    title="Grid View"
                                 >
                                     <Grid className="h-4 w-4" />
                                 </Button>
@@ -102,8 +103,18 @@ export default function MyTasksPage() {
                                     variant={viewMode === 'list' ? 'secondary' : 'ghost'}
                                     onClick={() => setViewMode('list')}
                                     className="h-8 w-8 p-0"
+                                    title="List View"
                                 >
                                     <List className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant={viewMode === 'calendar' ? 'secondary' : 'ghost'}
+                                    onClick={() => setViewMode('calendar')}
+                                    className="h-8 w-8 p-0"
+                                    title="Calendar View"
+                                >
+                                    <CalendarIcon className="h-4 w-4" />
                                 </Button>
                             </div>
                         </div>
@@ -122,23 +133,27 @@ export default function MyTasksPage() {
                             <p className="text-destructive">Error: {error}</p>
                         </div>
                     )}
-                    {!isLoading && !error && tasksToShow.length === 0 && (
+                    {!isLoading && !error && tasksToShow.length === 0 && viewMode !== 'calendar' && (
                         <div className="text-center py-8">
                             <p className="text-muted-foreground">
                                 {view === 'active' ? "No active tasks. Great job!" : "No completed tasks yet."}
                             </p>
                         </div>
                     )}
-                    {!isLoading && !error && tasksToShow.length > 0 && (
+                    {!isLoading && !error && (
                         <div>
-                             {viewMode === 'grid' ? (
+                             {viewMode === 'grid' && tasksToShow.length > 0 && (
                                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                                     {tasksToShow.map(userTask => (
                                         <TaskGridItem key={userTask.id} userTask={userTask} />
                                     ))}
                                 </div>
-                            ) : (
+                            )}
+                            {viewMode === 'list' && tasksToShow.length > 0 && (
                                 <TaskList tasks={tasksToShow} />
+                            )}
+                            {viewMode === 'calendar' && (
+                                <TaskCalendar tasks={tasksToShow} />
                             )}
                         </div>
                     )}

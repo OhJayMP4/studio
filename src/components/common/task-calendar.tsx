@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { DayPicker, DayProps } from 'react-day-picker';
 import { isSameDay, isToday } from 'date-fns';
 import { UserTask } from '@/lib/types';
@@ -54,6 +54,16 @@ function CustomDay(
 }
 
 export function TaskCalendar({ tasks }: TaskCalendarProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return <div className="h-[600px] w-full animate-pulse bg-muted rounded-lg" />;
+  }
+
   return (
     <div className="border rounded-lg bg-card overflow-hidden">
       <DayPicker
