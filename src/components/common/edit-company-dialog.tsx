@@ -17,7 +17,8 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFirestore, useStorage, useSelectedWorkspace } from '@/firebase';
+import { useFirestore, useStorage } from '@/firebase';
+import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useToast } from '@/hooks/use-toast';
