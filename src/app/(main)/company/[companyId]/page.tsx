@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
@@ -66,7 +65,7 @@ function CompanyBreadcrumb({ companyName }: { companyName?: string }) {
 }
 
 function QuickTaskSection({ companyId }: { companyId: string }) {
-    const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
+    const { selectedWorkspace } = useSelectedWorkspace();
     const { user } = useUser();
     const firestore = useFirestore();
     const { toast } = useToast();
@@ -538,7 +537,7 @@ export default function CompanyPage() {
             <ProjectsList companyId={company.id} />
           </div>
           <div className="lg:col-span-1 order-1 lg:order-2">
-             QuickTaskSection companyId={company.id} />
+             <QuickTaskSection companyId={company.id} />
           </div>
       </div>
     </div>
