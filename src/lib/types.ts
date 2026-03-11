@@ -183,6 +183,7 @@ export type UserWorkspacePrefs = {
   uid: string;
   workspaceId: string;
   sidebarModules: SidebarModule[];
+  viewPrefs?: Record<string, string>;
   updatedAt?: any;
 };
 

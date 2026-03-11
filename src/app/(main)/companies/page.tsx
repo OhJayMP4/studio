@@ -10,7 +10,7 @@ import type { Company, Project } from "@/lib/types";
 import { AddCompanyDialog } from "@/components/common/add-company-dialog";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { MoreVertical, LayoutGrid, List, Building, SortAsc } from "lucide-react";
+import { MoreVertical, LayoutGrid, List, Building, SortAsc, Pin } from "lucide-react";
 import { EditCompanyDialog } from "@/components/common/edit-company-dialog";
 import { DeleteDialog } from "@/components/common/delete-dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -32,6 +32,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Link from "next/link";
+import { useUserPrefs } from "@/hooks/use-sidebar-prefs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 function CompaniesBreadcrumb() {
   return (
@@ -96,10 +98,29 @@ type SortOption = 'alphabetical' | 'progress' | 'lastUsed';
 function WorkspaceView() {
   const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
+  const { prefs, setViewPref } = useUserPrefs();
+  const { toast } = useToast();
+
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<SortOption>('progress');
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [isProjectsLoading, setIsProjectsLoading] = useState(false);
+
+  // Load default view from prefs
+  useEffect(() => {
+    if (prefs?.viewPrefs?.companies) {
+        setViewMode(prefs.viewPrefs.companies as 'grid' | 'list');
+    }
+  }, [prefs?.viewPrefs?.companies]);
+
+  const handleSetDefaultView = async () => {
+    try {
+        await setViewPref('companies', viewMode);
+        toast({ title: "Default View Set", description: `Companies will now always open in ${viewMode} view.` });
+    } catch (e: any) {
+        toast({ variant: 'destructive', title: "Failed to save default", description: e.message });
+    }
+  };
 
   // Fetch all companies
   const companiesQuery = useMemoFirebase(() => {
@@ -141,7 +162,6 @@ function WorkspaceView() {
     if (!companies) return [];
     
     const enriched = companies.map(company => {
-        // EXCLUDE 'general-tasks' from the health/progress calculation
         const activeProjects = allProjects.filter(p => 
             p.companyId === company.id && 
             (p.status || 'active') === 'active' &&
@@ -208,6 +228,8 @@ function WorkspaceView() {
     );
   }
 
+  const isCurrentViewDefault = prefs?.viewPrefs?.companies === viewMode;
+
   return (
     <div className="space-y-6">
         <CompaniesBreadcrumb />
@@ -244,6 +266,23 @@ function WorkspaceView() {
                     >
                         <List className="h-4 w-4" />
                     </Button>
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={handleSetDefaultView}
+                                    className={cn("h-8 w-8 p-0 ml-1", isCurrentViewDefault ? "text-primary" : "text-muted-foreground")}
+                                >
+                                    <Pin className={cn("h-4 w-4", isCurrentViewDefault && "fill-current")} />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>{isCurrentViewDefault ? "Current Default" : "Set as Default View"}</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
                 </div>
                 <AddCompanyDialog />
             </div>

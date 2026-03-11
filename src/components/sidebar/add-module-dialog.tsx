@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -10,7 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useSidebarPrefs, availableModules } from '@/hooks/use-sidebar-prefs';
+import { useUserPrefs, availableModules } from '@/hooks/use-sidebar-prefs';
 import * as LucideIcons from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { SidebarModule } from '@/lib/types';
@@ -21,7 +22,7 @@ interface AddModuleDialogProps {
 }
 
 export function AddModuleDialog({ open, onOpenChange }: AddModuleDialogProps) {
-  const { prefs, addModule, loading } = useSidebarPrefs();
+  const { prefs, addModule, loading } = useUserPrefs();
   const { toast } = useToast();
 
   const handleAddModule = async (moduleId: string) => {

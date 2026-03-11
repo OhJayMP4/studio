@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useSelectedWorkspace } from '@/app/(main)/layout';
@@ -21,7 +22,7 @@ const defaultSidebarModules: SidebarModule[] = [
     { id: 'my-tasks', label: 'My Tasks', icon: 'ClipboardCheck', route: '/my-tasks', hidden: false, order: 3 },
 ]
 
-export const useSidebarPrefs = () => {
+export const useUserPrefs = () => {
   const { user } = useUser();
   const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
@@ -35,13 +36,13 @@ export const useSidebarPrefs = () => {
     if (!isLoading && !rawPrefs && prefsRef && user && selectedWorkspace) {
         const createDefaultPrefs = async () => {
             try {
-                // Double check it doesn't exist before writing to avoid race conditions
                 const docSnap = await getDoc(prefsRef);
                 if (!docSnap.exists()) {
                      await setDoc(prefsRef, {
                         uid: user.uid,
                         workspaceId: selectedWorkspace.id,
                         sidebarModules: defaultSidebarModules,
+                        viewPrefs: {},
                         updatedAt: serverTimestamp(),
                     });
                 }
@@ -58,12 +59,10 @@ export const useSidebarPrefs = () => {
     
     // Self-healing: Fix incorrect routes and ensure core modules are visible
     const correctedModules = rawPrefs.sidebarModules.map(module => {
-        // 1. Ensure core modules are never hidden
         if (coreModuleIds.includes(module.id)) {
             return { ...module, hidden: false };
         }
         
-        // 2. Ensure routes match current master definitions (fixes the /admin/ prefix bug)
         const masterModule = availableModules.find(am => am.id === module.id);
         if (masterModule && masterModule.route !== module.route) {
             return { ...module, route: masterModule.route };
@@ -83,11 +82,9 @@ export const useSidebarPrefs = () => {
     if (!moduleToAdd) throw new Error("Module not found.");
     
     if (prefs.sidebarModules.some(m => m.id === moduleId)) {
-      // Unhide if it exists but is hidden
       const newModules = prefs.sidebarModules.map(m => m.id === moduleId ? { ...m, hidden: false } : m);
       await updateDoc(prefsRef, { sidebarModules: newModules, updatedAt: serverTimestamp() });
     } else {
-      // Add new module using its defined route
       const newModule: SidebarModule = {
         ...moduleToAdd,
         hidden: false,
@@ -113,6 +110,17 @@ export const useSidebarPrefs = () => {
       updatedAt: serverTimestamp(),
     });
   };
+
+  const setViewPref = async (key: string, value: string) => {
+    if (!prefsRef || !prefs) return;
+    await updateDoc(prefsRef, {
+      [`viewPrefs.${key}`]: value,
+      updatedAt: serverTimestamp(),
+    });
+  };
   
-  return { prefs, loading: isLoading, error, addModule, setModuleHidden };
+  return { prefs, loading: isLoading, error, addModule, setModuleHidden, setViewPref };
 };
+
+// Maintain compatibility for older files
+export const useSidebarPrefs = useUserPrefs;

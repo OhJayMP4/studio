@@ -1,3 +1,4 @@
+
 'use client';
 
 import {
@@ -22,7 +23,7 @@ import Link from "next/link";
 import { UserNav } from "./user-nav";
 import { WorkspaceSwitcher } from "../common/workspace-switcher";
 import { Separator } from "../ui/separator";
-import { useSidebarPrefs } from "@/hooks/use-sidebar-prefs";
+import { useUserPrefs } from "@/hooks/use-sidebar-prefs";
 import { AddModuleDialog } from "../sidebar/add-module-dialog";
 import { useState, useEffect } from "react";
 import * as LucideIcons from 'lucide-react';
@@ -41,7 +42,7 @@ import {
 
 export default function MainSidebar() {
   const pathname = usePathname();
-  const { prefs, loading, setModuleHidden } = useSidebarPrefs();
+  const { prefs, loading, setModuleHidden } = useUserPrefs();
   const [isAddModuleOpen, setIsAddModuleOpen] = useState(false);
   const { isUserAdmin } = useSelectedWorkspace();
   const { theme, setTheme } = useTheme();

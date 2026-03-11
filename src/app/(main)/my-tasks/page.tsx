@@ -1,22 +1,27 @@
+
 'use client';
 
 import { useUserTasks } from "@/hooks/use-user-tasks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbList,
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb";
-import { List, Grid, Calendar as CalendarIcon } from "lucide-react";
+import { List, Grid, Calendar as CalendarIcon, Pin } from "lucide-react";
 import { TaskGridItem } from "@/components/common/task-grid-item";
 import { TaskList } from "@/components/common/task-list";
 import { TaskCalendar } from "@/components/common/task-calendar";
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { AddWorkspaceDialog } from "@/components/common/add-workspace-dialog";
+import { useUserPrefs } from "@/hooks/use-sidebar-prefs";
+import { useToast } from "@/hooks/use-toast";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 function MyTasksBreadcrumb() {
   return (
@@ -34,8 +39,27 @@ function MyTasksBreadcrumb() {
 export default function MyTasksPage() {
     const { selectedWorkspace } = useSelectedWorkspace();
     const { tasks, isLoading, error } = useUserTasks(selectedWorkspace?.id);
+    const { prefs, setViewPref } = useUserPrefs();
+    const { toast } = useToast();
+
     const [view, setView] = useState<'active' | 'completed'>('active');
     const [viewMode, setViewMode] = useState<'grid' | 'list' | 'calendar'>('grid');
+
+    // Load default view from prefs
+    useEffect(() => {
+        if (prefs?.viewPrefs?.myTasks) {
+            setViewMode(prefs.viewPrefs.myTasks as 'grid' | 'list' | 'calendar');
+        }
+    }, [prefs?.viewPrefs?.myTasks]);
+
+    const handleSetDefaultView = async () => {
+        try {
+            await setViewPref('myTasks', viewMode);
+            toast({ title: "Default View Set", description: `My Tasks will now always open in ${viewMode} view.` });
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: "Failed to save default", description: e.message });
+        }
+    };
 
     if (!selectedWorkspace) {
         return (
@@ -54,6 +78,7 @@ export default function MyTasksPage() {
     }
 
     const tasksToShow = view === 'active' ? tasks.active : tasks.completed;
+    const isCurrentViewDefault = prefs?.viewPrefs?.myTasks === viewMode;
 
     return (
         <div className="space-y-6">
@@ -116,6 +141,23 @@ export default function MyTasksPage() {
                                 >
                                     <CalendarIcon className="h-4 w-4" />
                                 </Button>
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={handleSetDefaultView}
+                                                className={cn("h-8 w-8 p-0 ml-1", isCurrentViewDefault ? "text-primary" : "text-muted-foreground")}
+                                            >
+                                                <Pin className={cn("h-4 w-4", isCurrentViewDefault && "fill-current")} />
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            <p>{isCurrentViewDefault ? "Current Default" : "Set as Default View"}</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
                             </div>
                         </div>
                     </div>

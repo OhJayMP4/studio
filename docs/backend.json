@@ -285,7 +285,7 @@
         },
         "assigneeId": {
           "type": "string",
-          "description": "The UID of the user assigned to this task."
+          "description": "The unique identifier for the user assigned to this task."
         },
         "projectId": {
           "type": "string",
@@ -618,7 +618,7 @@
     },
     "UserWorkspacePrefs": {
       "title": "User Workspace Preferences",
-      "description": "Stores user-specific sidebar preferences for a workspace.",
+      "description": "Stores user-specific settings for a workspace.",
       "type": "object",
       "properties": {
         "uid": {
@@ -665,6 +665,13 @@
               "hidden",
               "order"
             ]
+          }
+        },
+        "viewPrefs": {
+          "type": "object",
+          "description": "Stores default view settings for different sections of the app.",
+          "additionalProperties": {
+            "type": "string"
           }
         }
       },

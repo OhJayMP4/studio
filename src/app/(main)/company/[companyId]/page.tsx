@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
@@ -21,11 +22,11 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Archive, ArchiveRestore, MoreVertical, Trash2, LayoutGrid, List, Zap, Plus, CalendarIcon } from "lucide-react";
+import { Archive, ArchiveRestore, MoreVertical, Trash2, LayoutGrid, List, Zap, Plus, CalendarIcon, Pin } from "lucide-react";
 import { EditProjectDialog } from "@/components/common/edit-project-dialog";
 import { DeleteDialog } from "@/components/common/delete-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Table,
@@ -41,6 +42,8 @@ import { TaskItem } from "@/components/common/task-item";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
+import { useUserPrefs } from "@/hooks/use-sidebar-prefs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 function CompanyBreadcrumb({ companyName }: { companyName?: string }) {
   return (
@@ -291,9 +294,28 @@ function ProjectActions({ project, companyId }: { project: Project, companyId: s
 function ProjectsList({ companyId }: { companyId: string }) {
     const { isUserAdmin, selectedWorkspace } = useSelectedWorkspace();
     const firestore = useFirestore();
+    const { prefs, setViewPref } = useUserPrefs();
+    const { toast } = useToast();
+
     const [filter, setFilter] = useState<'active' | 'completed' | 'archived'>('active');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     
+    // Load default view from prefs
+    useEffect(() => {
+        if (prefs?.viewPrefs?.projects) {
+            setViewMode(prefs.viewPrefs.projects as 'grid' | 'list');
+        }
+    }, [prefs?.viewPrefs?.projects]);
+
+    const handleSetDefaultView = async () => {
+        try {
+            await setViewPref('projects', viewMode);
+            toast({ title: "Default View Set", description: `Project lists will now always open in ${viewMode} view.` });
+        } catch (e: any) {
+            toast({ variant: 'destructive', title: "Failed to save default", description: e.message });
+        }
+    };
+
     const projectsQuery = useMemoFirebase(() => {
         if (!selectedWorkspace) return null;
         return collection(firestore, 'workspaces', selectedWorkspace.id, 'companies', companyId, 'projects');
@@ -329,6 +351,8 @@ function ProjectsList({ companyId }: { companyId: string }) {
         )
     }
 
+    const isCurrentViewDefault = prefs?.viewPrefs?.projects === viewMode;
+
     return (
         <Tabs value={filter} onValueChange={(value) => setFilter(value as any)}>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
@@ -356,6 +380,23 @@ function ProjectsList({ companyId }: { companyId: string }) {
                         >
                             <List className="h-4 w-4" />
                         </Button>
+                        <TooltipProvider>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={handleSetDefaultView}
+                                        className={cn("h-8 w-8 p-0 ml-1", isCurrentViewDefault ? "text-primary" : "text-muted-foreground")}
+                                    >
+                                        <Pin className={cn("h-4 w-4", isCurrentViewDefault && "fill-current")} />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>{isCurrentViewDefault ? "Current Default" : "Set as Default View"}</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
                     </div>
                     {isUserAdmin && <AddProjectDialog companyId={companyId} />}
                 </div>
@@ -497,7 +538,7 @@ export default function CompanyPage() {
             <ProjectsList companyId={company.id} />
           </div>
           <div className="lg:col-span-1 order-1 lg:order-2">
-            <QuickTaskSection companyId={company.id} />
+             QuickTaskSection companyId={company.id} />
           </div>
       </div>
     </div>
