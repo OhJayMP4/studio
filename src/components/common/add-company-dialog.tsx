@@ -19,7 +19,7 @@ import { Label } from '@/components/ui/label';
 import { useFirestore, useUser, useStorage } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { addDoc, collection, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Upload, X, Building } from 'lucide-react';
 import { Textarea } from '../ui/textarea';
@@ -90,7 +90,6 @@ export function AddCompanyDialog({ children }: { children?: React.ReactNode }) {
     }
 
     try {
-      // 1. Create the company document first to get an ID
       const companiesCollection = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies');
       const companyDoc = await addDoc(companiesCollection, {
         name: data.name,
@@ -101,26 +100,16 @@ export function AddCompanyDialog({ children }: { children?: React.ReactNode }) {
         updatedAt: serverTimestamp(),
       });
 
-      // 2. If there's a logo, upload it and update the document
       if (logoFile && storage) {
         const logoRef = ref(storage, `workspaces/${selectedWorkspace.id}/companies/${companyDoc.id}/logo`);
         
-        // Use resumable upload with metadata to help bypass CORS preflight issues
-        const uploadTask = uploadBytesResumable(logoRef, logoFile, {
-            contentType: logoFile.type,
+        // Use standard uploadBytes for simplicity and better CORS handling for small files
+        const snapshot = await uploadBytes(logoRef, logoFile, {
+            contentType: logoFile.type || 'image/png',
         });
 
-        await new Promise((resolve, reject) => {
-            uploadTask.on('state_changed', 
-                null, 
-                (error) => reject(error), 
-                async () => {
-                    const logoUrl = await getDownloadURL(logoRef);
-                    await updateDoc(doc(firestore, companyDoc.ref.path), { logoUrl });
-                    resolve(logoUrl);
-                }
-            );
-        });
+        const logoUrl = await getDownloadURL(snapshot.ref);
+        await updateDoc(doc(firestore, companyDoc.ref.path), { logoUrl });
       }
       
       toast({

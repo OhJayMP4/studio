@@ -19,7 +19,7 @@ import { Label } from '@/components/ui/label';
 import { useFirestore, useStorage } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useToast } from '@/hooks/use-toast';
 import { Textarea } from '../ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
@@ -107,27 +107,14 @@ export function EditCompanyDialog({ company, children }: EditCompanyDialogProps)
     try {
       let finalLogoUrl = company.logoUrl || null;
 
-      // Handle logo removal or change
       if (logoPreview === null) {
           finalLogoUrl = null;
       } else if (logoFile && storage) {
           const logoRef = ref(storage, `workspaces/${selectedWorkspace.id}/companies/${company.id}/logo`);
-          
-          // Use resumable upload with metadata to bypass CORS/403 preflight issues
-          const uploadTask = uploadBytesResumable(logoRef, logoFile, {
-              contentType: logoFile.type
+          const snapshot = await uploadBytes(logoRef, logoFile, {
+              contentType: logoFile.type || 'image/png'
           });
-
-          finalLogoUrl = await new Promise((resolve, reject) => {
-              uploadTask.on('state_changed',
-                  null,
-                  (err) => reject(err),
-                  async () => {
-                      const url = await getDownloadURL(logoRef);
-                      resolve(url);
-                  }
-              );
-          }) as string;
+          finalLogoUrl = await getDownloadURL(snapshot.ref);
       }
 
       const companyRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', company.id);

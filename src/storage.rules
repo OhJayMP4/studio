@@ -2,8 +2,8 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // Allow authenticated users to read and write all files.
-    // We allow read to all to prevent CORS preflight issues on public assets like logos.
+    // Standard rule: Allow all reads, and allow writes for authenticated users.
+    // This permissive read rule helps avoid CORS preflight issues during development.
     match /{allPaths=**} {
       allow read: if true;
       allow write: if request.auth != null;
