@@ -150,7 +150,7 @@ export default function MyTasksPage() {
                                                 className={cn("h-auto px-2 py-1 ml-1 border-l gap-1.5", isCurrentViewDefault ? "text-primary" : "text-muted-foreground")}
                                             >
                                                 <Pin className={cn("h-3.5 w-3.5", isCurrentViewDefault && "fill-current")} />
-                                                <span className="text-[10px] font-bold uppercase tracking-tight hidden sm:inline">Set Default</span>
+                                                <span className="text-[10px] font-bold uppercase tracking-tight">Set Default</span>
                                             </Button>
                                         </TooltipTrigger>
                                         <TooltipContent>

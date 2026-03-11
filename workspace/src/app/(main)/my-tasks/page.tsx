@@ -147,9 +147,10 @@ export default function MyTasksPage() {
                                                 size="sm"
                                                 variant="ghost"
                                                 onClick={handleSetDefaultView}
-                                                className={cn("h-8 w-8 p-0 ml-1 border-l pl-2", isCurrentViewDefault ? "text-primary" : "text-muted-foreground")}
+                                                className={cn("h-auto px-2 py-1 ml-1 border-l gap-1.5", isCurrentViewDefault ? "text-primary" : "text-muted-foreground")}
                                             >
-                                                <Pin className={cn("h-4 w-4", isCurrentViewDefault && "fill-current")} />
+                                                <Pin className={cn("h-3.5 w-3.5", isCurrentViewDefault && "fill-current")} />
+                                                <span className="text-[10px] font-bold uppercase tracking-tight">Set Default</span>
                                             </Button>
                                         </TooltipTrigger>
                                         <TooltipContent>

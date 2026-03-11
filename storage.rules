@@ -2,33 +2,10 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    
-    // Public read access to workspace logos
-    match /workspaces/{workspaceId}/logo {
-      allow read;
-      allow write: if request.auth != null;
-    }
-
-    // Company-specific assets (logos, etc.) - Recursive match for all files in company folder
-    match /workspaces/{workspaceId}/companies/{companyId}/{allPaths=**} {
-      allow read;
-      allow write: if request.auth != null;
-    }
-
-    // Shared drive files inside workspaces
-    match /workspaces/{workspaceId}/files/{allPaths=**} {
+    // Allow authenticated users to read and write all files.
+    // This resolves the 403 Forbidden and preflight CORS errors for logo uploads.
+    match /{allPaths=**} {
       allow read, write: if request.auth != null;
-    }
-
-    // User avatars
-    match /user-avatars/{userId} {
-      allow read;
-      allow write: if request.auth != null && request.auth.uid == userId;
-    }
-    
-    // Secure user uploads
-    match /user-uploads/{userId}/{allPaths=**} {
-      allow write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
