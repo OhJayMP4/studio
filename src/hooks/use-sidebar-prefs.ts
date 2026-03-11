@@ -43,6 +43,8 @@ export const useUserPrefs = () => {
                         workspaceId: selectedWorkspace.id,
                         sidebarModules: defaultSidebarModules,
                         viewPrefs: {},
+                        theme: 'system',
+                        accentColor: '23 100% 54%', // Default orange
                         updatedAt: serverTimestamp(),
                     });
                 }
@@ -118,8 +120,27 @@ export const useUserPrefs = () => {
       updatedAt: serverTimestamp(),
     });
   };
+
+  const setTheme = async (theme: 'light' | 'dark' | 'system') => {
+    if (!prefsRef || !prefs) return;
+    await updateDoc(prefsRef, { theme, updatedAt: serverTimestamp() });
+  };
+
+  const setAccentColor = async (color: string) => {
+    if (!prefsRef || !prefs) return;
+    await updateDoc(prefsRef, { accentColor: color, updatedAt: serverTimestamp() });
+  };
   
-  return { prefs, loading: isLoading, error, addModule, setModuleHidden, setViewPref };
+  return { 
+    prefs, 
+    loading: isLoading, 
+    error, 
+    addModule, 
+    setModuleHidden, 
+    setViewPref, 
+    setTheme, 
+    setAccentColor 
+  };
 };
 
 // Maintain compatibility for older files

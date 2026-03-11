@@ -1,3 +1,4 @@
+
 'use client';
 
 import MainSidebar from "@/components/layout/main-sidebar";
@@ -8,6 +9,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, createContext, useContext } from "react";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import type { Workspace } from "@/lib/types";
+import { useUserPrefs } from "@/hooks/use-sidebar-prefs";
+import { useTheme } from "next-themes";
 
 interface SelectedWorkspaceContextType {
   selectedWorkspace: Workspace | null;
@@ -32,10 +35,28 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
   const firestore = useFirestore();
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
   const [mounted, setMounted] = useState(false);
+  
+  // Custom theme and color logic
+  const { prefs } = useUserPrefs();
+  const { setTheme } = useTheme();
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Sync theme from prefs
+  useEffect(() => {
+    if (prefs?.theme) {
+      setTheme(prefs.theme);
+    }
+  }, [prefs?.theme, setTheme]);
+
+  // Apply accent color from prefs
+  useEffect(() => {
+    if (prefs?.accentColor) {
+      document.documentElement.style.setProperty('--primary', prefs.accentColor);
+    }
+  }, [prefs?.accentColor]);
 
   useEffect(() => {
     if (!isUserLoading && !user && mounted) {

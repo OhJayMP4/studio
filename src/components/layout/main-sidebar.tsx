@@ -14,9 +14,6 @@ import {
   Settings,
   Plus,
   X,
-  Sun,
-  Moon,
-  Monitor,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -31,21 +28,12 @@ import { Button } from "@/components/ui/button";
 import { RemoveModuleDialog } from "../sidebar/remove-module-dialog";
 import { cn } from "@/lib/utils";
 import { useSelectedWorkspace } from "@/app/(main)/layout";
-import { useTheme } from "next-themes";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-
 
 export default function MainSidebar() {
   const pathname = usePathname();
   const { prefs, loading, setModuleHidden } = useUserPrefs();
   const [isAddModuleOpen, setIsAddModuleOpen] = useState(false);
   const { isUserAdmin } = useSelectedWorkspace();
-  const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   // Prevent hydration mismatch
@@ -54,10 +42,6 @@ export default function MainSidebar() {
   }, []);
 
   const isActive = (path: string) => {
-    // Handle special case for admin pages under settings
-    if (pathname.startsWith('/admin') && path.startsWith('/admin')) {
-      return pathname === path;
-    }
     return pathname === path;
   };
   
@@ -81,6 +65,8 @@ export default function MainSidebar() {
   };
 
   const coreModuleIds = ['dashboard', 'companies', 'reporting', 'my-tasks'];
+
+  if (!mounted) return null;
 
   return (
     <Sidebar>
@@ -128,30 +114,6 @@ export default function MainSidebar() {
         </div>
         <Separator className="my-2" />
         <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton tooltip="Change Theme">
-                  {mounted && theme === "dark" ? <Moon /> : mounted && theme === "light" ? <Sun /> : <Monitor />}
-                  <span>Theme</span>
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => setTheme("light")}>
-                  <Sun className="mr-2 h-4 w-4" />
-                  <span>Light</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme("dark")}>
-                  <Moon className="mr-2 h-4 w-4" />
-                  <span>Dark</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme("system")}>
-                  <Monitor className="mr-2 h-4 w-4" />
-                  <span>System</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton tooltip="Settings" asChild isActive={isActive('/settings')}>
               <Link href="/settings">

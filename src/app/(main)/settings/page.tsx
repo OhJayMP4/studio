@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useForm, FormProvider } from 'react-hook-form';
@@ -18,9 +19,13 @@ import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { WorkspaceManager } from '@/components/settings/workspace-manager';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Pencil, KeyRound, User } from 'lucide-react';
+import { Pencil, KeyRound, User, Palette, Monitor, Sun, Moon, Check } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-
+import { useUserPrefs } from '@/hooks/use-sidebar-prefs';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
+import { useTheme } from 'next-themes';
 
 const profileFormSchema = z.object({
   name: z.string().min(1, { message: 'Name is required.' }),
@@ -39,6 +44,17 @@ const passwordFormSchema = z.object({
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 type PasswordFormValues = z.infer<typeof passwordFormSchema>;
 
+const ACCENT_COLORS = [
+  { name: 'Orange', value: '23 100% 54%' },
+  { name: 'Sky', value: '217 91% 60%' },
+  { name: 'Emerald', value: '142 71% 45%' },
+  { name: 'Violet', value: '262 83% 58%' },
+  { name: 'Rose', value: '346 84% 61%' },
+  { name: 'Amber', value: '38 92% 50%' },
+  { name: 'Slate', value: '215 25% 27%' },
+  { name: 'Indigo', value: '239 84% 67%' },
+];
+
 export default function SettingsPage() {
   const auth = useAuth();
   const firestore = useFirestore();
@@ -46,6 +62,8 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const user = auth.currentUser;
   const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
+  const { prefs, setTheme: saveThemeToPrefs, setAccentColor } = useUserPrefs();
+  const { theme, setTheme } = useTheme();
   const [isUploading, setIsUploading] = useState(false);
 
   const userProfileRef = useMemoFirebase(() => {
@@ -53,7 +71,7 @@ export default function SettingsPage() {
     return doc(firestore, 'users', user.uid);
   }, [firestore, user]);
 
-  const { data: userProfile, isLoading, error } = useDoc<UserProfile>(userProfileRef);
+  const { data: userProfile, isLoading } = useDoc<UserProfile>(userProfileRef);
 
   const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
@@ -88,11 +106,7 @@ export default function SettingsPage() {
   
   const handleUpdateProfile = async (data: ProfileFormValues) => {
     if (!user || !userProfileRef) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'You must be logged in to update your profile.',
-      });
+      toast({ variant: 'destructive', title: 'Error', description: 'You must be logged in to update your profile.' });
       return;
     }
 
@@ -100,107 +114,55 @@ export default function SettingsPage() {
       if (user.displayName !== data.name) {
         await updateProfile(user, { displayName: data.name });
       }
-      await updateDoc(userProfileRef, {
-        name: data.name,
-      });
-      
-      toast({
-        title: 'Profile Updated',
-        description: 'Your information has been successfully updated.',
-      });
+      await updateDoc(userProfileRef, { name: data.name });
+      toast({ title: 'Profile Updated', description: 'Your information has been successfully updated.' });
     } catch (error: any) {
-      console.error('Error updating profile:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Update Failed',
-        description: error.message || 'Could not update your profile.',
-      });
+      toast({ variant: 'destructive', title: 'Update Failed', description: error.message || 'Could not update your profile.' });
     }
   };
 
   const handlePasswordUpdate = async (data: PasswordFormValues) => {
-    if (!user || !user.email) {
-        toast({ variant: 'destructive', title: 'Error', description: 'No authenticated user found.' });
-        return;
-    }
+    if (!user || !user.email) return;
     
     try {
         const credential = EmailAuthProvider.credential(user.email, data.currentPassword);
         await reauthenticateWithCredential(user, credential);
-        
         await updatePassword(user, data.newPassword);
-
-        toast({
-            title: 'Password Updated',
-            description: 'Your password has been changed successfully.',
-        });
+        toast({ title: 'Password Updated', description: 'Your password has been changed successfully.' });
         passwordForm.reset();
-
     } catch (error: any) {
-         console.error('Error updating password:', error);
         let description = 'An unexpected error occurred.';
-        if (error.code === 'auth/wrong-password') {
-            description = 'The current password you entered is incorrect.';
-        }
-        toast({
-            variant: 'destructive',
-            title: 'Password Update Failed',
-            description: description,
-        });
+        if (error.code === 'auth/wrong-password') description = 'The current password you entered is incorrect.';
+        toast({ variant: 'destructive', title: 'Password Update Failed', description });
     }
   }
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!event.target.files || event.target.files.length === 0 || !user || !userProfileRef || !storage) return;
-    
     const file = event.target.files[0];
-    
     if (file.size > 2 * 1024 * 1024) {
         toast({ variant: 'destructive', title: 'File too large', description: 'Please select an image smaller than 2MB.' });
         return;
     }
-
     const avatarRef = ref(storage, `user-avatars/${user.uid}`);
-    
     setIsUploading(true);
-    const { dismiss } = toast({ title: "Uploading avatar...", description: "Please wait while your image is being processed." });
-    
     try {
-        const uploadTask = uploadBytesResumable(avatarRef, file);
-
-        return new Promise<void>((resolve, reject) => {
-            uploadTask.on('state_changed', 
-                null, 
-                (error) => {
-                    console.error("Upload error:", error);
-                    dismiss();
-                    toast({ variant: 'destructive', title: 'Upload Failed', description: error.message });
-                    setIsUploading(false);
-                    reject(error);
-                }, 
-                async () => {
-                    const downloadURL = await getDownloadURL(avatarRef);
-                    await updateDoc(userProfileRef, { avatarUrl: downloadURL });
-                    try {
-                        await updateProfile(user, { photoURL: downloadURL });
-                    } catch (authErr) {
-                        console.warn("Auth profile update failed, but Firestore is updated:", authErr);
-                    }
-                    dismiss();
-                    toast({ title: 'Avatar Updated', description: 'Your profile picture has been updated.' });
-                    setIsUploading(false);
-                    resolve();
-                }
-            );
-        });
+        await uploadBytesResumable(avatarRef, file);
+        const downloadURL = await getDownloadURL(avatarRef);
+        await updateDoc(userProfileRef, { avatarUrl: downloadURL });
+        await updateProfile(user, { photoURL: downloadURL });
+        toast({ title: 'Avatar Updated' });
     } catch (error: any) {
-         dismiss();
-         console.error("Avatar upload error:", error);
          toast({ variant: 'destructive', title: 'Upload Failed', description: error.message });
+    } finally {
          setIsUploading(false);
     }
   };
 
+  const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
+    setTheme(newTheme);
+    saveThemeToPrefs(newTheme);
+  };
 
   if (isLoading) {
     return (
@@ -225,6 +187,82 @@ export default function SettingsPage() {
         <h1 className="text-3xl font-headline">Settings</h1>
         <p className="text-muted-foreground">Manage your account and workspace settings.</p>
       </div>
+
+      {/* Appearance Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Palette className="h-5 w-5 text-primary" />
+            Appearance
+          </CardTitle>
+          <CardDescription>Customize how SaturnSync looks for you.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-8">
+          <div className="space-y-4">
+            <Label>Theme Mode</Label>
+            <RadioGroup 
+              defaultValue={theme} 
+              onValueChange={(val) => handleThemeChange(val as any)}
+              className="grid grid-cols-1 sm:grid-cols-3 gap-4"
+            >
+              <div>
+                <RadioGroupItem value="light" id="light" className="peer sr-only" />
+                <Label
+                  htmlFor="light"
+                  className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
+                >
+                  <Sun className="mb-3 h-6 w-6" />
+                  Light
+                </Label>
+              </div>
+              <div>
+                <RadioGroupItem value="dark" id="dark" className="peer sr-only" />
+                <Label
+                  htmlFor="dark"
+                  className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
+                >
+                  <Moon className="mb-3 h-6 w-6" />
+                  Dark
+                </Label>
+              </div>
+              <div>
+                <RadioGroupItem value="system" id="system" className="peer sr-only" />
+                <Label
+                  htmlFor="system"
+                  className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
+                >
+                  <Monitor className="mb-3 h-6 w-6" />
+                  System
+                </Label>
+              </div>
+            </RadioGroup>
+          </div>
+
+          <div className="space-y-4">
+            <Label>Accent Color</Label>
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
+              {ACCENT_COLORS.map((color) => (
+                <button
+                  key={color.value}
+                  onClick={() => setAccentColor(color.value)}
+                  className={cn(
+                    "group relative flex h-10 w-full items-center justify-center rounded-md border-2 transition-all hover:scale-105",
+                    prefs?.accentColor === color.value ? "border-foreground shadow-sm" : "border-transparent"
+                  )}
+                  style={{ backgroundColor: `hsl(${color.value})` }}
+                  title={color.name}
+                >
+                  {prefs?.accentColor === color.value && (
+                    <Check className="h-4 w-4 text-white drop-shadow-md" />
+                  )}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">This color will be used for buttons, links, and highlights across the app. This is specific to your account in this workspace.</p>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

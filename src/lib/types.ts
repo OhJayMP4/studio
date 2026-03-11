@@ -184,6 +184,8 @@ export type UserWorkspacePrefs = {
   workspaceId: string;
   sidebarModules: SidebarModule[];
   viewPrefs?: Record<string, string>;
+  theme?: 'light' | 'dark' | 'system';
+  accentColor?: string;
   updatedAt?: any;
 };
 
