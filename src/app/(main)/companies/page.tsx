@@ -35,6 +35,7 @@ import Link from "next/link";
 import { useUserPrefs } from "@/hooks/use-sidebar-prefs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 function CompaniesBreadcrumb() {
   return (
@@ -319,7 +320,12 @@ function WorkspaceView() {
                         {sortedEnrichedCompanies.map((company) => (
                             <TableRow key={company.id}>
                                 <TableCell>
-                                    <Building className="h-5 w-5 text-muted-foreground" />
+                                    <Avatar className="h-8 w-8 border rounded-sm">
+                                        <AvatarImage src={company.logoUrl} alt={company.name} className="object-cover" />
+                                        <AvatarFallback className="rounded-sm bg-muted text-muted-foreground text-[10px] font-bold">
+                                            {company.name.charAt(0).toUpperCase()}
+                                        </AvatarFallback>
+                                    </Avatar>
                                 </TableCell>
                                 <TableCell className="font-medium">
                                     <Link href={`/company/${company.id}`} className="hover:underline">

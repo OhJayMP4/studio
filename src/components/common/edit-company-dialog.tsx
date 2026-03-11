@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -17,19 +17,20 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFirestore } from '@/firebase';
-import { useSelectedWorkspace } from '@/app/(main)/layout';
+import { useFirestore, useStorage, useSelectedWorkspace } from '@/firebase';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useToast } from '@/hooks/use-toast';
 import { Textarea } from '../ui/textarea';
+import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
+import { Upload, X, Building } from 'lucide-react';
 import type { Company } from '@/lib/types';
 
 const formSchema = z.object({
   name: z.string().min(1, 'Company name is required.'),
   description: z.string().min(1, 'Description is required.'),
-  logoUrl: z.string().url().optional().or(z.literal('')),
   yearlyTurnoverTarget: z.preprocess(
-    (a) => parseFloat(z.string().parse(a)),
+    (a) => (a === '' ? undefined : parseFloat(String(a))),
     z.number().positive().optional()
   ),
 });
@@ -43,7 +44,12 @@ interface EditCompanyDialogProps {
 
 export function EditCompanyDialog({ company, children }: EditCompanyDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(company.logoUrl || null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const firestore = useFirestore();
+  const storage = useStorage();
   const { selectedWorkspace } = useSelectedWorkspace();
   const { toast } = useToast();
 
@@ -57,7 +63,6 @@ export function EditCompanyDialog({ company, children }: EditCompanyDialogProps)
     defaultValues: {
       name: company.name,
       description: company.description,
-      logoUrl: company.logoUrl,
       yearlyTurnoverTarget: company.yearlyTurnoverTarget,
     }
   });
@@ -67,20 +72,54 @@ export function EditCompanyDialog({ company, children }: EditCompanyDialogProps)
       reset({
         name: company.name,
         description: company.description,
-        logoUrl: company.logoUrl,
         yearlyTurnoverTarget: company.yearlyTurnoverTarget,
       });
+      setLogoPreview(company.logoUrl || null);
+      setLogoFile(null);
     }
   }, [isOpen, company, reset]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        toast({ variant: 'destructive', title: 'File too large', description: 'Please select an image smaller than 2MB.' });
+        return;
+      }
+      setLogoFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLogoPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    setLogoFile(null);
+    setLogoPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const handleUpdateCompany = async (data: FormValues) => {
     if (!selectedWorkspace) return;
 
     try {
+      let finalLogoUrl = company.logoUrl || null;
+
+      // Handle logo removal or change
+      if (logoPreview === null) {
+          finalLogoUrl = null;
+      } else if (logoFile) {
+          const logoRef = ref(storage, `workspaces/${selectedWorkspace.id}/companies/${company.id}/logo`);
+          await uploadBytes(logoRef, logoFile);
+          finalLogoUrl = await getDownloadURL(logoRef);
+      }
+
       const companyRef = doc(firestore, 'workspaces', selectedWorkspace.id, 'companies', company.id);
       await updateDoc(companyRef, {
         ...data,
-        logoUrl: data.logoUrl || null,
+        logoUrl: finalLogoUrl,
         yearlyTurnoverTarget: data.yearlyTurnoverTarget || null,
         updatedAt: serverTimestamp(),
       });
@@ -112,6 +151,42 @@ export function EditCompanyDialog({ company, children }: EditCompanyDialogProps)
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            <div className="flex flex-col items-center gap-4 mb-4">
+                <Label>Company Logo</Label>
+                <div className="relative group">
+                    <Avatar className="h-24 w-24 border-2 border-muted">
+                        <AvatarImage src={logoPreview || undefined} className="object-cover" />
+                        <AvatarFallback className="bg-muted text-muted-foreground">
+                            <Building className="h-10 w-10" />
+                        </AvatarFallback>
+                    </Avatar>
+                    {logoPreview ? (
+                        <button
+                            type="button"
+                            onClick={handleRemoveLogo}
+                            className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1 shadow-sm hover:bg-destructive/90 transition-colors"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="absolute inset-0 bg-black/40 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-full backdrop-blur-sm"
+                        >
+                            <Upload className="h-6 w-6" />
+                        </button>
+                    )}
+                </div>
+                <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="name">Company Name</Label>
               <Input id="name" {...register('name')} />
@@ -123,12 +198,7 @@ export function EditCompanyDialog({ company, children }: EditCompanyDialogProps)
               {errors.description && <p className="text-sm text-destructive mt-1">{errors.description.message}</p>}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="logoUrl">Logo URL</Label>
-              <Input id="logoUrl" {...register('logoUrl')} />
-              {errors.logoUrl && <p className="text-sm text-destructive mt-1">{errors.logoUrl.message}</p>}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="yearlyTurnoverTarget">Yearly Turnover Target (R)</Label>
+              <Label htmlFor="yearlyTurnoverTarget">Yearly Turnover Target (ZAR)</Label>
               <Input id="yearlyTurnoverTarget" type="number" {...register('yearlyTurnoverTarget')} />
               {errors.yearlyTurnoverTarget && <p className="text-sm text-destructive mt-1">{errors.yearlyTurnoverTarget.message}</p>}
             </div>
