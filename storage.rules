@@ -3,9 +3,10 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     // Allow authenticated users to read and write all files.
-    // This resolves the 403 Forbidden and preflight CORS errors for logo uploads.
+    // We allow read to all to prevent CORS preflight issues on public assets like logos.
     match /{allPaths=**} {
-      allow read, write: if request.auth != null;
+      allow read: if true;
+      allow write: if request.auth != null;
     }
   }
 }

@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useRef } from 'react';
@@ -20,7 +19,7 @@ import { Label } from '@/components/ui/label';
 import { useFirestore, useUser, useStorage } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { addDoc, collection, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useToast } from '@/hooks/use-toast';
 import { PlusCircle, Upload, X, Building } from 'lucide-react';
 import { Textarea } from '../ui/textarea';
@@ -103,11 +102,25 @@ export function AddCompanyDialog({ children }: { children?: React.ReactNode }) {
       });
 
       // 2. If there's a logo, upload it and update the document
-      if (logoFile) {
+      if (logoFile && storage) {
         const logoRef = ref(storage, `workspaces/${selectedWorkspace.id}/companies/${companyDoc.id}/logo`);
-        await uploadBytes(logoRef, logoFile);
-        const logoUrl = await getDownloadURL(logoRef);
-        await updateDoc(doc(firestore, companyDoc.ref.path), { logoUrl });
+        
+        // Use resumable upload with metadata to help bypass CORS preflight issues
+        const uploadTask = uploadBytesResumable(logoRef, logoFile, {
+            contentType: logoFile.type,
+        });
+
+        await new Promise((resolve, reject) => {
+            uploadTask.on('state_changed', 
+                null, 
+                (error) => reject(error), 
+                async () => {
+                    const logoUrl = await getDownloadURL(logoRef);
+                    await updateDoc(doc(firestore, companyDoc.ref.path), { logoUrl });
+                    resolve(logoUrl);
+                }
+            );
+        });
       }
       
       toast({
