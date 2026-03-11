@@ -111,12 +111,6 @@ export function EditCompanyDialog({ company, children }: EditCompanyDialogProps)
       if (logoPreview === null) {
           finalLogoUrl = null;
       } else if (logoFile && storage) {
-          console.log("Starting diagnostic logo update...", {
-              userId: user.uid,
-              bucket: storage.app.options.storageBucket,
-              path: `workspaces/${selectedWorkspace.id}/companies/${company.id}/logo`
-          });
-
           const logoRef = ref(storage, `workspaces/${selectedWorkspace.id}/companies/${company.id}/logo`);
           const snapshot = await uploadBytes(logoRef, logoFile, {
               contentType: logoFile.type || 'image/png',

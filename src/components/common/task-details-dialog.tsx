@@ -19,6 +19,8 @@ import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from '@
 import { collection, addDoc, serverTimestamp, query, orderBy, doc } from 'firebase/firestore';
 import { format, formatDistanceToNow, isPast, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { Sparkles } from 'lucide-react';
+import { suggestTaskCompletion, type SuggestTaskCompletionOutput } from '@/ai/flows/suggest-task-completion-flow';
 
 function CommentItem({ comment, path, level = 0 }: { comment: Comment; path: string; level?: number }) {
   const [showReply, setShowReply] = useState(false);
@@ -85,6 +87,71 @@ function CommentItem({ comment, path, level = 0 }: { comment: Comment; path: str
           <CommentItem key={reply.id} comment={reply} path={repliesPath} level={0} />
         ))}
       </div>
+    </div>
+  );
+}
+
+function SuggestionsSection({ task }: { task: Task }) {
+  const [suggestion, setSuggestion] = useState<SuggestTaskCompletionOutput | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleGetSuggestion = async () => {
+    setIsLoading(true);
+    try {
+      const result = await suggestTaskCompletion({
+        title: task.title,
+        description: task.description,
+      });
+      setSuggestion(result);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-primary" />
+          AI Assistant
+        </h3>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={handleGetSuggestion} 
+          disabled={isLoading}
+          className="h-8"
+        >
+          {isLoading ? 'Thinking...' : (suggestion ? 'Refresh Suggestion' : 'Get Help')}
+        </Button>
+      </div>
+      
+      {suggestion && (
+        <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-3 animate-in fade-in slide-in-from-top-1">
+          <p className="text-sm leading-relaxed text-foreground">{suggestion.suggestion}</p>
+          {suggestion.resources.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Recommended Resources</p>
+              <ul className="grid grid-cols-1 gap-1">
+                {suggestion.resources.map((res, i) => (
+                  <li key={i} className="text-xs text-muted-foreground flex items-center gap-2">
+                    <span className="h-1 w-1 rounded-full bg-primary shrink-0" />
+                    {res}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+      
+      {!suggestion && !isLoading && (
+        <p className="text-sm text-muted-foreground italic">
+          Need help completing this task? Ask our AI assistant for tips and resource suggestions.
+        </p>
+      )}
     </div>
   );
 }
@@ -157,42 +224,46 @@ export function TaskDetailsDialog({ task, path, children }: { task: Task; path: 
         <DialogHeader>
           <DialogTitle className="text-2xl">{task.title}</DialogTitle>
           <DialogDescription>
-            Details for this task.
+            View details, collaborate, and get AI assistance for this task.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-3 gap-8 flex-1 min-h-0">
-            <ScrollArea className="col-span-2 pr-6">
-                 <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 flex-1 min-h-0 overflow-hidden">
+            <ScrollArea className="md:col-span-2 pr-6 h-full">
+                 <div className="space-y-8 pb-10">
+                    <SuggestionsSection task={task} />
+                    <Separator />
                     <div>
                         <h3 className="text-lg font-semibold">Description</h3>
-                        <p className="text-sm text-muted-foreground mt-2">{task.description || 'No description provided.'}</p>
+                        <p className="text-sm text-muted-foreground mt-2 whitespace-pre-wrap">{task.description || 'No description provided.'}</p>
                     </div>
                      <Separator />
                     <CommentsSection taskPath={path} />
                  </div>
             </ScrollArea>
-            <div className="col-span-1 space-y-4">
-                 <h3 className="text-lg font-semibold">Details</h3>
-                 <div className="space-y-3 text-sm">
-                    <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground">Assignee</span>
-                        <div className="flex items-center gap-2">
-                             <Avatar className="h-6 w-6">
-                                <AvatarImage src={assignee?.avatarUrl ?? undefined} />
-                                <AvatarFallback>{assignee?.name?.charAt(0).toUpperCase()}</AvatarFallback>
-                            </Avatar>
-                            <span>{assignee?.name}</span>
+            <div className="hidden md:block col-span-1 space-y-6">
+                 <div>
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">Properties</h3>
+                    <div className="space-y-4 text-sm">
+                        <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Assignee</span>
+                            <div className="flex items-center gap-2">
+                                <Avatar className="h-6 w-6">
+                                    <AvatarImage src={assignee?.avatarUrl ?? undefined} />
+                                    <AvatarFallback>{assignee?.name?.charAt(0).toUpperCase()}</AvatarFallback>
+                                </Avatar>
+                                <span className="font-medium">{assignee?.name}</span>
+                            </div>
                         </div>
-                    </div>
-                    <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground">Due Date</span>
-                        <Badge variant={isOverdue ? "destructive" : "outline"}>{format(dueDate, 'MMM d, yyyy')}</Badge>
-                    </div>
-                     <div className="flex justify-between items-center">
-                        <span className="text-muted-foreground">Priority</span>
-                        <Badge className={cn(priorityStyles[task.priority], "text-primary-foreground")}>
-                            {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-                        </Badge>
+                        <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Due Date</span>
+                            <Badge variant={isOverdue ? "destructive" : "outline"}>{format(dueDate, 'MMM d, yyyy')}</Badge>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Priority</span>
+                            <Badge className={cn(priorityStyles[task.priority], "text-primary-foreground")}>
+                                {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+                            </Badge>
+                        </div>
                     </div>
                  </div>
             </div>
@@ -201,4 +272,3 @@ export function TaskDetailsDialog({ task, path, children }: { task: Task; path: 
     </Dialog>
   );
 }
-    
