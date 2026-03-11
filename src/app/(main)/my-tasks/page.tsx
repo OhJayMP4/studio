@@ -147,7 +147,7 @@ export default function MyTasksPage() {
                                                 size="sm"
                                                 variant="ghost"
                                                 onClick={handleSetDefaultView}
-                                                className={cn("h-8 w-8 p-0 ml-1", isCurrentViewDefault ? "text-primary" : "text-muted-foreground")}
+                                                className={cn("h-8 w-8 p-0 ml-1 border-l pl-2", isCurrentViewDefault ? "text-primary" : "text-muted-foreground")}
                                             >
                                                 <Pin className={cn("h-4 w-4", isCurrentViewDefault && "fill-current")} />
                                             </Button>
