@@ -2,7 +2,7 @@
 'use server';
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
-const { Resend } = require('resend');
+import { Resend } from 'resend';
 
 interface UserTask {
     id: string;
@@ -118,18 +118,22 @@ const sendTaskAssignmentEmail = async (params: {
     companyName: string;
     projectName: string;
 }) => {
-    const resendApiKey = process.env.RESEND_API_KEY;
+    // Priority: Try to find RESEND_API_KEY in environment or firebase config
+    const resendApiKey = process.env.RESEND_API_KEY || functions.config()?.resend?.key;
+    
     if (!resendApiKey) {
-        console.error("RESEND_API_KEY not found in environment variables.");
+        console.error("EMAIL FAILURE: RESEND_API_KEY not found. Please set it in Cloud Functions config.");
         return;
     }
 
     const resend = new Resend(resendApiKey);
     const { to, userName, taskTitle, companyName, projectName } = params;
 
+    console.log(`Attempting to send email to ${to} for task "${taskTitle}"`);
+
     try {
-        await resend.emails.send({
-            from: 'notifications@saturnsync.com',
+        const { data, error } = await resend.emails.send({
+            from: 'SaturnSync <notifications@saturnsync.com>',
             to: to,
             subject: `New Task Assigned: ${taskTitle}`,
             html: `
@@ -152,9 +156,14 @@ const sendTaskAssignmentEmail = async (params: {
                 </div>
             `,
         });
-        console.log(`Task assignment email sent to ${to}`);
+
+        if (error) {
+            console.error("Resend API Error:", error);
+        } else {
+            console.log("Email successfully sent via Resend. ID:", data?.id);
+        }
     } catch (error) {
-        console.error("Failed to send task assignment email:", error);
+        console.error("CRITICAL: Failed to send task assignment email:", error);
     }
 };
 
@@ -299,7 +308,10 @@ exports.onTaskWrite = functions.firestore
         const afterData = change.after.data();
 
         // 1. Handle Notifications and Emails
+        // Trigger if: a) It's a new task with an assignee, or b) The assignee has changed
         if (afterData && (!beforeData || beforeData.assigneeId !== afterData.assigneeId)) {
+            console.log(`Task Triggered: detected ${!beforeData ? 'new assignment' : 're-assignment'} for task ${afterData.title}`);
+            
             const actorUid = afterData.updatedBy || afterData.createdBy;
             const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
             if (!actorName) return;
@@ -333,6 +345,8 @@ exports.onTaskWrite = functions.firestore
                 const isEmailEnabled = assigneeData?.emailNotificationsEnabled !== false; // Default to true
                 const email = assigneeData?.email;
 
+                console.log(`Email check for ${assigneeName}: enabled=${isEmailEnabled}, email=${email}`);
+
                 if (isEmailEnabled && email) {
                     await sendTaskAssignmentEmail({
                         to: email,
@@ -341,7 +355,11 @@ exports.onTaskWrite = functions.firestore
                         companyName,
                         projectName
                     });
+                } else if (!email) {
+                    console.warn(`SKIPPING EMAIL: No email address found for user document ${afterData.assigneeId}`);
                 }
+            } else {
+                console.warn(`SKIPPING EMAIL: Assignee user document does not exist for UID ${afterData.assigneeId}`);
             }
         }
 
@@ -476,7 +494,7 @@ exports.onFileUpload = functions.firestore
     .document('workspace-files/{fileId}')
     .onCreate(async (snap, context) => {
         const fileData = snap.data();
-        const { workspaceId, uploadedBy, fullPath } = fileData;
+        const { workspaceId, uploadedBy, fullPath, mimeType } = fileData;
         const fileId = context.params.fileId;
 
         if (!workspaceId || !uploadedBy) {
