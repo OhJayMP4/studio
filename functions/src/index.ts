@@ -1,4 +1,3 @@
-
 'use server';
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
@@ -118,24 +117,24 @@ const sendTaskAssignmentEmail = async (params: {
     companyName: string;
     projectName: string;
 }) => {
-    // Priority: Try to find RESEND_API_KEY in environment, config, or fallback to the key from apphosting.yaml
+    // Priority: process.env -> functions.config() -> Hardcoded Fallback
     const resendApiKey = process.env.RESEND_API_KEY || functions.config()?.resend?.key || "re_hfnUftgP_LxQrEY7o8aEKeHUumQfM1Zqw";
     
     if (!resendApiKey) {
-        console.error("EMAIL FAILURE: RESEND_API_KEY not found. Please set it in Cloud Functions config.");
+        console.error("CRITICAL: RESEND_API_KEY not found. Emails will not be sent.");
         return;
     }
 
     const resend = new Resend(resendApiKey);
     const { to, userName, taskTitle, companyName, projectName } = params;
 
-    console.log(`Attempting to send email to ${to} for task "${taskTitle}"`);
+    console.log(`Attempting to send assignment email to: ${to}`);
 
     try {
         const { data, error } = await resend.emails.send({
-            from: 'SaturnSync <notifications@saturnsync.com>',
+            from: 'SaturnSync Notifications <notifications@saturnsync.com>',
             to: to,
-            subject: `New Task Assigned: ${taskTitle}`,
+            subject: `Task Assigned: ${taskTitle}`,
             html: `
                 <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px; max-width: 600px; margin: 0 auto;">
                     <h2 style="color: #FF6812;">Hello ${userName},</h2>
@@ -147,23 +146,23 @@ const sendTaskAssignmentEmail = async (params: {
                         <p style="margin: 5px 0;"><strong>Project:</strong> ${projectName}</p>
                     </div>
 
-                    <p style="font-size: 14px; color: #666;">Log in to your dashboard to view full details and start collaborating.</p>
+                    <p style="font-size: 14px; color: #666;">Log in to your dashboard to view full details.</p>
                     
                     <a href="https://saturnsync.com/my-tasks" style="display: inline-block; background-color: #FF6812; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 10px;">View My Tasks</a>
                     
                     <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
-                    <p style="font-size: 12px; color: #999;">You received this because email notifications are enabled in your SaturnSync account settings.</p>
+                    <p style="font-size: 12px; color: #999;">You received this because email notifications are enabled in your account settings.</p>
                 </div>
             `,
         });
 
         if (error) {
-            console.error("Resend API Error details:", JSON.stringify(error));
+            console.error("Resend API Error:", JSON.stringify(error));
         } else {
-            console.log("Email successfully sent via Resend. ID:", data?.id);
+            console.log("Email sent successfully. ID:", data?.id);
         }
     } catch (error) {
-        console.error("CRITICAL: Failed to send task assignment email:", error);
+        console.error("Failed to send task assignment email:", error);
     }
 };
 
@@ -310,8 +309,6 @@ exports.onTaskWrite = functions.firestore
         // 1. Handle Notifications and Emails
         // Trigger if: a) It's a new task with an assignee, or b) The assignee has changed
         if (afterData && (!beforeData || beforeData.assigneeId !== afterData.assigneeId)) {
-            console.log(`Task Triggered: detected ${!beforeData ? 'new assignment' : 're-assignment'} for task "${afterData.title}"`);
-            
             const actorUid = afterData.updatedBy || afterData.createdBy;
             const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
             if (!actorName) return;
@@ -345,21 +342,15 @@ exports.onTaskWrite = functions.firestore
                 const isEmailEnabled = assigneeData?.emailNotificationsEnabled !== false; // Default to true
                 const email = assigneeData?.email;
 
-                console.log(`Email check for ${assigneeName}: enabled=${isEmailEnabled}, email=${email}`);
-
                 if (isEmailEnabled && email) {
                     await sendTaskAssignmentEmail({
                         to: email,
-                        userName: assigneeData?.name || 'User',
+                        userName: assigneeData?.name || 'Team Member',
                         taskTitle: afterData.title,
                         companyName,
                         projectName
                     });
-                } else if (!email) {
-                    console.warn(`SKIPPING EMAIL: No email address found for user document ${afterData.assigneeId}`);
                 }
-            } else {
-                console.warn(`SKIPPING EMAIL: Assignee user document does not exist for UID ${afterData.assigneeId}`);
             }
         }
 
@@ -508,7 +499,7 @@ exports.onFileUpload = functions.firestore
     .document('workspace-files/{fileId}')
     .onCreate(async (snap, context) => {
         const fileData = snap.data();
-        const { workspaceId, uploadedBy, fullPath, mimeType } = fileData;
+        const { workspaceId, uploadedBy, fullPath } = fileData;
         const fileId = context.params.fileId;
 
         if (!workspaceId || !uploadedBy) {
@@ -1004,7 +995,7 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
             fullPath: finalFile.name,
             parentPath: targetParentPath,
             size: fileSize,
-            mimeType: file.type,
+            mimeType: mimeType,
             downloadURL: downloadURL,
             uploadedBy: uid,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),

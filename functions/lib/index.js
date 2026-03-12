@@ -79,18 +79,19 @@ const createNotification = async (workspaceId, notificationData) => {
 };
 // Helper to send task assignment email
 const sendTaskAssignmentEmail = async (params) => {
-    const resendApiKey = process.env.RESEND_API_KEY;
+    const resendApiKey = process.env.RESEND_API_KEY || (functions.config() && functions.config().resend ? functions.config().resend.key : null) || "re_hfnUftgP_LxQrEY7o8aEKeHUumQfM1Zqw";
     if (!resendApiKey) {
-        console.error("RESEND_API_KEY not found in environment variables.");
+        console.error("CRITICAL: RESEND_API_KEY not found. Emails will not be sent.");
         return;
     }
     const resend = new Resend(resendApiKey);
     const { to, userName, taskTitle, companyName, projectName } = params;
+    console.log(`Attempting to send assignment email to: ${to}`);
     try {
-        await resend.emails.send({
-            from: 'notifications@saturnsync.com',
+        const { data, error } = await resend.emails.send({
+            from: 'SaturnSync Notifications <notifications@saturnsync.com>',
             to: to,
-            subject: `New Task Assigned: ${taskTitle}`,
+            subject: `Task Assigned: ${taskTitle}`,
             html: `
                 <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px; max-width: 600px; margin: 0 auto;">
                     <h2 style="color: #FF6812;">Hello ${userName},</h2>
@@ -102,16 +103,21 @@ const sendTaskAssignmentEmail = async (params) => {
                         <p style="margin: 5px 0;"><strong>Project:</strong> ${projectName}</p>
                     </div>
 
-                    <p style="font-size: 14px; color: #666;">Log in to your dashboard to view full details and start collaborating.</p>
+                    <p style="font-size: 14px; color: #666;">Log in to your dashboard to view full details.</p>
                     
                     <a href="https://saturnsync.com/my-tasks" style="display: inline-block; background-color: #FF6812; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 10px;">View My Tasks</a>
                     
                     <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
-                    <p style="font-size: 12px; color: #999;">You received this because email notifications are enabled in your SaturnSync account settings.</p>
+                    <p style="font-size: 12px; color: #999;">You received this because email notifications are enabled in your account settings.</p>
                 </div>
             `,
         });
-        console.log(`Task assignment email sent to ${to}`);
+        if (error) {
+            console.error("Resend API Error:", JSON.stringify(error));
+        }
+        else {
+            console.log("Email sent successfully. ID:", data === null || data === void 0 ? void 0 : data.id);
+        }
     }
     catch (error) {
         console.error("Failed to send task assignment email:", error);
@@ -276,7 +282,7 @@ exports.onTaskWrite = functions.firestore
             if (isEmailEnabled && email) {
                 await sendTaskAssignmentEmail({
                     to: email,
-                    userName: (assigneeData === null || assigneeData === void 0 ? void 0 : assigneeData.name) || 'User',
+                    userName: (assigneeData === null || assigneeData === void 0 ? void 0 : assigneeData.name) || 'Team Member',
                     taskTitle: afterData.title,
                     companyName,
                     projectName
@@ -376,9 +382,21 @@ exports.onTaskDelete = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
     .onDelete(async (snap, context) => {
     var _a, _b, _c;
-    const { workspaceId, companyId, projectId, siloId } = context.params;
+    const { taskId, workspaceId, companyId, projectId, siloId } = context.params;
     const taskData = snap.data();
     const actorUid = taskData.updatedBy || taskData.createdBy;
+    const assigneeId = taskData.assigneeId;
+    // 1. CLEAN UP DENORMALIZED USER TASKS
+    if (assigneeId) {
+        console.log(`Cleaning up denormalized task ${taskId} for user ${assigneeId}`);
+        const userTasksRef = db.collection(`user-tasks/${assigneeId}/tasks`);
+        const q = userTasksRef.where("originalTaskId", "==", taskId);
+        const userTasksSnap = await q.get();
+        const batch = db.batch();
+        userTasksSnap.docs.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+    }
+    // 2. SEND NOTIFICATION
     const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
     if (!actorName)
         return;
