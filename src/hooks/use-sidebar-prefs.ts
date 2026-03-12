@@ -1,11 +1,10 @@
-
 'use client';
 
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
 import { doc, setDoc, serverTimestamp, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import type { UserWorkspacePrefs, SidebarModule } from '@/lib/types';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useCallback } from 'react';
 
 export const availableModules: (Omit<SidebarModule, 'order' | 'hidden'> & {description: string})[] = [
     { id: 'files', label: 'Files', icon: 'Folder', route: '/files', description: 'Workspace filing system with folders.' },
@@ -78,7 +77,7 @@ export const useUserPrefs = () => {
   }, [rawPrefs]);
 
 
-  const addModule = async (moduleId: string) => {
+  const addModule = useCallback(async (moduleId: string) => {
     if (!prefsRef || !prefs || !selectedWorkspace) throw new Error("Preferences or workspace not loaded.");
     
     const moduleToAdd = availableModules.find(m => m.id === moduleId);
@@ -95,9 +94,9 @@ export const useUserPrefs = () => {
       };
       await updateDoc(prefsRef, { sidebarModules: [...prefs.sidebarModules, newModule], updatedAt: serverTimestamp() });
     }
-  };
+  }, [prefsRef, prefs, selectedWorkspace]);
 
-  const setModuleHidden = async (moduleId: string, hidden: boolean) => {
+  const setModuleHidden = useCallback(async (moduleId: string, hidden: boolean) => {
     if (!prefsRef || !prefs) throw new Error("Preferences not loaded.");
     if (coreModuleIds.includes(moduleId)) {
         console.warn("Attempted to hide a core module. This action is blocked.");
@@ -112,33 +111,33 @@ export const useUserPrefs = () => {
       sidebarModules: newModules,
       updatedAt: serverTimestamp(),
     });
-  };
+  }, [prefsRef, prefs]);
 
-  const setViewPref = async (key: string, value: string) => {
+  const setViewPref = useCallback(async (key: string, value: string) => {
     if (!prefsRef || !prefs) return;
     await updateDoc(prefsRef, {
       [`viewPrefs.${key}`]: value,
       updatedAt: serverTimestamp(),
     });
-  };
+  }, [prefsRef, prefs]);
 
-  const setTheme = async (theme: 'light' | 'dark' | 'system') => {
+  const setTheme = useCallback(async (theme: 'light' | 'dark' | 'system') => {
     if (!prefsRef || !prefs) return;
     await updateDoc(prefsRef, { theme, updatedAt: serverTimestamp() });
-  };
+  }, [prefsRef, prefs]);
 
-  const setAccentColor = async (color: string) => {
+  const setAccentColor = useCallback(async (color: string) => {
     if (!prefsRef || !prefs) return;
     await updateDoc(prefsRef, { accentColor: color, updatedAt: serverTimestamp() });
-  };
+  }, [prefsRef, prefs]);
 
-  const updateChatLastRead = async () => {
+  const updateChatLastRead = useCallback(async () => {
     if (!prefsRef || !prefs) return;
     await updateDoc(prefsRef, {
       'viewPrefs.chatLastReadAt': serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-  };
+  }, [prefsRef, prefs]);
   
   return { 
     prefs, 

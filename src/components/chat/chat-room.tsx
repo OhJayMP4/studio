@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -32,13 +31,13 @@ export function ChatRoom() {
 
   // Fetch messages
   const messagesQuery = useMemoFirebase(() => {
-    if (!selectedWorkspace) return null;
+    if (!selectedWorkspace?.id) return null;
     return query(
       collection(firestore, `workspaces/${selectedWorkspace.id}/chatMessages`),
       orderBy('createdAt', 'asc'),
       limit(100)
     );
-  }, [firestore, selectedWorkspace]);
+  }, [firestore, selectedWorkspace?.id]);
 
   const { data: messages, isLoading } = useCollection<ChatMessage>(messagesQuery);
 
@@ -50,11 +49,15 @@ export function ChatRoom() {
         scrollArea.scrollTop = scrollArea.scrollHeight;
       }
     }
-    // Clear unread count when viewing messages
+  }, [messages]);
+
+  // Clear unread count when viewing messages
+  // We separate this to avoid loop issues and only trigger when messages change
+  useEffect(() => {
     if (messages && messages.length > 0) {
         updateChatLastRead();
     }
-  }, [messages, updateChatLastRead]);
+  }, [messages?.length, updateChatLastRead]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
