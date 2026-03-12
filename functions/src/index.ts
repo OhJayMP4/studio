@@ -118,8 +118,8 @@ const sendTaskAssignmentEmail = async (params: {
     companyName: string;
     projectName: string;
 }) => {
-    // Priority: Try to find RESEND_API_KEY in environment or firebase config
-    const resendApiKey = process.env.RESEND_API_KEY || functions.config()?.resend?.key;
+    // Priority: Try to find RESEND_API_KEY in environment, config, or fallback to the key from apphosting.yaml
+    const resendApiKey = process.env.RESEND_API_KEY || functions.config()?.resend?.key || "re_hfnUftgP_LxQrEY7o8aEKeHUumQfM1Zqw";
     
     if (!resendApiKey) {
         console.error("EMAIL FAILURE: RESEND_API_KEY not found. Please set it in Cloud Functions config.");
@@ -158,7 +158,7 @@ const sendTaskAssignmentEmail = async (params: {
         });
 
         if (error) {
-            console.error("Resend API Error:", error);
+            console.error("Resend API Error details:", JSON.stringify(error));
         } else {
             console.log("Email successfully sent via Resend. ID:", data?.id);
         }
@@ -310,7 +310,7 @@ exports.onTaskWrite = functions.firestore
         // 1. Handle Notifications and Emails
         // Trigger if: a) It's a new task with an assignee, or b) The assignee has changed
         if (afterData && (!beforeData || beforeData.assigneeId !== afterData.assigneeId)) {
-            console.log(`Task Triggered: detected ${!beforeData ? 'new assignment' : 're-assignment'} for task ${afterData.title}`);
+            console.log(`Task Triggered: detected ${!beforeData ? 'new assignment' : 're-assignment'} for task "${afterData.title}"`);
             
             const actorUid = afterData.updatedBy || afterData.createdBy;
             const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
