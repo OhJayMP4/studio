@@ -1,5 +1,6 @@
+
 'use client';
-import { collection, doc, writeBatch, getDoc, setDoc, Firestore, query, where, getDocs, updateDoc } from "firebase/firestore";
+import { collection, doc, writeBatch, getDoc, setDoc, Firestore, query, where, getDocs, updateDoc, serverTimestamp } from "firebase/firestore";
 import type { Company, Project, Silo, Task, Workspace } from "./types";
 
 interface AddTaskParams {
@@ -7,7 +8,7 @@ interface AddTaskParams {
     companyId: string;
     projectId: string;
     siloId: string;
-    taskData: Omit<Task, 'id' | 'description' | 'workspaceId'> & { description?: string, createdBy: string };
+    taskData: Omit<Task, 'id' | 'description' | 'workspaceId' | 'projectId'> & { description?: string, createdBy: string };
 }
 
 export async function addTask(firestore: Firestore, params: AddTaskParams) {
@@ -43,7 +44,13 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
     const projectName = projectId === 'general-tasks' ? 'Quick Tasks' : projectData.name;
 
     // 2. Create the original task
-    batch.set(taskRef, {...taskData, projectId, workspaceId, timeSpentMinutes: 0});
+    batch.set(taskRef, {
+        ...taskData, 
+        projectId, 
+        workspaceId, 
+        timeSpentMinutes: 0,
+        createdAt: serverTimestamp()
+    });
 
     // 3. SECURITY CHECK: Verify assignee is a member of the workspace before denormalizing
     if (workspaceData.users && workspaceData.users[taskData.assigneeId]) {
@@ -65,6 +72,7 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
             projectName: projectName,
             siloName: siloData.name,
             timeSpentMinutes: 0,
+            createdAt: serverTimestamp()
         });
     } else {
         console.warn(`Skipping task denormalization: User ${taskData.assigneeId} is not a member of workspace ${workspaceId}.`);
@@ -131,6 +139,7 @@ export async function updateTask(
             projectName: isQuickTask ? 'Quick Tasks' : ((oldUserTasksSnap.docs[0]?.data() as any)?.projectName || 'Project'),
             siloName: (oldUserTasksSnap.docs[0]?.data() as any)?.siloName || 'Silo',
             timeSpentMinutes: taskData.timeSpentMinutes ?? 0,
+            createdAt: taskData.createdAt || null,
         };
         
         batch.set(newUserTaskRef, denormalizedData);

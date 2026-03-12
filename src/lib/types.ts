@@ -80,6 +80,7 @@ export type Task = {
     createdBy: string;
     updatedBy?: string;
     timeSpentMinutes?: number;
+    createdAt?: any; // Firestore Timestamp
 };
 
 export type Comment = {
@@ -111,6 +112,7 @@ export type UserTask = {
     projectName: string;
     siloName: string;
     timeSpentMinutes?: number;
+    createdAt?: any;
 }
 
 export type Sale = {

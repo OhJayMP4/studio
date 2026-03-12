@@ -1,5 +1,6 @@
+
 'use client';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -14,13 +15,17 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import type { Task, Comment, UserProfile } from '@/lib/types';
+import type { Task, Comment, UserProfile, Company, Project, Silo } from '@/lib/types';
 import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from '@/firebase';
 import { collection, addDoc, serverTimestamp, query, orderBy, doc } from 'firebase/firestore';
 import { format, formatDistanceToNow, isPast, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, CheckCircle2, Clock, CalendarIcon, Building2, Folder, Layout, User as UserIcon, ShieldCheck } from 'lucide-react';
 import { suggestTaskCompletion, type SuggestTaskCompletionOutput } from '@/ai/flows/suggest-task-completion-flow';
+import { useSelectedWorkspace } from '@/app/(main)/layout';
+import { Checkbox } from '../ui/checkbox';
+import { TaskCompletionDialog } from './task-completion-dialog';
+import { updateTaskCompletion } from '@/lib/tasks';
 
 function CommentItem({ comment, path, level = 0 }: { comment: Comment; path: string; level?: number }) {
   const [showReply, setShowReply] = useState(false);
@@ -203,10 +208,54 @@ function CommentsSection({ taskPath }: { taskPath: string }) {
   );
 }
 
+interface PropertyRowProps {
+    icon: React.ReactNode;
+    label: string;
+    value: React.ReactNode;
+}
+
+function PropertyRow({ icon, label, value }: PropertyRowProps) {
+    return (
+        <div className="space-y-1.5">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground/70">
+                {icon}
+                <span>{label}</span>
+            </div>
+            <div className="pl-6 text-sm font-medium text-foreground">
+                {value}
+            </div>
+        </div>
+    );
+}
+
 export function TaskDetailsDialog({ task, path, children }: { task: Task; path: string, children: React.ReactNode }) {
   const firestore = useFirestore();
+  const { selectedWorkspace } = useSelectedWorkspace();
+  const [showCompletionDialog, setShowCompletionDialog] = useState(false);
+
+  // Parse path for hierarchy details
+  const pathParts = useMemo(() => path.split('/'), [path]);
+  const workspaceId = pathParts[1];
+  const companyId = pathParts[3];
+  const projectId = pathParts[5];
+  const siloId = pathParts[7];
+
+  // Fetch Hierarchy Docs
+  const companyRef = useMemoFirebase(() => doc(firestore, 'workspaces', workspaceId, 'companies', companyId), [firestore, workspaceId, companyId]);
+  const { data: company } = useDoc<Company>(companyRef);
+
+  const projectRef = useMemoFirebase(() => doc(firestore, 'workspaces', workspaceId, 'companies', companyId, 'projects', projectId), [firestore, workspaceId, companyId, projectId]);
+  const { data: project } = useDoc<Project>(projectRef);
+
+  const siloRef = useMemoFirebase(() => doc(firestore, 'workspaces', workspaceId, 'companies', companyId, 'projects', projectId, 'silos', siloId), [firestore, workspaceId, companyId, projectId, siloId]);
+  const { data: silo } = useDoc<Silo>(siloRef);
+
+  // Fetch Users
   const assigneeRef = useMemoFirebase(() => doc(firestore, 'users', task.assigneeId), [firestore, task.assigneeId]);
   const { data: assignee } = useDoc<UserProfile>(assigneeRef);
+
+  const creatorRef = useMemoFirebase(() => doc(firestore, 'users', task.createdBy), [firestore, task.createdBy]);
+  const { data: creator } = useDoc<UserProfile>(creatorRef);
 
   const dueDate = new Date(task.dueDate);
   const isOverdue = !task.completed && isPast(dueDate) && !isToday(dueDate);
@@ -217,58 +266,178 @@ export function TaskDetailsDialog({ task, path, children }: { task: Task; path: 
     high: 'bg-red-500 hover:bg-red-500',
   }
 
+  const handleStatusToggle = async (checked: boolean) => {
+    if (checked) {
+        if (selectedWorkspace?.isTimeTrackingEnabled) {
+            setShowCompletionDialog(true);
+        } else {
+            await updateTaskCompletion(firestore, path, task.assigneeId, task.id, true, 0);
+        }
+    } else {
+        await updateTaskCompletion(firestore, path, task.assigneeId, task.id, false, 0);
+    }
+  }
+
+  const onConfirmCompletion = async (minutes: number) => {
+    await updateTaskCompletion(firestore, path, task.assigneeId, task.id, true, minutes);
+  }
+
   return (
+    <>
     <Dialog>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="max-w-3xl h-[90vh]">
-        <DialogHeader>
-          <DialogTitle className="text-2xl">{task.title}</DialogTitle>
-          <DialogDescription>
-            View details, collaborate, and get AI assistance for this task.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 flex-1 min-h-0 overflow-hidden">
-            <ScrollArea className="md:col-span-2 pr-6 h-full">
-                 <div className="space-y-8 pb-10">
+      <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0 overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-muted/10 shrink-0">
+            <div>
+                <DialogTitle className="text-xl font-bold flex items-center gap-3">
+                    {task.completed ? <CheckCircle2 className="text-green-500 h-5 w-5" /> : <Clock className="text-blue-500 h-5 w-5" />}
+                    {task.title}
+                </DialogTitle>
+                <DialogDescription className="mt-0.5">
+                    Viewing task in {project?.name || '...'}
+                </DialogDescription>
+            </div>
+        </div>
+
+        <div className="flex flex-1 min-h-0">
+            <ScrollArea className="flex-1 p-6 border-r h-full">
+                 <div className="space-y-10 pb-10">
                     <SuggestionsSection task={task} />
-                    <Separator />
-                    <div>
-                        <h3 className="text-lg font-semibold">Description</h3>
-                        <p className="text-sm text-muted-foreground mt-2 whitespace-pre-wrap">{task.description || 'No description provided.'}</p>
+                    
+                    <div className="space-y-3">
+                        <h3 className="text-lg font-semibold flex items-center gap-2">
+                            <Layout className="h-5 w-5 text-muted-foreground" />
+                            Description
+                        </h3>
+                        <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap pl-7">
+                            {task.description || 'No description provided.'}
+                        </p>
                     </div>
-                     <Separator />
+
                     <CommentsSection taskPath={path} />
                  </div>
             </ScrollArea>
-            <div className="hidden md:block col-span-1 space-y-6">
-                 <div>
-                    <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-4">Properties</h3>
-                    <div className="space-y-4 text-sm">
-                        <div className="flex justify-between items-center">
-                            <span className="text-muted-foreground">Assignee</span>
-                            <div className="flex items-center gap-2">
-                                <Avatar className="h-6 w-6">
-                                    <AvatarImage src={assignee?.avatarUrl ?? undefined} />
-                                    <AvatarFallback>{assignee?.name?.charAt(0).toUpperCase()}</AvatarFallback>
-                                </Avatar>
-                                <span className="font-medium">{assignee?.name}</span>
-                            </div>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-muted-foreground">Due Date</span>
-                            <Badge variant={isOverdue ? "destructive" : "outline"}>{format(dueDate, 'MMM d, yyyy')}</Badge>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-muted-foreground">Priority</span>
-                            <Badge className={cn(priorityStyles[task.priority], "text-primary-foreground")}>
-                                {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-                            </Badge>
+
+            <aside className="w-[320px] shrink-0 bg-muted/5 p-6 h-full overflow-y-auto">
+                <div className="space-y-8">
+                    <div className="space-y-4">
+                        <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">Task Control</h3>
+                        <div className={cn("flex items-center gap-3 p-3 rounded-lg border transition-colors", task.completed ? "bg-green-500/5 border-green-500/20" : "bg-background border-border")}>
+                            <Checkbox 
+                                id="dialog-status" 
+                                checked={task.completed} 
+                                onCheckedChange={handleStatusToggle}
+                                className="h-5 w-5"
+                            />
+                            <label htmlFor="dialog-status" className="text-sm font-bold cursor-pointer">
+                                {task.completed ? "Completed" : "Mark as Complete"}
+                            </label>
                         </div>
                     </div>
-                 </div>
-            </div>
+
+                    <div className="space-y-6">
+                        <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">Details & Properties</h3>
+                        
+                        <div className="space-y-5">
+                            <PropertyRow 
+                                icon={<ShieldCheck className="h-3.5 w-3.5" />}
+                                label="Status"
+                                value={
+                                    <Badge variant={task.completed ? "secondary" : "outline"} className="capitalize">
+                                        {task.completed ? "Done" : "In Progress"}
+                                    </Badge>
+                                }
+                            />
+
+                            <PropertyRow 
+                                icon={<UserIcon className="h-3.5 w-3.5" />}
+                                label="Assignee"
+                                value={
+                                    <div className="flex items-center gap-2">
+                                        <Avatar className="h-6 w-6">
+                                            <AvatarImage src={assignee?.avatarUrl ?? undefined} />
+                                            <AvatarFallback className="text-[10px]">{assignee?.name?.charAt(0).toUpperCase()}</AvatarFallback>
+                                        </Avatar>
+                                        <span className="truncate">{assignee?.name || 'Unassigned'}</span>
+                                    </div>
+                                }
+                            />
+
+                            <PropertyRow 
+                                icon={<CalendarIcon className="h-3.5 w-3.5" />}
+                                label="Due Date"
+                                value={<Badge variant={isOverdue ? "destructive" : "outline"}>{format(dueDate, 'MMM d, yyyy')}</Badge>}
+                            />
+
+                            <PropertyRow 
+                                icon={<Sparkles className="h-3.5 w-3.5" />}
+                                label="Priority"
+                                value={
+                                    <Badge className={cn(priorityStyles[task.priority], "text-primary-foreground text-[10px] uppercase font-bold")}>
+                                        {task.priority}
+                                    </Badge>
+                                }
+                            />
+
+                            <Separator className="my-2" />
+
+                            <PropertyRow 
+                                icon={<Building2 className="h-3.5 w-3.5" />}
+                                label="Company"
+                                value={company?.name || '...'}
+                            />
+
+                            <PropertyRow 
+                                icon={<Folder className="h-3.5 w-3.5" />}
+                                label="Project"
+                                value={project?.name || '...'}
+                            />
+
+                            <PropertyRow 
+                                icon={<Layout className="h-3.5 w-3.5" />}
+                                label="Silo"
+                                value={silo?.name || '...'}
+                            />
+
+                            <Separator className="my-2" />
+
+                            <PropertyRow 
+                                icon={<UserIcon className="h-3.5 w-3.5" />}
+                                label="Created By"
+                                value={
+                                    <div className="flex items-center gap-2">
+                                        <Avatar className="h-5 w-5">
+                                            <AvatarImage src={creator?.avatarUrl ?? undefined} />
+                                            <AvatarFallback className="text-[10px]">{creator?.name?.charAt(0).toUpperCase()}</AvatarFallback>
+                                        </Avatar>
+                                        <span className="text-xs text-muted-foreground">{creator?.name || '...'}</span>
+                                    </div>
+                                }
+                            />
+
+                            <PropertyRow 
+                                icon={<Clock className="h-3.5 w-3.5" />}
+                                label="Created"
+                                value={
+                                    <span className="text-xs text-muted-foreground">
+                                        {task.createdAt ? format(task.createdAt.toDate(), 'PP p') : 'Unknown'}
+                                    </span>
+                                }
+                            />
+                        </div>
+                    </div>
+                </div>
+            </aside>
         </div>
       </DialogContent>
     </Dialog>
+
+    <TaskCompletionDialog 
+        open={showCompletionDialog}
+        onOpenChange={setShowCompletionDialog}
+        onConfirm={onConfirmCompletion}
+        taskTitle={task.title}
+    />
+    </>
   );
 }
