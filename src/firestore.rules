@@ -152,7 +152,7 @@ service cloud.firestore {
       allow list: if isSignedIn();
       allow get, update: if isWorkspaceMember(resource.data.workspaceId);
       allow create: if isSignedIn() && isWorkspaceMember(request.resource.data.workspaceId);
-      allow delete: if isWorkspaceAdmin(resource.data.workspaceId);
+      allow delete: if isWorkspaceAdmin(request.resource.data.workspaceId);
     }
   }
 }
