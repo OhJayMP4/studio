@@ -464,9 +464,23 @@ exports.onSiloDelete = functions.firestore
 exports.onTaskDelete = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
     .onDelete(async (snap, context) => {
-        const { workspaceId, companyId, projectId, siloId } = context.params;
+        const { taskId, workspaceId, companyId, projectId, siloId } = context.params;
         const taskData = snap.data();
         const actorUid = taskData.updatedBy || taskData.createdBy;
+        const assigneeId = taskData.assigneeId;
+
+        // 1. CLEAN UP DENORMALIZED USER TASKS
+        if (assigneeId) {
+            console.log(`Cleaning up denormalized task ${taskId} for user ${assigneeId}`);
+            const userTasksRef = db.collection(`user-tasks/${assigneeId}/tasks`);
+            const q = userTasksRef.where("originalTaskId", "==", taskId);
+            const userTasksSnap = await q.get();
+            const batch = db.batch();
+            userTasksSnap.docs.forEach(doc => batch.delete(doc.ref));
+            await batch.commit();
+        }
+
+        // 2. SEND NOTIFICATION
         const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
         if (!actorName) return;
 
@@ -990,7 +1004,7 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
             fullPath: finalFile.name,
             parentPath: targetParentPath,
             size: fileSize,
-            mimeType: mimeType,
+            mimeType: file.type,
             downloadURL: downloadURL,
             uploadedBy: uid,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),

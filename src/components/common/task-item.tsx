@@ -4,7 +4,7 @@
 import { useFirestore, useMemoFirebase } from "@/firebase";
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Task, UserProfile, Comment } from "@/lib/types";
-import { doc, deleteDoc, collection, query, getDocs } from "firebase/firestore";
+import { doc, collection, query } from "firebase/firestore";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Checkbox } from "../ui/checkbox";
 import { useDoc } from "@/firebase/firestore/use-doc";
@@ -21,7 +21,7 @@ import { DeleteDialog } from "./delete-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { updateTaskCompletion } from "@/lib/tasks";
+import { updateTaskCompletion, deleteTask } from "@/lib/tasks";
 import { TaskDetailsDialog } from "./task-details-dialog";
 import { TaskCompletionDialog } from "./task-completion-dialog";
 import { useState } from "react";
@@ -44,9 +44,8 @@ function TaskActions({ task, path }: { task: Task, path: string }) {
     const firestore = useFirestore();
 
     const handleDelete = async () => {
-        const taskRef = doc(firestore, path);
         try {
-            await deleteDoc(taskRef);
+            await deleteTask(firestore, path, task.id, task.assigneeId);
             toast({
                 title: "Task Deleted",
                 description: `"${task.title}" has been deleted.`,

@@ -165,6 +165,38 @@ export async function updateTask(
 }
 
 /**
+ * Deletes a task and ensures all denormalized copies are removed.
+ */
+export async function deleteTask(
+    firestore: Firestore,
+    originalTaskPath: string,
+    originalTaskId: string,
+    assigneeId: string
+) {
+    const originalTaskRef = doc(firestore, originalTaskPath);
+    const batch = writeBatch(firestore);
+
+    // 1. Delete original task
+    batch.delete(originalTaskRef);
+
+    // 2. Delete denormalized task(s)
+    const userTasksRef = collection(firestore, `user-tasks/${assigneeId}/tasks`);
+    const q = query(userTasksRef, where("originalTaskId", "==", originalTaskId));
+    const userTasksSnap = await getDocs(q);
+    
+    userTasksSnap.forEach(d => batch.delete(d.ref));
+
+    // Commit non-blocking
+    batch.commit().catch(async (serverError) => {
+        const permissionError = new FirestorePermissionError({
+            path: originalTaskRef.path,
+            operation: 'delete',
+        } satisfies SecurityRuleContext);
+        errorEmitter.emit('permission-error', permissionError);
+    });
+}
+
+/**
  * Adds a task to a "Quick Tasks" container for a company.
  */
 export async function addQuickTask(firestore: Firestore, params: {
