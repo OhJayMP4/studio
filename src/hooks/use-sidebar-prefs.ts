@@ -9,6 +9,7 @@ import { useEffect, useMemo } from 'react';
 
 export const availableModules: (Omit<SidebarModule, 'order' | 'hidden'> & {description: string})[] = [
     { id: 'files', label: 'Files', icon: 'Folder', route: '/files', description: 'Workspace filing system with folders.' },
+    { id: 'chat', label: 'Chat', icon: 'MessageSquare', route: '/chat', description: 'Real-time workspace chat room.' },
     { id: 'social-scheduler', label: 'Social Scheduler', icon: 'CalendarDays', route: '/social-scheduler', description: 'Plan and schedule social media posts.' },
     { id: 'social-accounts', label: 'Social Accounts', icon: 'Settings2', route: '/admin/social-accounts', description: 'Manage connected social media accounts.' },
 ];

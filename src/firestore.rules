@@ -76,6 +76,11 @@ service cloud.firestore {
       allow update: if isWorkspaceAdmin(workspaceId);
       allow delete: if false;
 
+      match /chatMessages/{messageId} {
+        allow read, create: if isWorkspaceMember(workspaceId);
+        allow update, delete: if isWorkspaceMember(workspaceId) && isOwner(resource.data.senderId);
+      }
+
       match /companies/{companyId} {
         allow read, write: if isWorkspaceMember(workspaceId);
 

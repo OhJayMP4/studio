@@ -83,6 +83,15 @@ export type Task = {
     createdAt?: any; // Firestore Timestamp
 };
 
+export type ChatMessage = {
+    id: string;
+    text: string;
+    senderId: string;
+    senderName: string;
+    senderAvatarUrl?: string | null;
+    createdAt: any; // Firestore Timestamp
+};
+
 export type Comment = {
     id: string;
     text: string;

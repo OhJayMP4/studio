@@ -298,6 +298,10 @@
         "timeSpentMinutes": {
           "type": "number",
           "description": "Total time spent on the task in minutes."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
         }
       },
       "required": [
@@ -309,6 +313,19 @@
         "projectId",
         "createdBy"
       ]
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "type": "object",
+      "description": "A message in the workspace chat room.",
+      "properties": {
+        "text": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderAvatarUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["text", "senderId", "senderName", "createdAt"]
     },
     "Comment": {
       "title": "Comment",
@@ -379,6 +396,9 @@
           ]
         },
         "assigneeId": {
+          "type": "string"
+        },
+        "createdBy": {
           "type": "string"
         },
         "companyName": {
@@ -835,6 +855,12 @@
         "$ref": "#/entities/Workspace"
       },
       "description": "Stores workspace data, including member roles."
+    },
+    "/workspaces/{workspaceId}/chatMessages/{messageId}": {
+      "schema": {
+        "$ref": "#/entities/ChatMessage"
+      },
+      "description": "Stores messages for the shared workspace chat room."
     },
     "/workspaces/{workspaceId}/companies/{companyId}": {
       "schema": {
