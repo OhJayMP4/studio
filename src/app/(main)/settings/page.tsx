@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useForm, FormProvider } from 'react-hook-form';
@@ -18,12 +19,13 @@ import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { WorkspaceManager } from '@/components/settings/workspace-manager';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Pencil, KeyRound, User, Palette, Monitor, Sun, Moon, Check, Sparkles } from 'lucide-react';
+import { Pencil, KeyRound, User, Palette, Monitor, Sun, Moon, Check, Sparkles, Bell } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { useUserPrefs } from '@/hooks/use-sidebar-prefs';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { useTheme } from 'next-themes';
+import { Switch } from '@/components/ui/switch';
 
 const profileFormSchema = z.object({
   name: z.string().min(1, { message: 'Name is required.' }),
@@ -134,6 +136,16 @@ export default function SettingsPage() {
         toast({ variant: 'destructive', title: 'Password Update Failed', description });
     }
   }
+
+  const handleToggleEmailNotifications = async (enabled: boolean) => {
+    if (!userProfileRef) return;
+    try {
+        await updateDoc(userProfileRef, { emailNotificationsEnabled: enabled });
+        toast({ title: enabled ? 'Notifications Enabled' : 'Notifications Disabled' });
+    } catch (error: any) {
+        toast({ variant: 'destructive', title: 'Update Failed', description: error.message });
+    }
+  };
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!event.target.files || event.target.files.length === 0 || !user || !userProfileRef || !storage) return;
@@ -262,6 +274,29 @@ export default function SettingsPage() {
               The accent color affects buttons, active sidebar menus, and highlights across the entire app. 
               Changes are saved instantly to your workspace profile.
             </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Notifications Section */}
+      <Card className="border-none shadow-sm bg-card/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-2xl">
+            <Bell className="h-6 w-6 text-primary" />
+            Notification Settings
+          </CardTitle>
+          <CardDescription>Manage how you want to be notified of workspace activity.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between p-4 bg-background rounded-xl border-2 border-muted">
+            <div className="space-y-0.5">
+              <Label className="text-base font-semibold">Email Notifications</Label>
+              <p className="text-sm text-muted-foreground">Receive emails when tasks are assigned to you.</p>
+            </div>
+            <Switch 
+              checked={userProfile?.emailNotificationsEnabled !== false} 
+              onCheckedChange={handleToggleEmailNotifications} 
+            />
           </div>
         </CardContent>
       </Card>

@@ -5,6 +5,7 @@ export type UserProfile = {
   email: string | null;
   avatarUrl: string | null;
   workspaceIds?: string[];
+  emailNotificationsEnabled?: boolean;
 };
 
 export type Workspace = {
