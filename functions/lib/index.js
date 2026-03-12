@@ -3,6 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const { Resend } = require('resend');
 const defaultSidebarModules = [
     { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', route: '/dashboard', hidden: false, order: 0 },
     { id: 'companies', label: 'Companies', icon: 'Building', route: '/companies', hidden: false, order: 1 },
@@ -11,6 +12,48 @@ const defaultSidebarModules = [
 ];
 admin.initializeApp();
 const db = admin.firestore();
+// Helper to update project progress based on tasks and sales
+const updateProjectProgress = async (workspaceId, companyId, projectId) => {
+    const projectRef = db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`);
+    try {
+        const [projectSnap, silosSnap] = await Promise.all([
+            projectRef.get(),
+            projectRef.collection('silos').get()
+        ]);
+        if (!projectSnap.exists)
+            return;
+        const projectData = projectSnap.data();
+        // 1. Aggregate Tasks across all silos
+        let totalTasks = 0;
+        let completedTasks = 0;
+        const taskPromises = silosSnap.docs.map(silo => silo.ref.collection('tasks').get());
+        const taskSnapshots = await Promise.all(taskPromises);
+        taskSnapshots.forEach(snap => {
+            snap.forEach(taskDoc => {
+                totalTasks++;
+                if (taskDoc.data().completed)
+                    completedTasks++;
+            });
+        });
+        const taskProgress = totalTasks > 0 ? (completedTasks / totalTasks) : 0;
+        // 2. Calculate Sales Progress
+        const salesTarget = (projectData === null || projectData === void 0 ? void 0 : projectData.monetaryValue) || 0;
+        const currentSales = (projectData === null || projectData === void 0 ? void 0 : projectData.totalSalesValue) || 0;
+        const salesProgress = salesTarget > 0 ? Math.min(currentSales / salesTarget, 1) : 0;
+        // 3. Overall Progress (Weighted 50/50 if monetary, else 100% tasks)
+        const newOverallProgress = Math.round((projectData === null || projectData === void 0 ? void 0 : projectData.hasMonetaryValue)
+            ? (salesProgress * 0.5 + taskProgress * 0.5) * 100
+            : taskProgress * 100);
+        await projectRef.update({
+            progress: newOverallProgress,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        console.log(`Updated project ${projectId} progress to ${newOverallProgress}%`);
+    }
+    catch (error) {
+        console.error(`Failed to update progress for project ${projectId}:`, error);
+    }
+};
 // Helper to get user info and workspace members
 const getActorAndRelevantUsers = async (workspaceId, actorUid) => {
     var _a;
@@ -21,7 +64,7 @@ const getActorAndRelevantUsers = async (workspaceId, actorUid) => {
     }
     const workspaceData = workspaceSnap.data();
     const actor = (_a = workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) === null || _a === void 0 ? void 0 : _a[actorUid];
-    const actorName = (actor === null || actor === void 0 ? void 0 : actor.name) || 'A user';
+    const actorName = (actor === null || actor === void 0 ? void 0 : actor.name) || (actor === null || actor === void 0 ? void 0 : actor.email) || 'A user';
     const isRelevantTo = Object.keys((workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) || {}).filter(uid => uid !== actorUid);
     return { actorName, isRelevantTo };
 };
@@ -32,6 +75,46 @@ const createNotification = async (workspaceId, notificationData) => {
     }
     catch (error) {
         console.error(`Failed to create notification for workspace ${workspaceId}:`, error);
+    }
+};
+// Helper to send task assignment email
+const sendTaskAssignmentEmail = async (params) => {
+    const resendApiKey = process.env.RESEND_API_KEY;
+    if (!resendApiKey) {
+        console.error("RESEND_API_KEY not found in environment variables.");
+        return;
+    }
+    const resend = new Resend(resendApiKey);
+    const { to, userName, taskTitle, companyName, projectName } = params;
+    try {
+        await resend.emails.send({
+            from: 'notifications@saturnsync.com',
+            to: to,
+            subject: `New Task Assigned: ${taskTitle}`,
+            html: `
+                <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #FF6812;">Hello ${userName},</h2>
+                    <p style="font-size: 16px; color: #333;">You have been assigned a new task in <strong>SaturnSync</strong>.</p>
+                    
+                    <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                        <p style="margin: 5px 0;"><strong>Task:</strong> ${taskTitle}</p>
+                        <p style="margin: 5px 0;"><strong>Company:</strong> ${companyName}</p>
+                        <p style="margin: 5px 0;"><strong>Project:</strong> ${projectName}</p>
+                    </div>
+
+                    <p style="font-size: 14px; color: #666;">Log in to your dashboard to view full details and start collaborating.</p>
+                    
+                    <a href="https://saturnsync.com/my-tasks" style="display: inline-block; background-color: #FF6812; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 10px;">View My Tasks</a>
+                    
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+                    <p style="font-size: 12px; color: #999;">You received this because email notifications are enabled in your SaturnSync account settings.</p>
+                </div>
+            `,
+        });
+        console.log(`Task assignment email sent to ${to}`);
+    }
+    catch (error) {
+        console.error("Failed to send task assignment email:", error);
     }
 };
 // --- Notification Triggers ---
@@ -148,16 +231,18 @@ exports.onSaleCreate = functions.firestore
         context: { companyName, projectName },
         isRelevantTo,
     });
+    // Trigger project progress update
+    await updateProjectProgress(workspaceId, companyId, projectId);
 });
 // On Task Create & Update
 exports.onTaskWrite = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
     .onWrite(async (change, context) => {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     const { workspaceId, companyId, projectId, siloId } = context.params;
     const beforeData = change.before.data();
     const afterData = change.after.data();
-    // Task Creation or Re-assignment
+    // 1. Handle Notifications and Emails
     if (afterData && (!beforeData || beforeData.assigneeId !== afterData.assigneeId)) {
         const actorUid = afterData.updatedBy || afterData.createdBy;
         const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
@@ -172,7 +257,8 @@ exports.onTaskWrite = functions.firestore
         const companyName = ((_a = companySnap.data()) === null || _a === void 0 ? void 0 : _a.name) || '';
         const projectName = ((_b = projectSnap.data()) === null || _b === void 0 ? void 0 : _b.name) || '';
         const siloName = ((_c = siloSnap.data()) === null || _c === void 0 ? void 0 : _c.name) || '';
-        const assigneeName = assigneeSnap.exists ? (_d = assigneeSnap.data()) === null || _d === void 0 ? void 0 : _d.name : 'an unknown user';
+        const assigneeName = assigneeSnap.exists ? (((_d = assigneeSnap.data()) === null || _d === void 0 ? void 0 : _d.name) || ((_e = assigneeSnap.data()) === null || _e === void 0 ? void 0 : _e.email)) : 'an unknown user';
+        // Create In-App Notification
         await createNotification(workspaceId, {
             type: 'task_assigned',
             actorUid,
@@ -182,10 +268,24 @@ exports.onTaskWrite = functions.firestore
             context: { companyName, projectName, siloName },
             isRelevantTo,
         });
+        // Send Email Notification if enabled
+        if (assigneeSnap.exists) {
+            const assigneeData = assigneeSnap.data();
+            const isEmailEnabled = (assigneeData === null || assigneeData === void 0 ? void 0 : assigneeData.emailNotificationsEnabled) !== false; // Default to true
+            const email = assigneeData === null || assigneeData === void 0 ? void 0 : assigneeData.email;
+            if (isEmailEnabled && email) {
+                await sendTaskAssignmentEmail({
+                    to: email,
+                    userName: (assigneeData === null || assigneeData === void 0 ? void 0 : assigneeData.name) || 'User',
+                    taskTitle: afterData.title,
+                    companyName,
+                    projectName
+                });
+            }
+        }
     }
-    // Task Completion
+    // Task Completion Notification
     if (beforeData && afterData && beforeData.completed === false && afterData.completed === true) {
-        // The person completing the task is the assignee.
         const actorUid = afterData.assigneeId;
         const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
         if (!actorName)
@@ -195,9 +295,9 @@ exports.onTaskWrite = functions.firestore
             db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
             db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get()
         ]);
-        const companyName = ((_e = companySnap.data()) === null || _e === void 0 ? void 0 : _e.name) || '';
-        const projectName = ((_f = projectSnap.data()) === null || _f === void 0 ? void 0 : _f.name) || '';
-        const siloName = ((_g = siloSnap.data()) === null || _g === void 0 ? void 0 : _g.name) || '';
+        const companyName = ((_f = companySnap.data()) === null || _f === void 0 ? void 0 : _f.name) || '';
+        const projectName = ((_g = projectSnap.data()) === null || _g === void 0 ? void 0 : _g.name) || '';
+        const siloName = ((_h = siloSnap.data()) === null || _h === void 0 ? void 0 : _h.name) || '';
         await createNotification(workspaceId, {
             type: 'task_completed',
             actorUid,
@@ -207,6 +307,8 @@ exports.onTaskWrite = functions.firestore
             isRelevantTo,
         });
     }
+    // 2. Handle Project Progress Update
+    await updateProjectProgress(workspaceId, companyId, projectId);
 });
 // --- Deletion Triggers ---
 exports.onCompanyDelete = functions.firestore
@@ -214,7 +316,6 @@ exports.onCompanyDelete = functions.firestore
     .onDelete(async (snap, context) => {
     const { workspaceId } = context.params;
     const companyData = snap.data();
-    // Assume the last user to touch it is the deleter - this is an assumption
     const actorUid = companyData.updatedBy || companyData.createdBy;
     const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
     if (!actorName)
@@ -451,6 +552,7 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
                 [`users.${uid}`]: {
                     role: "contributor", // Default role for invited users
                     name: displayName,
+                    email: authEmail,
                     avatarUrl: photoURL,
                 },
             });
@@ -703,7 +805,7 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
             fullPath: finalFile.name,
             parentPath: targetParentPath,
             size: fileSize,
-            mimeType: mimeType,
+            mimeType: file.type,
             downloadURL: downloadURL,
             uploadedBy: uid,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -811,11 +913,6 @@ exports.backfillAllProjects = functions
                 // This is a 'projects' doc OUTSIDE the expected path
                 strayCount++;
                 console.warn(`Stray project document outside expected structure: ${path}`);
-                // OPTION A: Just log them, do not delete:
-                // continue;
-                // OPTION B (stricter): delete them because they are invalid / test data:
-                // await docSnap.ref.delete();
-                // deletedCount++;
             }
         }
         console.log(`backfillAllProjects completed. updated=${updatedCount}, stray=${strayCount}, deleted=${deletedCount}`);
@@ -835,42 +932,38 @@ exports.backfillAllProjects = functions
     }
 });
 async function publishToFacebook(postDoc) {
+    var _a;
     const post = postDoc.data();
     const pathSegments = postDoc.ref.path.split('/');
     // path: workspaces/{workspaceId}/companies/{companyId}/socialPosts/{postId}
     const workspaceId = pathSegments[1];
     const companyId = pathSegments[3];
-    // Load facebook config from subcollection
-    const fbAccountRef = db.doc(`workspaces/${workspaceId}/companies/${companyId}/socialAccounts/facebook`);
-    const fbSnap = await fbAccountRef.get();
-    if (!fbSnap.exists) {
-        console.log('publishToFacebook: no facebook socialAccounts doc, skipping', fbAccountRef.path);
+    const companyRef = db.doc(`workspaces/${workspaceId}/companies/${companyId}`);
+    const companySnap = await companyRef.get();
+    if (!companySnap.exists) {
+        console.warn('publishToFacebook: company not found for', companyRef.path);
+        return 'failed';
+    }
+    const companyData = companySnap.data();
+    const fbConfig = (_a = companyData === null || companyData === void 0 ? void 0 : companyData.socialIntegration) === null || _a === void 0 ? void 0 : _a.facebook;
+    if (!(fbConfig === null || fbConfig === void 0 ? void 0 : fbConfig.pageId) || !(fbConfig === null || fbConfig === void 0 ? void 0 : fbConfig.pageAccessToken)) {
+        console.log('publishToFacebook: no facebook config, skipping', companyRef.path);
         return 'skip';
     }
-    const fbConfig = fbSnap.data();
-    if (fbConfig.status !== 'connected') {
-        console.log('publishToFacebook: facebook account not connected, skipping', fbAccountRef.path, 'status=', fbConfig.status);
-        return 'skip';
-    }
-    const pageId = fbConfig.accountId; // Page ID from /me/accounts
-    const accessToken = fbConfig.accessToken;
-    if (!pageId || !accessToken) {
-        console.log('publishToFacebook: missing pageId or accessToken, skipping', fbAccountRef.path);
-        return 'skip';
-    }
-    const message = post.captionFacebook || post.captionDefault || '';
+    // For now, only publish caption text (no media)
+    const message = post.captionDefault || '';
     if (!message.trim()) {
         console.log('publishToFacebook: empty message, skipping', postDoc.ref.path);
         return 'skip';
     }
-    const url = `https://graph.facebook.com/v19.0/${pageId}/feed`;
+    const url = `https://graph.facebook.com/v19.0/${fbConfig.pageId}/feed`;
     try {
         const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 message,
-                access_token: accessToken,
+                access_token: fbConfig.pageAccessToken,
             }),
         });
         if (!res.ok) {
@@ -918,7 +1011,6 @@ exports.publishSocialPosts = functions.pubsub
                 if (result === 'success')
                     anySuccess = true;
             }
-            // Later: instagram, linkedin, etc
             let newStatus = post.status;
             let errorMessage = null;
             if (anyFailed) {

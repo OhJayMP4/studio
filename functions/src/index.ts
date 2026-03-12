@@ -183,7 +183,7 @@ exports.onCommentCreate = functions.firestore
             type: 'comment_added',
             actorUid: commentData.createdBy,
             actorName,
-            target: { id: taskId, name: taskTitle, type: 'task', path: `/company/${companyId}/project/${projectId}` },
+            target: { id: taskId, name: taskTitle, text: 'task', path: `/company/${companyId}/project/${projectId}` },
             context: { 
                 companyName, 
                 projectName,
@@ -972,7 +972,7 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
             fullPath: finalFile.name,
             parentPath: targetParentPath,
             size: fileSize,
-            mimeType: file.type,
+            mimeType: mimeType,
             downloadURL: downloadURL,
             uploadedBy: uid,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
