@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useForm, FormProvider } from 'react-hook-form';
@@ -22,7 +21,6 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Pencil, KeyRound, User, Palette, Monitor, Sun, Moon, Check, Sparkles } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { useUserPrefs } from '@/hooks/use-sidebar-prefs';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { useTheme } from 'next-themes';
@@ -182,7 +180,7 @@ export default function SettingsPage() {
   const fallback = name ? name.charAt(0).toUpperCase() : '?';
 
   return (
-    <div className="space-y-8 max-w-4xl">
+    <div className="space-y-8 max-w-4xl pb-20">
       <div>
         <h1 className="text-4xl font-headline font-bold">Settings</h1>
         <p className="text-muted-foreground text-lg">Personalize your environment and manage workspace security.</p>
@@ -208,6 +206,7 @@ export default function SettingsPage() {
               ].map((mode) => (
                 <button
                   key={mode.id}
+                  type="button"
                   onClick={() => handleThemeChange(mode.id as any)}
                   className={cn(
                     "flex items-center justify-center gap-3 p-4 rounded-xl border-2 transition-all group",
@@ -231,13 +230,14 @@ export default function SettingsPage() {
                 <Label className="text-base font-bold uppercase tracking-wider text-muted-foreground">Accent Color</Label>
                 <div className="flex items-center gap-1 text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase">
                     <Sparkles className="h-3 w-3" />
-                    Personal Choice
+                    Workspace Theming
                 </div>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-3">
               {ACCENT_COLORS.map((color) => (
                 <button
                   key={color.value}
+                  type="button"
                   onClick={() => setAccentColor(color.value)}
                   className={cn(
                     "group relative flex h-12 w-full items-center justify-center rounded-lg border-2 transition-all active:scale-95",
@@ -259,15 +259,15 @@ export default function SettingsPage() {
               ))}
             </div>
             <p className="text-xs text-muted-foreground italic leading-relaxed pt-2">
-              The accent color affects buttons, links, active sidebar menus, and highlights across the entire app. 
-              Changes are saved instantly to your profile.
+              The accent color affects buttons, active sidebar menus, and highlights across the entire app. 
+              Changes are saved instantly to your workspace profile.
             </p>
           </div>
         </CardContent>
       </Card>
 
       <div className="grid gap-8 md:grid-cols-2">
-        <Card className="flex flex-col border-none shadow-sm">
+        <Card className="flex flex-col border-none shadow-sm overflow-hidden">
             <CardHeader>
             <CardTitle className="flex items-center gap-2">
                 <User className="h-5 w-5 text-primary" />
@@ -298,7 +298,7 @@ export default function SettingsPage() {
                         name="name"
                         render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Display Name</Label>
+                            <FormLabel>Display Name</FormLabel>
                             <FormControl>
                             <Input placeholder="Your Name" {...field} />
                             </FormControl>
@@ -322,7 +322,7 @@ export default function SettingsPage() {
                     </div>
                 </div>
                 </CardContent>
-                <CardFooter className="pt-6 border-t">
+                <CardFooter className="pt-6 border-t bg-muted/30">
                 <Button type="submit" className="w-full" disabled={profileForm.formState.isSubmitting || isUploading}>
                     {profileForm.formState.isSubmitting ? 'Saving...' : 'Save Profile'}
                 </Button>
@@ -331,7 +331,7 @@ export default function SettingsPage() {
             </FormProvider>
         </Card>
 
-        <Card className="flex flex-col border-none shadow-sm">
+        <Card className="flex flex-col border-none shadow-sm overflow-hidden">
             <CardHeader>
             <CardTitle className="flex items-center gap-2">
                 <KeyRound className="h-5 w-5 text-primary" />
@@ -385,7 +385,7 @@ export default function SettingsPage() {
                     />
                 </div>
                 </CardContent>
-                <CardFooter className="pt-6 border-t">
+                <CardFooter className="pt-6 border-t bg-muted/30">
                 <Button type="submit" variant="outline" className="w-full" disabled={passwordForm.formState.isSubmitting}>
                     {passwordForm.formState.isSubmitting ? 'Updating...' : 'Update Password'}
                 </Button>

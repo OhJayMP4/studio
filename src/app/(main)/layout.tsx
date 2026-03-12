@@ -1,4 +1,3 @@
-
 'use client';
 
 import MainSidebar from "@/components/layout/main-sidebar";
@@ -49,9 +48,12 @@ function ThemeAndAccentManager() {
       const root = document.documentElement;
       root.style.setProperty('--primary', prefs.accentColor);
       root.style.setProperty('--ring', prefs.accentColor);
-      // Ensure sidebar primary variables are also updated
+      // Ensure sidebar variables are also updated
       root.style.setProperty('--sidebar-primary', prefs.accentColor);
       root.style.setProperty('--sidebar-ring', prefs.accentColor);
+      // Update accent background for hover/active states
+      root.style.setProperty('--sidebar-accent', `hsl(${prefs.accentColor} / 0.1)`);
+      root.style.setProperty('--sidebar-accent-foreground', prefs.accentColor);
     }
   }, [prefs?.accentColor]);
 
