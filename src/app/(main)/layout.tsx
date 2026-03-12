@@ -28,21 +28,13 @@ export const useSelectedWorkspace = () => {
   return context;
 };
 
-
-function MainLayoutContent({ children }: { children: React.ReactNode }) {
-  const { user, isUserLoading } = useUser();
-  const router = useRouter();
-  const firestore = useFirestore();
-  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
-  const [mounted, setMounted] = useState(false);
-  
-  // Custom theme and color logic
+/**
+ * Manager component to handle theme and accent color syncing.
+ * This must be rendered inside the SelectedWorkspaceContext.Provider.
+ */
+function ThemeAndAccentManager() {
   const { prefs } = useUserPrefs();
   const { setTheme } = useTheme();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // Sync theme from prefs
   useEffect(() => {
@@ -57,6 +49,21 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
       document.documentElement.style.setProperty('--primary', prefs.accentColor);
     }
   }, [prefs?.accentColor]);
+
+  return null;
+}
+
+
+function MainLayoutContent({ children }: { children: React.ReactNode }) {
+  const { user, isUserLoading } = useUser();
+  const router = useRouter();
+  const firestore = useFirestore();
+  const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!isUserLoading && !user && mounted) {
@@ -96,6 +103,7 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
 
   return (
     <SelectedWorkspaceContext.Provider value={{ selectedWorkspace, setSelectedWorkspace, isUserAdmin }}>
+      <ThemeAndAccentManager />
       <SidebarProvider>
         <MainSidebar />
         <SidebarInset>
