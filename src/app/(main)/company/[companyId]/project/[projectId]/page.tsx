@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useSelectedWorkspace } from '@/app/(main)/layout';
@@ -74,53 +75,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-
-async function updateProjectProgress(firestore: any, workspaceId: string, companyId: string, projectId: string, toast?: any, isUserAdmin?: boolean) {
-    const projectRef = doc(firestore, 'workspaces', workspaceId, 'companies', companyId, 'projects', projectId);
-
-    // Perform reads outside of the transaction
-    const silosCollection = collection(projectRef, 'silos');
-    const silosSnapshot = await getDocs(silosCollection);
-    let totalTasks = 0;
-    let completedTasks = 0;
-
-    for (const siloDoc of silosSnapshot.docs) {
-        const tasksCollection = collection(siloDoc.ref, 'tasks');
-        const tasksSnapshot = await getDocs(tasksCollection);
-        totalTasks += tasksSnapshot.size;
-        tasksSnapshot.forEach(taskDoc => {
-            if (taskDoc.data().completed) {
-                completedTasks++;
-            }
-        });
-    }
-
-    // Now run the transaction to read the project and update it atomically
-    await runTransaction(firestore, async (transaction) => {
-        const projectDoc = await transaction.get(projectRef);
-        if (!projectDoc.exists()) {
-            throw "Project not found!";
-        }
-        const projectData = projectDoc.data() as Project;
-
-        const taskProgress = totalTasks > 0 ? (completedTasks / totalTasks) : 0;
-        
-        const salesTarget = projectData.monetaryValue || 0;
-        const currentSales = projectData.totalSalesValue || 0;
-        const salesProgress = salesTarget > 0 ? Math.min(currentSales / salesTarget, 1) : 0;
-
-        const newOverallProgress = Math.round(projectData.hasMonetaryValue 
-            ? (salesProgress * 0.5 + taskProgress * 0.5) * 100
-            : taskProgress * 100);
-
-        const updates: any = { progress: newOverallProgress };
-        
-        // Manual Status Change: We no longer auto-update status to 'completed' here.
-        // Instead, the UI will prompt the user to mark it as complete if they wish.
-        
-        transaction.update(projectRef, updates);
-    });
-}
 
 function ProjectBreadcrumb({
   company,
@@ -242,7 +196,6 @@ function SortableSiloItem({ silo, companyId, projectId }: { silo: Silo; companyI
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: silo.id, data: { type: 'Silo' } });
     const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
     const firestore = useFirestore();
-    const { toast } = useToast();
     
     const tasksQuery = useMemoFirebase(() => {
         if (!selectedWorkspace) return null;
@@ -262,12 +215,6 @@ function SortableSiloItem({ silo, companyId, projectId }: { silo: Silo; companyI
             return priorityOrder[b.priority] - priorityOrder[a.priority];
         });
     }, [rawTasks]);
-
-    useEffect(() => {
-        if (selectedWorkspace && !rawTasksLoading) {
-            updateProjectProgress(firestore, selectedWorkspace.id, companyId, projectId, toast, isUserAdmin);
-        }
-    }, [rawTasks, rawTasksLoading, firestore, selectedWorkspace, companyId, projectId, toast, isUserAdmin]);
 
     const completedTasks = rawTasks?.filter(t => t.completed).length || 0;
     const totalTasks = rawTasks?.length || 0;
@@ -335,7 +282,6 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
   const firestore = useFirestore();
   const { toast } = useToast();
 
-  // We fetch all silos and sort them in code to be resilient to documents missing the 'order' field.
   const silosQuery = useMemoFirebase(() => {
     if (!selectedWorkspace) return null;
     return collection(
@@ -381,7 +327,6 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
     setActiveItem(null);
     const { active, over } = event;
 
-    // Handle Silo reordering
     if (active.data.current?.type === 'Silo' && over && active.id !== over.id && silos) {
       const oldIndex = silos.findIndex(s => s.id === active.id);
       const newIndex = silos.findIndex(s => s.id === over.id);
@@ -414,7 +359,6 @@ function SilosList({ companyId, projectId }: { companyId: string, projectId: str
     if (!over || !selectedWorkspace) return;
 
     const activeIsTask = active.data.current?.type === 'Task';
-    // over can be a silo (AccordionItem) or the content area inside it
     const overIsSilo = over.data.current?.type === 'Silo' || over.data.current?.siloId;
     const targetSiloId = over.data.current?.type === 'Silo' ? over.id : over.data.current?.siloId;
 
@@ -523,35 +467,9 @@ function SalesProgress({ project, companyId }: { project: Project, companyId: st
                 if (!projectDoc.exists()) throw new Error("Project not found");
                 const currentProjectData = projectDoc.data() as Project;
 
-                // Delete the sale document
                 transaction.delete(saleRef);
-
-                // Recalculate project totals and progress
                 const newTotalSales = (currentProjectData.totalSalesValue || 0) - saleToDelete.value;
-                const salesTarget = currentProjectData.monetaryValue || 0;
-                const salesProgress = salesTarget > 0 ? Math.min(newTotalSales / salesTarget, 1) : 0;
-                
-                const silosSnapshot = await getDocs(collection(projectRef, 'silos'));
-                let totalTasks = 0;
-                let completedTasks = 0;
-                for (const siloDoc of silosSnapshot.docs) {
-                    const tasksSnapshot = await getDocs(collection(siloDoc.ref, 'tasks'));
-                    totalTasks += tasksSnapshot.size;
-                    tasksSnapshot.forEach(taskDoc => {
-                        if (taskDoc.data().completed) completedTasks++;
-                    });
-                }
-                const taskProgress = totalTasks > 0 ? (completedTasks / totalTasks) : 0;
-
-                const overallProgress = currentProjectData.hasMonetaryValue 
-                    ? (salesProgress * 0.5 + taskProgress * 0.5) * 100
-                    : taskProgress * 100;
-
-                // Update the project document
-                transaction.update(projectRef, { 
-                    totalSalesValue: newTotalSales,
-                    progress: Math.round(overallProgress)
-                });
+                transaction.update(projectRef, { totalSalesValue: newTotalSales });
             });
 
             toast({
@@ -559,11 +477,7 @@ function SalesProgress({ project, companyId }: { project: Project, companyId: st
                 description: `The sale of R${saleToDelete.value.toLocaleString()} has been removed.`,
             });
         } catch (error: any) {
-            toast({
-                variant: 'destructive',
-                title: 'Deletion Failed',
-                description: error.message,
-            });
+            toast({ variant: 'destructive', title: 'Deletion Failed', description: error.message });
         }
     };
 
@@ -642,7 +556,7 @@ function ProjectProgress({ project }: { project: Project }) {
         <Card>
             <CardHeader>
                 <CardTitle>Overall Project Progress</CardTitle>
-                <CardDescription>Combined progress from sales and task completion.</CardDescription>
+                <CardDescription>Combined progress from sales and task completion. (Updated automatically by SaturnSync AI)</CardDescription>
             </CardHeader>
             <CardContent>
                  <div className="space-y-2">
@@ -691,14 +605,12 @@ export default function ProjectPage() {
   const [promptedForId, setPromptedForId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Prompt the user if the project hits 100% and is still 'active'
     if (project && project.progress === 100 && (project.status === 'active' || !project.status)) {
         if (promptedForId !== project.id) {
             setShowCompletionDialog(true);
             setPromptedForId(project.id);
         }
     } else if (project && project.progress < 100) {
-        // Reset the prompt tracker if progress drops below 100
         setPromptedForId(null);
     }
   }, [project?.progress, project?.status, project?.id, promptedForId]);
@@ -719,13 +631,6 @@ export default function ProjectPage() {
   }
 
   const isLoading = isProjectLoading || isCompanyLoading;
-
-  // Initial progress calculation on load
-  useEffect(() => {
-    if (selectedWorkspace && !isLoading && project) {
-        updateProjectProgress(firestore, selectedWorkspace.id, companyId, projectId, toast, isUserAdmin);
-    }
-  }, [firestore, selectedWorkspace, companyId, projectId, isLoading, project, toast, isUserAdmin]);
 
   if (isLoading || !project || !company) {
     return (

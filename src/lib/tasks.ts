@@ -2,6 +2,8 @@
 'use client';
 import { collection, doc, writeBatch, getDoc, setDoc, Firestore, query, where, getDocs, updateDoc, serverTimestamp } from "firebase/firestore";
 import type { Company, Project, Silo, Task, Workspace } from "./types";
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
 interface AddTaskParams {
     workspaceId: string;
@@ -40,19 +42,20 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
     const projectData = projectSnap.data() as Project;
     const siloData = siloSnap.data() as Silo;
     
-    // Use "Quick Tasks" for the display name if it's the internal reserved project
     const projectName = projectId === 'general-tasks' ? 'Quick Tasks' : projectData.name;
 
-    // 2. Create the original task
-    batch.set(taskRef, {
+    const originalTaskData = {
         ...taskData, 
         projectId, 
         workspaceId, 
         timeSpentMinutes: 0,
         createdAt: serverTimestamp()
-    });
+    };
 
-    // 3. SECURITY CHECK: Verify assignee is a member of the workspace before denormalizing
+    // 2. Create the original task
+    batch.set(taskRef, originalTaskData);
+
+    // 3. Denormalize
     if (workspaceData.users && workspaceData.users[taskData.assigneeId]) {
         const userTaskRef = doc(collection(firestore, `user-tasks/${taskData.assigneeId}/tasks`));
         
@@ -75,11 +78,17 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
             timeSpentMinutes: 0,
             createdAt: serverTimestamp()
         });
-    } else {
-        console.warn(`Skipping task denormalization: User ${taskData.assigneeId} is not a member of workspace ${workspaceId}.`);
     }
 
-    await batch.commit();
+    // Commit non-blocking
+    batch.commit().catch(async (serverError) => {
+        const permissionError = new FirestorePermissionError({
+            path: taskRef.path,
+            operation: 'create',
+            requestResourceData: originalTaskData,
+        } satisfies SecurityRuleContext);
+        errorEmitter.emit('permission-error', permissionError);
+    });
 }
 
 /**
@@ -101,7 +110,6 @@ export async function updateTask(
     // 2. Sync with denormalized user-tasks
     const isAssigneeChanged = updates.assigneeId && updates.assigneeId !== oldAssigneeId;
     
-    // Find existing denormalized record for the old assignee
     const oldUserTasksQuery = query(
         collection(firestore, `user-tasks/${oldAssigneeId}/tasks`),
         where("originalTaskId", "==", originalTaskId)
@@ -109,21 +117,15 @@ export async function updateTask(
     const oldUserTasksSnap = await getDocs(oldUserTasksQuery);
 
     if (isAssigneeChanged) {
-        // Delete from old user's list
         oldUserTasksSnap.forEach(d => batch.delete(d.ref));
 
-        // Create in new user's list
         const newUserTaskRef = doc(collection(firestore, `user-tasks/${updates.assigneeId}/tasks`));
-        
-        // We need the full context for the new record
         const originalSnap = await getDoc(originalTaskRef);
         const taskData = originalSnap.data() as Task;
         
         const projectId = originalTaskPath.split('/')[5];
         const isQuickTask = projectId === 'general-tasks';
 
-        // Since we are in a batch and haven't committed the original update yet, 
-        // we manually merge the new updates for the denormalized copy
         const denormalizedData = {
             originalTaskId,
             workspaceId: taskData.workspaceId,
@@ -146,18 +148,24 @@ export async function updateTask(
         
         batch.set(newUserTaskRef, denormalizedData);
     } else {
-        // Just update existing records for the same user
         oldUserTasksSnap.forEach(document => {
             batch.update(document.ref, updates);
         });
     }
 
-    await batch.commit();
+    // Commit non-blocking
+    batch.commit().catch(async (serverError) => {
+        const permissionError = new FirestorePermissionError({
+            path: originalTaskRef.path,
+            operation: 'update',
+            requestResourceData: updates,
+        } satisfies SecurityRuleContext);
+        errorEmitter.emit('permission-error', permissionError);
+    });
 }
 
 /**
- * Adds a task to a "Quick Tasks" container for a company, creating the container if it doesn't exist.
- * This satisfies the need for quick tasks without forcing users to navigate silos.
+ * Adds a task to a "Quick Tasks" container for a company.
  */
 export async function addQuickTask(firestore: Firestore, params: {
     workspaceId: string;
@@ -165,8 +173,6 @@ export async function addQuickTask(firestore: Firestore, params: {
     taskData: Omit<Task, 'id' | 'description' | 'workspaceId' | 'projectId'> & { description?: string, createdBy: string };
 }) {
     const { workspaceId, companyId, taskData } = params;
-    
-    // We use a reserved ID for the quick tasks project and silo to make lookup instant and consistent
     const projectId = 'general-tasks';
     const siloId = 'inbox';
 
@@ -177,7 +183,7 @@ export async function addQuickTask(firestore: Firestore, params: {
     if (!projectSnap.exists()) {
         await setDoc(projectRef, {
             name: 'Quick Tasks',
-            deadline: new Date(2099, 11, 31).toISOString(), // Far future
+            deadline: new Date(2099, 11, 31).toISOString(),
             hasMonetaryValue: false,
             progress: 0,
             companyId,
@@ -187,9 +193,6 @@ export async function addQuickTask(firestore: Firestore, params: {
             status: 'active',
             completedAt: null,
         });
-    } else if (projectSnap.data().name !== 'Quick Tasks') {
-        // Self-healing: Update name if it's still 'General Tasks'
-        await updateDoc(projectRef, { name: 'Quick Tasks' });
     }
 
     const siloSnap = await getDoc(siloRef);
@@ -202,15 +205,13 @@ export async function addQuickTask(firestore: Firestore, params: {
         });
     }
 
+    // Don't await the final add, let it happen in background
     return addTask(firestore, {
         workspaceId,
         companyId,
         projectId,
         siloId,
-        taskData: {
-            ...taskData,
-            projectId // addTask expects this in the data object too
-        }
+        taskData: { ...taskData, projectId }
     });
 }
 
@@ -224,8 +225,6 @@ export async function updateTaskCompletion(
     timeSpentMinutes?: number
 ) {
     const originalTaskRef = doc(firestore, originalTaskPath);
-    
-    // Find the denormalized task to update. We need to query for it.
     const userTasksRef = collection(firestore, `user-tasks/${userId}/tasks`);
     const q = query(userTasksRef, where("originalTaskId", "==", originalTaskId));
     
@@ -234,37 +233,30 @@ export async function updateTaskCompletion(
         getDocs(q)
     ]);
 
-    if (!originalTaskSnap.exists()) {
-        throw new Error("Original task not found.");
-    }
+    if (!originalTaskSnap.exists()) throw new Error("Original task not found.");
     
-    // Security check: ensure the user ID matches the assignee on the original task.
     if (originalTaskSnap.data().assigneeId !== userId) {
         console.error(`Security violation: User ${userId} attempted to update a task not assigned to them.`);
         return;
     }
 
     const batch = writeBatch(firestore);
-
-    // Update original task, and add an 'updatedBy' field
-    const auth = (await import('firebase/auth')).getAuth();
-    const currentUser = auth.currentUser;
-    
-    const updateData: any = { completed, updatedBy: currentUser?.uid };
+    const updateData: any = { completed };
     if (completed) {
         updateData.timeSpentMinutes = timeSpentMinutes || 0;
     }
 
     batch.update(originalTaskRef, updateData);
-
-    // Update denormalized task(s) - should only be one
     userTasksSnap.forEach(document => {
-        const userTaskUpdate: any = { "completed": completed };
-        if (completed) {
-            userTaskUpdate.timeSpentMinutes = timeSpentMinutes || 0;
-        }
-        batch.update(document.ref, userTaskUpdate);
+        batch.update(document.ref, { "completed": completed, timeSpentMinutes: timeSpentMinutes || 0 });
     });
 
-    await batch.commit();
+    batch.commit().catch(async (serverError) => {
+        const permissionError = new FirestorePermissionError({
+            path: originalTaskRef.path,
+            operation: 'update',
+            requestResourceData: updateData,
+        } satisfies SecurityRuleContext);
+        errorEmitter.emit('permission-error', permissionError);
+    });
 }

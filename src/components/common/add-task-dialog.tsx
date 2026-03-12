@@ -95,7 +95,8 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
     }
 
     try {
-      await addTask(firestore, {
+      // Initiate non-blocking add
+      addTask(firestore, {
         workspaceId: selectedWorkspace.id,
         companyId,
         projectId,
@@ -119,11 +120,11 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
       form.reset();
       setIsOpen(false);
     } catch (error: any) {
-      console.error('Error creating task:', error);
+      console.error('Error initiating task creation:', error);
       toast({
         variant: 'destructive',
-        title: 'Creation Failed',
-        description: error.message || 'Could not create the task.',
+        title: 'Action Failed',
+        description: error.message || 'Could not start task creation.',
       });
     }
   };
