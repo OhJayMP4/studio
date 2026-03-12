@@ -3,7 +3,7 @@
 
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
-import { doc, setDoc, serverTimestamp, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
 import type { UserWorkspacePrefs, SidebarModule } from '@/lib/types';
 import { useEffect, useMemo } from 'react';
 
@@ -131,6 +131,14 @@ export const useUserPrefs = () => {
     if (!prefsRef || !prefs) return;
     await updateDoc(prefsRef, { accentColor: color, updatedAt: serverTimestamp() });
   };
+
+  const updateChatLastRead = async () => {
+    if (!prefsRef || !prefs) return;
+    await updateDoc(prefsRef, {
+      'viewPrefs.chatLastReadAt': serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  };
   
   return { 
     prefs, 
@@ -140,7 +148,8 @@ export const useUserPrefs = () => {
     setModuleHidden, 
     setViewPref, 
     setTheme, 
-    setAccentColor 
+    setAccentColor,
+    updateChatLastRead
   };
 };
 

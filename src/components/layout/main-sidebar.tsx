@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { RemoveModuleDialog } from "../sidebar/remove-module-dialog";
 import { cn } from "@/lib/utils";
 import { useSelectedWorkspace } from "@/app/(main)/layout";
+import { ChatUnreadBadge } from "./chat-unread-badge";
 
 export default function MainSidebar() {
   const pathname = usePathname();
@@ -90,6 +91,9 @@ export default function MainSidebar() {
                             <span>{module.label}</span>
                           </Link>
                         </SidebarMenuButton>
+                        
+                        {module.id === 'chat' && <ChatUnreadBadge />}
+
                         {!coreModuleIds.includes(module.id) && (
                             <RemoveModuleDialog module={module} onConfirm={() => setModuleHidden(module.id, true)}>
                                 <Button variant="ghost" size="icon" className={cn("absolute top-1/2 right-2 -translate-y-1/2 h-6 w-6 opacity-0 group-hover/item:opacity-100",

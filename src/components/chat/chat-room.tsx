@@ -13,11 +13,13 @@ import { Send, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { cn } from '@/lib/utils';
+import { useUserPrefs } from '@/hooks/use-sidebar-prefs';
 
 export function ChatRoom() {
   const { user } = useUser();
   const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
+  const { updateChatLastRead } = useUserPrefs();
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -48,7 +50,11 @@ export function ChatRoom() {
         scrollArea.scrollTop = scrollArea.scrollHeight;
       }
     }
-  }, [messages]);
+    // Clear unread count when viewing messages
+    if (messages && messages.length > 0) {
+        updateChatLastRead();
+    }
+  }, [messages, updateChatLastRead]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
