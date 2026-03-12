@@ -20,12 +20,15 @@ import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from '@
 import { collection, addDoc, serverTimestamp, query, orderBy, doc } from 'firebase/firestore';
 import { format, formatDistanceToNow, isPast, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { Sparkles, CheckCircle2, Clock, CalendarIcon, Building2, Folder, Layout, User as UserIcon, ShieldCheck } from 'lucide-react';
+import { Sparkles, CheckCircle2, Clock, CalendarIcon, Building2, Folder, Layout, User as UserIcon, ShieldCheck, Settings2, Trash2 } from 'lucide-react';
 import { suggestTaskCompletion, type SuggestTaskCompletionOutput } from '@/ai/flows/suggest-task-completion-flow';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { Checkbox } from '../ui/checkbox';
 import { TaskCompletionDialog } from './task-completion-dialog';
-import { updateTaskCompletion } from '@/lib/tasks';
+import { updateTaskCompletion, deleteTask } from '@/lib/tasks';
+import { useToast } from '@/hooks/use-toast';
+import { EditTaskDialog } from './edit-task-dialog';
+import { DeleteDialog } from './delete-dialog';
 
 function CommentItem({ comment, path, level = 0 }: { comment: Comment; path: string; level?: number }) {
   const [showReply, setShowReply] = useState(false);
@@ -229,9 +232,11 @@ function PropertyRow({ icon, label, value }: PropertyRowProps) {
 }
 
 export function TaskDetailsDialog({ task, path, children }: { task: Task; path: string, children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
   const firestore = useFirestore();
   const { selectedWorkspace } = useSelectedWorkspace();
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);
+  const { toast } = useToast();
 
   // Parse path for hierarchy details
   const pathParts = useMemo(() => path.split('/'), [path]);
@@ -297,9 +302,19 @@ export function TaskDetailsDialog({ task, path, children }: { task: Task; path: 
     await updateTaskCompletion(firestore, path, task.assigneeId, task.id, true, minutes);
   }
 
+  const handleDelete = async () => {
+      try {
+          await deleteTask(firestore, path, task.id, task.assigneeId);
+          toast({ title: "Task Deleted", description: `"${task.title}" has been deleted.` });
+          setOpen(false);
+      } catch (error: any) {
+          toast({ variant: 'destructive', title: "Delete Failed", description: error.message });
+      }
+  }
+
   return (
     <>
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0 overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b bg-muted/10 shrink-0">
@@ -335,6 +350,24 @@ export function TaskDetailsDialog({ task, path, children }: { task: Task; path: 
 
             <aside className="w-[320px] shrink-0 bg-muted/5 p-6 h-full overflow-y-auto">
                 <div className="space-y-8">
+                    <div className="space-y-4">
+                        <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">Manage Task</h3>
+                        <div className="grid grid-cols-2 gap-2">
+                            <EditTaskDialog task={task} path={path}>
+                                <Button variant="outline" size="sm" className="w-full justify-start h-9">
+                                    <Settings2 className="mr-2 h-4 w-4" />
+                                    Edit
+                                </Button>
+                            </EditTaskDialog>
+                            <DeleteDialog onConfirm={handleDelete} itemName={task.title}>
+                                <Button variant="outline" size="sm" className="w-full justify-start h-9 text-destructive hover:text-destructive hover:bg-destructive/10">
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete
+                                </Button>
+                            </DeleteDialog>
+                        </div>
+                    </div>
+
                     <div className="space-y-4">
                         <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">Task Control</h3>
                         <div className={cn("flex items-center gap-3 p-3 rounded-lg border transition-colors", task.completed ? "bg-green-500/5 border-green-500/20" : "bg-background border-border")}>
