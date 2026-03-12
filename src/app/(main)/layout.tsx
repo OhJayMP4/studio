@@ -43,10 +43,15 @@ function ThemeAndAccentManager() {
     }
   }, [prefs?.theme, setTheme]);
 
-  // Apply accent color from prefs
+  // Apply accent color from prefs to all relevant CSS variables
   useEffect(() => {
     if (prefs?.accentColor) {
-      document.documentElement.style.setProperty('--primary', prefs.accentColor);
+      const root = document.documentElement;
+      root.style.setProperty('--primary', prefs.accentColor);
+      root.style.setProperty('--ring', prefs.accentColor);
+      // Ensure sidebar primary variables are also updated
+      root.style.setProperty('--sidebar-primary', prefs.accentColor);
+      root.style.setProperty('--sidebar-ring', prefs.accentColor);
     }
   }, [prefs?.accentColor]);
 

@@ -107,7 +107,11 @@ export default function MainSidebar() {
       </SidebarContent>
       <SidebarFooter>
         <div className="w-full px-2">
-             <Button variant="outline" className="w-full justify-center bg-orange-500 text-white hover:bg-orange-600 hover:text-white" onClick={() => setIsAddModuleOpen(true)}>
+             <Button 
+                variant="default" 
+                className="w-full justify-center shadow-md font-bold transition-all active:scale-95" 
+                onClick={() => setIsAddModuleOpen(true)}
+             >
                 <Plus className="h-4 w-4 mr-2" />
                 Add Module
             </Button>
