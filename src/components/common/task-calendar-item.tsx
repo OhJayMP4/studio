@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -31,7 +32,8 @@ export function TaskCalendarItem({ task }: TaskCalendarItemProps) {
     assigneeId: task.assigneeId,
     projectId: task.projectId,
     workspaceId: task.workspaceId,
-    createdBy: '', // Not strictly needed for the dialog details
+    createdBy: task.createdBy || '',
+    createdAt: task.createdAt || null,
   };
 
   const MAX_LEN = 20;

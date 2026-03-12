@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { TaskCompletionDialog } from "./task-completion-dialog";
 import { useSelectedWorkspace } from "@/app/(main)/layout";
+import { TaskDetailsDialog } from "./task-details-dialog";
 
 interface TaskGridItemProps {
     userTask: UserTask;
@@ -82,7 +83,21 @@ export function TaskGridItem({ userTask }: TaskGridItemProps) {
     const dueDate = new Date(userTask.dueDate);
     const isOverdue = !userTask.completed && isPast(dueDate) && !isToday(dueDate);
 
-    const linkHref = `/company/${companyId}/project/${projectId}`;
+    const originalTaskPath = `workspaces/${userTask.workspaceId}/companies/${userTask.companyId}/projects/${userTask.projectId}/silos/${userTask.siloId}/tasks/${userTask.originalTaskId}`;
+    
+    const taskForDialog = {
+        id: userTask.originalTaskId,
+        title: userTask.title,
+        description: userTask.description,
+        completed: userTask.completed,
+        dueDate: userTask.dueDate,
+        priority: userTask.priority,
+        assigneeId: userTask.assigneeId,
+        projectId: userTask.projectId,
+        workspaceId: userTask.workspaceId,
+        createdBy: userTask.createdBy || '',
+        createdAt: userTask.createdAt || null,
+    };
 
     return (
        <Card className={cn("flex flex-col", { "opacity-60": userTask.completed })}>
@@ -95,11 +110,13 @@ export function TaskGridItem({ userTask }: TaskGridItemProps) {
                             onCheckedChange={handleCheckChanged}
                             aria-label={`Mark task "${userTask.title}" as ${userTask.completed ? 'incomplete' : 'complete'}`}
                         />
-                        <Link href={linkHref} className="hover:underline">
-                            <CardTitle className={cn({ "line-through text-muted-foreground": userTask.completed })}>
-                                {userTask.title}
-                            </CardTitle>
-                        </Link>
+                        <TaskDetailsDialog task={taskForDialog as any} path={originalTaskPath}>
+                            <button className="hover:underline text-left">
+                                <CardTitle className={cn({ "line-through text-muted-foreground": userTask.completed })}>
+                                    {userTask.title}
+                                </CardTitle>
+                            </button>
+                        </TaskDetailsDialog>
                    </div>
                     <TooltipProvider>
                         <Tooltip>
@@ -114,7 +131,7 @@ export function TaskGridItem({ userTask }: TaskGridItemProps) {
                </div>
            </CardHeader>
            <CardContent className="flex-grow">
-                <p className="text-sm text-muted-foreground">{userTask.description}</p>
+                <p className="text-sm text-muted-foreground line-clamp-3">{userTask.description}</p>
            </CardContent>
             <CardFooter className="flex-col items-start gap-4">
                  <Breadcrumb className="text-xs text-muted-foreground">

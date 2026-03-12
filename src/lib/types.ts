@@ -108,6 +108,7 @@ export type UserTask = {
     dueDate: string;
     priority: 'low' | 'medium' | 'high';
     assigneeId: string;
+    createdBy: string;
     companyName: string;
     projectName: string;
     siloName: string;

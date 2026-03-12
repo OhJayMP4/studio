@@ -241,20 +241,35 @@ export function TaskDetailsDialog({ task, path, children }: { task: Task; path: 
   const siloId = pathParts[7];
 
   // Fetch Hierarchy Docs
-  const companyRef = useMemoFirebase(() => doc(firestore, 'workspaces', workspaceId, 'companies', companyId), [firestore, workspaceId, companyId]);
+  const companyRef = useMemoFirebase(() => {
+    if (!firestore || !workspaceId || !companyId) return null;
+    return doc(firestore, 'workspaces', workspaceId, 'companies', companyId);
+  }, [firestore, workspaceId, companyId]);
   const { data: company } = useDoc<Company>(companyRef);
 
-  const projectRef = useMemoFirebase(() => doc(firestore, 'workspaces', workspaceId, 'companies', companyId, 'projects', projectId), [firestore, workspaceId, companyId, projectId]);
+  const projectRef = useMemoFirebase(() => {
+    if (!firestore || !workspaceId || !companyId || !projectId) return null;
+    return doc(firestore, 'workspaces', workspaceId, 'companies', companyId, 'projects', projectId);
+  }, [firestore, workspaceId, companyId, projectId]);
   const { data: project } = useDoc<Project>(projectRef);
 
-  const siloRef = useMemoFirebase(() => doc(firestore, 'workspaces', workspaceId, 'companies', companyId, 'projects', projectId, 'silos', siloId), [firestore, workspaceId, companyId, projectId, siloId]);
+  const siloRef = useMemoFirebase(() => {
+    if (!firestore || !workspaceId || !companyId || !projectId || !siloId) return null;
+    return doc(firestore, 'workspaces', workspaceId, 'companies', companyId, 'projects', projectId, 'silos', siloId);
+  }, [firestore, workspaceId, companyId, projectId, siloId]);
   const { data: silo } = useDoc<Silo>(siloRef);
 
   // Fetch Users
-  const assigneeRef = useMemoFirebase(() => doc(firestore, 'users', task.assigneeId), [firestore, task.assigneeId]);
+  const assigneeRef = useMemoFirebase(() => {
+    if (!firestore || !task.assigneeId) return null;
+    return doc(firestore, 'users', task.assigneeId);
+  }, [firestore, task.assigneeId]);
   const { data: assignee } = useDoc<UserProfile>(assigneeRef);
 
-  const creatorRef = useMemoFirebase(() => doc(firestore, 'users', task.createdBy), [firestore, task.createdBy]);
+  const creatorRef = useMemoFirebase(() => {
+    if (!firestore || !task.createdBy) return null;
+    return doc(firestore, 'users', task.createdBy);
+  }, [firestore, task.createdBy]);
   const { data: creator } = useDoc<UserProfile>(creatorRef);
 
   const dueDate = new Date(task.dueDate);
@@ -356,7 +371,7 @@ export function TaskDetailsDialog({ task, path, children }: { task: Task; path: 
                                     <div className="flex items-center gap-2">
                                         <Avatar className="h-6 w-6">
                                             <AvatarImage src={assignee?.avatarUrl ?? undefined} />
-                                            <AvatarFallback className="text-[10px]">{assignee?.name?.charAt(0).toUpperCase()}</AvatarFallback>
+                                            <AvatarFallback className="text-[10px]">{assignee?.name?.charAt(0).toUpperCase() || '?'}</AvatarFallback>
                                         </Avatar>
                                         <span className="truncate">{assignee?.name || 'Unassigned'}</span>
                                     </div>
@@ -408,7 +423,7 @@ export function TaskDetailsDialog({ task, path, children }: { task: Task; path: 
                                     <div className="flex items-center gap-2">
                                         <Avatar className="h-5 w-5">
                                             <AvatarImage src={creator?.avatarUrl ?? undefined} />
-                                            <AvatarFallback className="text-[10px]">{creator?.name?.charAt(0).toUpperCase()}</AvatarFallback>
+                                            <AvatarFallback className="text-[10px]">{creator?.name?.charAt(0).toUpperCase() || '?'}</AvatarFallback>
                                         </Avatar>
                                         <span className="text-xs text-muted-foreground">{creator?.name || '...'}</span>
                                     </div>

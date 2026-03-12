@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { TaskCompletionDialog } from "./task-completion-dialog";
 import { useSelectedWorkspace } from "@/app/(main)/layout";
+import { TaskDetailsDialog } from "./task-details-dialog";
 
 interface TaskListItemProps {
     userTask: UserTask;
@@ -76,7 +77,21 @@ export function TaskListItem({ userTask }: TaskListItemProps) {
     const dueDate = new Date(userTask.dueDate);
     const isOverdue = !userTask.completed && isPast(dueDate) && !isToday(dueDate);
 
-    const linkHref = `/company/${companyId}/project/${projectId}`;
+    const originalTaskPath = `workspaces/${userTask.workspaceId}/companies/${userTask.companyId}/projects/${userTask.projectId}/silos/${userTask.siloId}/tasks/${userTask.originalTaskId}`;
+    
+    const taskForDialog = {
+        id: userTask.originalTaskId,
+        title: userTask.title,
+        description: userTask.description,
+        completed: userTask.completed,
+        dueDate: userTask.dueDate,
+        priority: userTask.priority,
+        assigneeId: userTask.assigneeId,
+        projectId: userTask.projectId,
+        workspaceId: userTask.workspaceId,
+        createdBy: userTask.createdBy || '',
+        createdAt: userTask.createdAt || null,
+    };
 
     return (
        <TableRow className={cn({ "opacity-60": userTask.completed })}>
@@ -90,11 +105,13 @@ export function TaskListItem({ userTask }: TaskListItemProps) {
             </TableCell>
             <TableCell>
                  <div className="flex flex-col">
-                     <Link href={linkHref} className="hover:underline font-medium">
-                        <span className={cn("text-sm font-medium leading-none", { "line-through text-muted-foreground": userTask.completed })}>
-                            {userTask.title}
-                        </span>
-                    </Link>
+                    <TaskDetailsDialog task={taskForDialog as any} path={originalTaskPath}>
+                        <button className="hover:underline text-left font-medium">
+                            <span className={cn("text-sm font-medium leading-none", { "line-through text-muted-foreground": userTask.completed })}>
+                                {userTask.title}
+                            </span>
+                        </button>
+                    </TaskDetailsDialog>
                     <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{userTask.description}</p>
                 </div>
             </TableCell>
