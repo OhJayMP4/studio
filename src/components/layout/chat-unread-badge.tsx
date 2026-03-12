@@ -3,7 +3,7 @@
 
 import React, { useMemo } from 'react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
 import { collection, query, orderBy, limit, Timestamp } from 'firebase/firestore';
 import type { ChatMessage } from '@/lib/types';
 import { useUserPrefs } from '@/hooks/use-sidebar-prefs';
@@ -11,6 +11,7 @@ import { SidebarMenuBadge } from '../ui/sidebar';
 
 export function ChatUnreadBadge() {
   const { selectedWorkspace } = useSelectedWorkspace();
+  const { user } = useUser();
   const { prefs } = useUserPrefs();
   const firestore = useFirestore();
 
@@ -27,22 +28,27 @@ export function ChatUnreadBadge() {
   const { data: messages } = useCollection<ChatMessage>(messagesQuery);
 
   const unreadCount = useMemo(() => {
-    if (!messages || !prefs) return 0;
+    if (!messages || !prefs || !user) return 0;
     
     const lastReadAt = prefs.viewPrefs?.chatLastReadAt;
-    if (!lastReadAt) return messages.length;
-
-    const lastReadMillis = (lastReadAt as any).seconds 
-        ? (lastReadAt as any).seconds * 1000 
-        : new Date(lastReadAt as any).getTime();
+    
+    // Use 0 as fallback for epoch if never read
+    const lastReadMillis = lastReadAt 
+        ? ((lastReadAt as any).seconds ? (lastReadAt as any).seconds * 1000 : new Date(lastReadAt as any).getTime())
+        : 0;
 
     return messages.filter(msg => {
         if (!msg.createdAt) return false;
+        
+        // Exclude messages sent by the current user
+        if (msg.senderId === user.uid) return false;
+        
         const msgMillis = (msg.createdAt as Timestamp).toMillis();
         return msgMillis > lastReadMillis;
     }).length;
-  }, [messages, prefs]);
+  }, [messages, prefs, user]);
 
+  // Only show the badge if there are actually unread messages
   if (unreadCount === 0) return null;
 
   return (
