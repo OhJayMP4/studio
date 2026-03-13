@@ -1,6 +1,7 @@
 'use server';
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import { Resend } from 'resend';
 
 interface UserTask {
     id: string;
@@ -30,6 +31,58 @@ const defaultSidebarModules = [
 
 admin.initializeApp();
 const db = admin.firestore();
+// Enable ignoreUndefinedProperties to prevent crashes during migration
+db.settings({ ignoreUndefinedProperties: true });
+
+// Helper to update project progress based on tasks and sales
+const updateProjectProgress = async (workspaceId: string, companyId: string, projectId: string) => {
+    const projectRef = db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`);
+    
+    try {
+        const [projectSnap, silosSnap] = await Promise.all([
+            projectRef.get(),
+            projectRef.collection('silos').get()
+        ]);
+
+        if (!projectSnap.exists) return;
+        const projectData = projectSnap.data();
+
+        // 1. Aggregate Tasks across all silos
+        let totalTasks = 0;
+        let completedTasks = 0;
+
+        const taskPromises = silosSnap.docs.map(silo => silo.ref.collection('tasks').get());
+        const taskSnapshots = await Promise.all(taskPromises);
+
+        taskSnapshots.forEach(snap => {
+            snap.forEach(taskDoc => {
+                totalTasks++;
+                if (taskDoc.data().completed) completedTasks++;
+            });
+        });
+
+        const taskProgress = totalTasks > 0 ? (completedTasks / totalTasks) : 0;
+
+        // 2. Calculate Sales Progress
+        const salesTarget = projectData?.monetaryValue || 0;
+        const currentSales = projectData?.totalSalesValue || 0;
+        const salesProgress = salesTarget > 0 ? Math.min(currentSales / salesTarget, 1) : 0;
+
+        // 3. Overall Progress (Weighted 50/50 if monetary, else 100% tasks)
+        const newOverallProgress = Math.round(projectData?.hasMonetaryValue 
+            ? (salesProgress * 0.5 + taskProgress * 0.5) * 100
+            : taskProgress * 100);
+
+        await projectRef.update({ 
+            progress: newOverallProgress,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        
+        console.log(`Updated project ${projectId} progress to ${newOverallProgress}%`);
+    } catch (error) {
+        console.error(`Failed to update progress for project ${projectId}:`, error);
+    }
+};
 
 // Helper to get user info and workspace members
 const getActorAndRelevantUsers = async (workspaceId: string, actorUid: string) => {
@@ -58,6 +111,62 @@ const createNotification = async (workspaceId: string, notificationData: any) =>
     }
 };
 
+// Helper to send task assignment email
+const sendTaskAssignmentEmail = async (params: {
+    to: string;
+    userName: string;
+    taskTitle: string;
+    companyName: string;
+    projectName: string;
+}) => {
+    const resendApiKey = process.env.RESEND_API_KEY || (functions.config()?.resend?.key) || "re_hfnUftgP_LxQrEY7o8aEKeHUumQfM1Zqw";
+    
+    if (!resendApiKey) {
+        console.error("CRITICAL: RESEND_API_KEY not found. Emails will not be sent.");
+        return;
+    }
+
+    const resend = new Resend(resendApiKey);
+    const { to, userName, taskTitle, companyName, projectName } = params;
+
+    console.log(`Attempting to send assignment email to: ${to}`);
+
+    try {
+        const { data, error } = await resend.emails.send({
+            from: 'SaturnSync Notifications <notifications@saturnsync.com>',
+            to: to,
+            subject: `Task Assigned: ${taskTitle}`,
+            html: `
+                <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #FF6812;">Hello ${userName},</h2>
+                    <p style="font-size: 16px; color: #333;">You have been assigned a new task in <strong>SaturnSync</strong>.</p>
+                    
+                    <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                        <p style="margin: 5px 0;"><strong>Task:</strong> ${taskTitle}</p>
+                        <p style="margin: 5px 0;"><strong>Company:</strong> ${companyName}</p>
+                        <p style="margin: 5px 0;"><strong>Project:</strong> ${projectName}</p>
+                    </div>
+
+                    <p style="font-size: 14px; color: #666;">Log in to your dashboard to view full details.</p>
+                    
+                    <a href="https://saturnsync.com/my-tasks" style="display: inline-block; background-color: #FF6812; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 10px;">View My Tasks</a>
+                    
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+                    <p style="font-size: 12px; color: #999;">You received this because email notifications are enabled in your account settings.</p>
+                </div>
+            `,
+        });
+
+        if (error) {
+            console.error("Resend API Error:", JSON.stringify(error));
+        } else {
+            console.log("Email sent successfully. ID:", data?.id);
+        }
+    } catch (error) {
+        console.error("Failed to send task assignment email:", error);
+    }
+};
+
 // --- Notification Triggers ---
 
 exports.onCommentCreate = functions.firestore
@@ -83,7 +192,7 @@ exports.onCommentCreate = functions.firestore
             type: 'comment_added',
             actorUid: commentData.createdBy,
             actorName,
-            target: { id: taskId, name: taskTitle, type: 'task', path: `/company/${companyId}/project/${projectId}` },
+            target: { id: taskId, name: taskTitle, text: 'task', path: `/company/${companyId}/project/${projectId}` },
             context: { 
                 companyName, 
                 projectName,
@@ -93,7 +202,6 @@ exports.onCommentCreate = functions.firestore
         });
     });
 
-// On Company Create
 exports.onCompanyCreate = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}')
     .onCreate(async (snap, context) => {
@@ -112,7 +220,6 @@ exports.onCompanyCreate = functions.firestore
         });
     });
 
-// On Project Create
 exports.onProjectCreate = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}')
     .onCreate(async (snap, context) => {
@@ -135,7 +242,6 @@ exports.onProjectCreate = functions.firestore
         });
     });
 
-// On Silo Create
 exports.onSiloCreate = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}')
     .onCreate(async (snap, context) => {
@@ -160,7 +266,6 @@ exports.onSiloCreate = functions.firestore
         });
     });
 
-// On Sale Create
 exports.onSaleCreate = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}')
     .onCreate(async (snap, context) => {
@@ -183,10 +288,11 @@ exports.onSaleCreate = functions.firestore
             context: { companyName, projectName },
             isRelevantTo,
         });
+
+        await updateProjectProgress(workspaceId, companyId, projectId);
     });
 
 
-// On Task Create & Update
 exports.onTaskWrite = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
     .onWrite(async (change, context) => {
@@ -195,7 +301,6 @@ exports.onTaskWrite = functions.firestore
         const beforeData = change.before.data();
         const afterData = change.after.data();
 
-        // Task Creation or Re-assignment
         if (afterData && (!beforeData || beforeData.assigneeId !== afterData.assigneeId)) {
             const actorUid = afterData.updatedBy || afterData.createdBy;
             const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
@@ -222,11 +327,25 @@ exports.onTaskWrite = functions.firestore
                 context: { companyName, projectName, siloName },
                 isRelevantTo,
             });
+
+            if (assigneeSnap.exists) {
+                const assigneeData = assigneeSnap.data();
+                const isEmailEnabled = assigneeData?.emailNotificationsEnabled !== false;
+                const email = assigneeData?.email;
+
+                if (isEmailEnabled && email) {
+                    await sendTaskAssignmentEmail({
+                        to: email,
+                        userName: assigneeData?.name || 'Team Member',
+                        taskTitle: afterData.title,
+                        companyName,
+                        projectName
+                    });
+                }
+            }
         }
 
-        // Task Completion
         if (beforeData && afterData && beforeData.completed === false && afterData.completed === true) {
-            // The person completing the task is the assignee.
             const actorUid = afterData.assigneeId; 
             const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
              if (!actorName) return;
@@ -249,16 +368,15 @@ exports.onTaskWrite = functions.firestore
                 isRelevantTo,
             });
         }
-    });
 
-// --- Deletion Triggers ---
+        await updateProjectProgress(workspaceId, companyId, projectId);
+    });
 
 exports.onCompanyDelete = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}')
     .onDelete(async (snap, context) => {
         const { workspaceId } = context.params;
         const companyData = snap.data();
-        // Assume the last user to touch it is the deleter - this is an assumption
         const actorUid = companyData.updatedBy || companyData.createdBy; 
         const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
 
@@ -312,8 +430,8 @@ exports.onSiloDelete = functions.firestore
         const projectName = projectSnap.exists ? projectSnap.data()?.name : '';
 
         await createNotification(workspaceId, {
-            type: 'silo_deleted',
-            actorUid,
+            type: 'silo_added',
+            actorUid: siloData.createdBy,
             actorName,
             target: { id: snap.id, name: siloData.name, type: 'silo', path: `/company/${companyId}/project/${projectId}` },
             context: { companyName, projectName },
@@ -324,9 +442,21 @@ exports.onSiloDelete = functions.firestore
 exports.onTaskDelete = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
     .onDelete(async (snap, context) => {
-        const { workspaceId, companyId, projectId, siloId } = context.params;
+        const { taskId, workspaceId, companyId, projectId, siloId } = context.params;
         const taskData = snap.data();
         const actorUid = taskData.updatedBy || taskData.createdBy;
+        const assigneeId = taskData.assigneeId;
+
+        if (assigneeId) {
+            console.log(`Cleaning up denormalized task ${taskId} for user ${assigneeId}`);
+            const userTasksRef = db.collection(`user-tasks/${assigneeId}/tasks`);
+            const q = userTasksRef.where("originalTaskId", "==", taskId);
+            const userTasksSnap = await q.get();
+            const batch = db.batch();
+            userTasksSnap.docs.forEach(doc => batch.delete(doc.ref));
+            await batch.commit();
+        }
+
         const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
         if (!actorName) return;
 
@@ -394,15 +524,11 @@ exports.onFileUpload = functions.firestore
         }
     });
 
-
-
-// Generate a simple random token
 const generateToken = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 };
 
 exports.createInvite = functions.https.onCall(async (data, context) => {
-    // 1. Auth Check
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'You must be signed in to send invites.');
     }
@@ -413,7 +539,6 @@ exports.createInvite = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('invalid-argument', 'Workspace ID and email are required.');
     }
 
-    // 2. Permission Check & Data Validation
     const workspaceRef = db.doc(`workspaces/${workspaceId}`);
     const workspaceSnap = await workspaceRef.get();
 
@@ -428,7 +553,6 @@ exports.createInvite = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('permission-denied', 'Only workspace admins can send invitations.');
     }
 
-    // Check if user is already a member
     const existingUserQuery = await db.collection('users').where('email', '==', email).limit(1).get();
     if (!existingUserQuery.empty) {
         const existingUserId = existingUserQuery.docs[0].id;
@@ -437,11 +561,10 @@ exports.createInvite = functions.https.onCall(async (data, context) => {
         }
     }
     
-    // 3. Create Invite in Firestore
     const token = generateToken();
-    const expires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours in millis
+    const expires = Date.now() + 24 * 60 * 60 * 1000;
 
-    const inviteRef = db.collection('invites').doc(); // Use auto-generated ID
+    const inviteRef = db.collection('invites').doc();
     await inviteRef.set({
         workspaceId,
         email,
@@ -451,7 +574,6 @@ exports.createInvite = functions.https.onCall(async (data, context) => {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // 4. Form the Join URL and return it to the client
     const appUrl = 'https://saturnsync.com';
     const joinUrl = `${appUrl}/join?token=${token}`;
     
@@ -460,7 +582,6 @@ exports.createInvite = functions.https.onCall(async (data, context) => {
 
 
 exports.joinWorkspace = functions.https.onCall(async (data, context) => {
-  // Auth check
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'You must be signed in to accept an invite.');
   }
@@ -489,7 +610,6 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
     const inviteData = inviteDoc.data();
     const inviteEmail = inviteData.email;
 
-    // Validate the invite is for the correct user (case-insensitive)
     if (inviteEmail.toLowerCase() !== authEmail?.toLowerCase()) {
         throw new functions.https.HttpsError('permission-denied', 'This invitation is not intended for your account.');
     }
@@ -516,7 +636,6 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
         }
         
         if (!userDoc.exists) {
-            // Create the user profile if it doesn't exist
             transaction.set(userRef, {
                 uid,
                 email: authEmail,
@@ -528,28 +647,24 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
 
         const workspaceData = workspaceDoc.data();
         if (workspaceData?.memberIds?.includes(uid)) {
-          // If user is already a member, we can just delete the invite and exit gracefully.
           transaction.delete(inviteDoc.ref);
           return;
         }
 
-        // Add user to the workspace
         transaction.update(workspaceRef, {
           memberIds: admin.firestore.FieldValue.arrayUnion(uid),
           [`users.${uid}`]: {
-            role: "contributor", // Default role for invited users
+            role: "contributor",
             name: displayName,
             email: authEmail,
             avatarUrl: photoURL,
           },
         });
 
-        // Add workspace to the user's profile
         transaction.update(userRef, {
           workspaceIds: admin.firestore.FieldValue.arrayUnion(workspaceId),
         });
 
-        // Create default sidebar preferences for the user in this workspace
         transaction.set(prefsRef, {
             uid: uid,
             workspaceId: workspaceId,
@@ -557,7 +672,6 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
-        // Delete the used invite
         transaction.delete(inviteDoc.ref);
     });
 
@@ -573,7 +687,6 @@ exports.joinWorkspace = functions.https.onCall(async (data, context) => {
 
 
 exports.finalizeWorkspaceLogo = functions.https.onCall(async (data, context) => {
-    // 1. Auth Check
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'You must be logged in to perform this action.');
     }
@@ -583,7 +696,6 @@ exports.finalizeWorkspaceLogo = functions.https.onCall(async (data, context) => 
         throw new functions.https.HttpsError('invalid-argument', 'Workspace ID and temporary file path are required.');
     }
 
-    // 2. Permission Check (Is user an admin of the workspace?)
     const workspaceRef = db.doc(`workspaces/${workspaceId}`);
     const workspaceDoc = await workspaceRef.get();
 
@@ -598,7 +710,6 @@ exports.finalizeWorkspaceLogo = functions.https.onCall(async (data, context) => 
         throw new functions.https.HttpsError('permission-denied', 'You must be an admin to change the workspace logo.');
     }
 
-    // 3. Move the file in Cloud Storage
     const bucket = admin.storage().bucket();
     const tempFile = bucket.file(tempFilePath);
     const finalFilePath = `workspaces/${workspaceId}/logo`;
@@ -606,12 +717,9 @@ exports.finalizeWorkspaceLogo = functions.https.onCall(async (data, context) => 
 
     try {
         await tempFile.move(finalFile);
-
-        // Make the file public
         await finalFile.makePublic();
         const publicUrl = `https://storage.googleapis.com/${bucket.name}/${finalFilePath}`;
 
-        // 4. Update the Firestore document with the new public URL
         await workspaceRef.update({
             logoUrl: publicUrl
         });
@@ -625,7 +733,6 @@ exports.finalizeWorkspaceLogo = functions.https.onCall(async (data, context) => 
 });
 
 exports.removeUserFromWorkspace = functions.https.onCall(async (data, context) => {
-  // Auth check
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Must be signed in');
   }
@@ -636,7 +743,6 @@ exports.removeUserFromWorkspace = functions.https.onCall(async (data, context) =
     throw new functions.https.HttpsError('invalid-argument', 'workspaceId and userIdToRemove are required');
   }
 
-  // Get workspace and verify caller is admin
   const workspaceRef = db.doc(`workspaces/${workspaceId}`);
   const workspaceDoc = await workspaceRef.get();
   
@@ -651,25 +757,21 @@ exports.removeUserFromWorkspace = functions.https.onCall(async (data, context) =
     throw new functions.https.HttpsError('permission-denied', 'Only workspace admins can remove users');
   }
 
-  // Prevent removing the owner
   if (workspaceData?.ownerId === userIdToRemove) {
     throw new functions.https.HttpsError('permission-denied', 'Cannot remove the workspace owner');
   }
 
-  // Remove user from workspace and workspace from user in a transaction
   const userRef = db.doc(`users/${userIdToRemove}`);
   
   try {
     await db.runTransaction(async (transaction) => {
       const userDoc = await transaction.get(userRef);
       
-      // Remove user from workspace's members list and user map
       transaction.update(workspaceRef, {
         memberIds: admin.firestore.FieldValue.arrayRemove(userIdToRemove),
         [`users.${userIdToRemove}`]: admin.firestore.FieldValue.delete()
       });
       
-      // If the user document exists, remove the workspace from their profile's list
       if (userDoc.exists) {
         transaction.update(userRef, {
             workspaceIds: admin.firestore.FieldValue.arrayRemove(workspaceId)
@@ -688,7 +790,6 @@ exports.removeUserFromWorkspace = functions.https.onCall(async (data, context) =
 });
 
 exports.deleteWorkspace = functions.https.onCall(async (data, context) => {
-    // Auth check
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Must be signed in');
     }
@@ -707,14 +808,12 @@ exports.deleteWorkspace = functions.https.onCall(async (data, context) => {
 
     const workspaceData = workspaceDoc.data();
 
-    // Permission check: only owner can delete
     if (workspaceData?.ownerId !== context.auth.uid) {
         throw new functions.https.HttpsError('permission-denied', 'Only the workspace owner can delete the workspace');
     }
 
     const batch = db.batch();
 
-    // 1. Remove workspaceId from all members' user profiles
     if (workspaceData?.memberIds && Array.isArray(workspaceData.memberIds)) {
         workspaceData.memberIds.forEach(memberId => {
             const userRef = db.doc(`users/${memberId}`);
@@ -724,10 +823,6 @@ exports.deleteWorkspace = functions.https.onCall(async (data, context) => {
         });
     }
 
-    // 2. TODO: Delete all sub-collections (companies, projects, etc.). This is complex and requires recursive deletion.
-    // For now, we will just delete the main workspace document. A more robust solution would handle this.
-
-    // 3. Delete the workspace document itself
     batch.delete(workspaceRef);
 
     try {
@@ -741,7 +836,6 @@ exports.deleteWorkspace = functions.https.onCall(async (data, context) => {
 
 
 exports.generateTeamReport = functions.https.onCall(async (data, context) => {
-    // 1. Auth Check
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'You must be signed in to generate reports.');
     }
@@ -752,7 +846,6 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('invalid-argument', 'Workspace ID and an array of user IDs are required.');
     }
 
-    // 2. Permission Check (Caller must be an admin of the workspace)
     const workspaceRef = db.doc(`workspaces/${workspaceId}`);
     const workspaceSnap = await workspaceRef.get();
 
@@ -767,11 +860,9 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('permission-denied', 'Only workspace admins can generate team reports.');
     }
 
-    // 3. Fetch Data for each user
     const reportData = [];
 
     for (const userId of userIds) {
-        // Security check: Ensure the target user is also in the same workspace.
         if (!workspaceData?.memberIds?.includes(userId)) {
             console.warn(`Skipping user ${userId} as they are not a member of workspace ${workspaceId}.`);
             continue;
@@ -804,7 +895,6 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
 });
 
 exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
-    // 1. Auth Check
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'You must be logged in to upload files.');
     }
@@ -815,7 +905,6 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('invalid-argument', 'Missing required file information.');
     }
 
-    // 2. Permission Check (Is user a member of the workspace?)
     const workspaceRef = db.doc(`workspaces/${workspaceId}`);
     const workspaceDoc = await workspaceRef.get();
     if (!workspaceDoc.exists) {
@@ -826,7 +915,6 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('permission-denied', 'You are not a member of this workspace.');
     }
 
-    // 3. Move the file in Cloud Storage
     const bucket = admin.storage().bucket();
     const tempFile = bucket.file(tempFilePath);
 
@@ -836,21 +924,16 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
 
     try {
         await tempFile.move(finalFile);
-        
-        // Make the file public to get a consistent URL
         await finalFile.makePublic();
-
-        // Construct the public URL
         const downloadURL = `https://storage.googleapis.com/${bucket.name}/${finalFile.name}`;
 
-        // 4. Create the Firestore document for the new file
         await db.collection('workspace-files').add({
             type: 'file',
             name: fileName,
             fullPath: finalFile.name,
             parentPath: targetParentPath,
             size: fileSize,
-            mimeType: file.type,
+            mimeType: mimeType,
             downloadURL: downloadURL,
             uploadedBy: uid,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -867,7 +950,6 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
 
 
 exports.createFolder = functions.region("us-central1").https.onCall(async (data, context) => {
-    // 1. Auth Check
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'You must be logged in to create a folder.');
     }
@@ -878,7 +960,6 @@ exports.createFolder = functions.region("us-central1").https.onCall(async (data,
         throw new functions.https.HttpsError('invalid-argument', 'Missing required folder information.');
     }
 
-    // 2. Permission Check
     const workspaceRef = db.doc(`workspaces/${workspaceId}`);
     const workspaceDoc = await workspaceRef.get();
     if (!workspaceDoc.exists) {
@@ -889,7 +970,6 @@ exports.createFolder = functions.region("us-central1").https.onCall(async (data,
         throw new functions.https.HttpsError('permission-denied', 'You are not a member of this workspace.');
     }
 
-    // 3. Create Firestore document for the folder
     const fullPath = parentPath ? `${parentPath}/${folderName}` : folderName;
     
     try {
@@ -909,113 +989,122 @@ exports.createFolder = functions.region("us-central1").https.onCall(async (data,
     }
 });
 
+/**
+ * Omni-Backfill Migration function.
+ * Recursively scans projects, silos, and tasks to ensure proper metadata
+ * and re-synchronizes the denormalized user-tasks collection for the dashboard.
+ */
 exports.backfillAllProjects = functions
   .region("us-central1")
   .runWith({ timeoutSeconds: 540, memory: "1GB" })
   .https.onCall(async (data, context) => {
     try {
-      // 1) Auth check
       if (!context.auth) {
-        throw new functions.https.HttpsError(
-          "unauthenticated",
-          "You must be signed in to run this migration."
-        );
-      }
-
-      // 2) Restrict who can run it
-      const callerEmail = context.auth.token.email;
-      const allowedEmails = [
-        "marketing@saturnmanagement.co.za",
-        // add more admin emails if needed
-      ];
-      if (!allowedEmails.includes(callerEmail as string)) {
-        throw new functions.https.HttpsError(
-          "permission-denied",
-          `User ${callerEmail} is not allowed to run this migration.`
-        );
+        throw new functions.https.HttpsError("unauthenticated", "You must be signed in.");
       }
 
       const db = admin.firestore();
-
       let updatedCount = 0;
-      let strayCount = 0;
-      let deletedCount = 0;
+      let tasksSyncedCount = 0;
 
-      console.log("Starting backfillAllProjects migration...");
+      console.log("Starting deep sync migration...");
 
-      // 3) Grab ALL 'projects' documents in the database
-      const snap = await db.collectionGroup("projects").get();
-      console.log(`Found ${snap.size} project documents in collectionGroup.`);
-
-      for (const docSnap of snap.docs) {
-        const data = docSnap.data() || {};
-        const path = docSnap.ref.path;
-        const segments = path.split("/");
-
-        // Expecting: workspaces/{wsId}/companies/{companyId}/projects/{projectId}
-        const isNestedProject =
-          segments.length >= 6 &&
-          segments[0] === "workspaces" &&
-          segments[2] === "companies" &&
-          segments[4] === "projects";
-
-        if (isNestedProject) {
+      // 1. Sync ALL Projects
+      const projectsSnap = await db.collectionGroup("projects").get();
+      for (const docSnap of projectsSnap.docs) {
+        const segments = docSnap.ref.path.split("/");
+        if (segments[0] === "workspaces" && segments[2] === "companies") {
           const workspaceId = segments[1];
           const companyId = segments[3];
-
-          const needsWorkspaceFix =
-            !data.workspaceId || data.workspaceId !== workspaceId;
-          const needsCompanyFix =
-            !data.companyId || data.companyId !== companyId;
-
-          if (needsWorkspaceFix || needsCompanyFix) {
-            console.log(
-              `Updating nested project ${path} (workspaceId=${workspaceId}, companyId=${companyId})`
-            );
-            const updates: any = {};
-            if (needsWorkspaceFix) updates.workspaceId = workspaceId;
-            if (needsCompanyFix) updates.companyId = companyId;
-
-            await docSnap.ref.update(updates);
-            updatedCount++;
-          }
-        } else {
-          // This is a 'projects' doc OUTSIDE the expected path
-          strayCount++;
-          console.warn(
-            `Stray project document outside expected structure: ${path}`
-          );
-
-          // OPTION A: Just log them, do not delete:
-          // continue;
-
-          // OPTION B (stricter): delete them because they are invalid / test data:
-          // await docSnap.ref.delete();
-          // deletedCount++;
+          await docSnap.ref.update({ workspaceId, companyId });
+          updatedCount++;
         }
       }
 
-      console.log(
-        `backfillAllProjects completed. updated=${updatedCount}, stray=${strayCount}, deleted=${deletedCount}`
-      );
+      // 2. Sync ALL Silos
+      const silosSnap = await db.collectionGroup("silos").get();
+      for (const docSnap of silosSnap.docs) {
+        const segments = docSnap.ref.path.split("/");
+        if (segments[0] === "workspaces" && segments[2] === "companies" && segments[4] === "projects") {
+          const workspaceId = segments[1];
+          await docSnap.ref.update({ workspaceId });
+          updatedCount++;
+        }
+      }
+
+      // 3. Sync and Re-denormalize ALL Tasks
+      const tasksSnap = await db.collectionGroup("tasks").get();
+      for (const taskDoc of tasksSnap.docs) {
+        const taskData = taskDoc.data();
+        const segments = taskDoc.ref.path.split("/");
+        
+        // Expected: workspaces/{wsId}/companies/{coId}/projects/{prId}/silos/{siId}/tasks/{tId}
+        if (segments.length >= 10 && segments[0] === "workspaces") {
+          const workspaceId = segments[1];
+          const companyId = segments[3];
+          const projectId = segments[5];
+          const siloId = segments[7];
+
+          // Update source task with correct IDs
+          await taskDoc.ref.update({ workspaceId, companyId, projectId });
+          updatedCount++;
+
+          // Synchronize with user-tasks collection
+          if (taskData.assigneeId) {
+            // Get names for denormalization
+            const [companySnap, projectSnap, siloSnap] = await Promise.all([
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get()
+            ]);
+
+            const companyName = companySnap.data()?.name || 'Unknown Company';
+            const projectName = projectId === 'general-tasks' ? 'Quick Tasks' : (projectSnap.data()?.name || 'Unknown Project');
+            const siloName = siloSnap.data()?.name || 'Inbox';
+
+            const userTasksRef = db.collection(`user-tasks/${taskData.assigneeId}/tasks`);
+            const existingQuery = await userTasksRef.where("originalTaskId", "==", taskDoc.id).get();
+            
+            const denormalizedData = {
+                originalTaskId: taskDoc.id,
+                workspaceId,
+                companyId,
+                projectId,
+                siloId,
+                title: taskData.title,
+                description: taskData.description || '',
+                completed: taskData.completed || false,
+                dueDate: taskData.dueDate || new Date().toISOString(),
+                priority: taskData.priority || 'medium',
+                assigneeId: taskData.assigneeId,
+                createdBy: taskData.createdBy || 'migration',
+                companyName,
+                projectName,
+                siloName,
+                timeSpentMinutes: taskData.timeSpentMinutes || 0,
+                createdAt: taskData.createdAt || admin.firestore.FieldValue.serverTimestamp()
+            };
+
+            if (existingQuery.empty) {
+                await userTasksRef.add(denormalizedData);
+            } else {
+                await existingQuery.docs[0].ref.set(denormalizedData, { merge: true });
+            }
+            tasksSyncedCount++;
+          }
+        }
+      }
+
+      console.log(`Migration completed. itemsTagged=${updatedCount}, tasksSynced=${tasksSyncedCount}`);
 
       return {
         success: true,
         updatedCount,
-        strayCount,
-        deletedCount,
+        tasksSyncedCount,
       };
     } catch (err: any) {
-      console.error("Migration failed in backfillAllProjects:", err);
-
-      if (err instanceof functions.https.HttpsError) {
-        throw err;
-      }
-
-      throw new functions.https.HttpsError(
-        "internal",
-        err?.message || "Unknown internal error during backfillAllProjects."
-      );
+      console.error("Migration failed:", err);
+      throw new functions.https.HttpsError("internal", err?.message || "Internal error during migration.");
     }
   });
 
@@ -1023,7 +1112,6 @@ exports.backfillAllProjects = functions
 async function publishToFacebook(postDoc: admin.firestore.DocumentSnapshot): Promise<'success' | 'skip' | 'failed'> {
   const post = postDoc.data() as any;
   const pathSegments = postDoc.ref.path.split('/');
-  // path: workspaces/{workspaceId}/companies/{companyId}/socialPosts/{postId}
   const workspaceId = pathSegments[1];
   const companyId   = pathSegments[3];
 
@@ -1042,7 +1130,6 @@ async function publishToFacebook(postDoc: admin.firestore.DocumentSnapshot): Pro
     return 'skip';
   }
 
-  // For now, only publish caption text (no media)
   const message: string = post.captionDefault || '';
   if (!message.trim()) {
     console.log('publishToFacebook: empty message, skipping', postDoc.ref.path);
@@ -1114,8 +1201,6 @@ exports.publishSocialPosts = functions.pubsub
           if (result === 'success') anySuccess = true;
         }
 
-        // Later: instagram, linkedin, etc
-
         let newStatus = post.status;
         let errorMessage = null;
 
@@ -1146,19 +1231,16 @@ exports.publishSocialPosts = functions.pubsub
 
 
 exports.setCompanyFacebookConfig = functions.https.onCall(async (data, context) => {
-  // 1. Auth Check
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'You must be signed in to perform this action.');
   }
   const uid = context.auth.uid;
   const { workspaceId, companyId, pageId, pageName, pageAccessToken } = data;
 
-  // 2. Input Validation
   if (!workspaceId || !companyId || !pageId || !pageName || !pageAccessToken) {
     throw new functions.https.HttpsError('invalid-argument', 'Missing required parameters for Facebook configuration.');
   }
 
-  // 3. Permission Check
   const workspaceRef = db.doc(`workspaces/${workspaceId}`);
   try {
     const workspaceSnap = await workspaceRef.get();
@@ -1179,7 +1261,6 @@ exports.setCompanyFacebookConfig = functions.https.onCall(async (data, context) 
     throw new functions.https.HttpsError('internal', 'An error occurred while verifying your permissions.');
   }
 
-  // 4. Update Firestore Document
   const companyRef = db.doc(`workspaces/${workspaceId}/companies/${companyId}`);
   const facebookConfig = {
     pageId,

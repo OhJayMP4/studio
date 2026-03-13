@@ -119,7 +119,7 @@ const sendTaskAssignmentEmail = async (params: {
     companyName: string;
     projectName: string;
 }) => {
-    const resendApiKey = process.env.RESEND_API_KEY || functions.config()?.resend?.key || "re_hfnUftgP_LxQrEY7o8aEKeHUumQfM1Zqw";
+    const resendApiKey = process.env.RESEND_API_KEY || (functions.config()?.resend?.key) || "re_hfnUftgP_LxQrEY7o8aEKeHUumQfM1Zqw";
     
     if (!resendApiKey) {
         console.error("CRITICAL: RESEND_API_KEY not found. Emails will not be sent.");
@@ -703,7 +703,7 @@ exports.finalizeWorkspaceLogo = functions.https.onCall(async (data, context) => 
         throw new functions.https.HttpsError('not-found', 'Workspace not found.');
     }
 
-    const workspaceData = workspaceSnap.data();
+    const workspaceData = workspaceDoc.data();
     const userRole = workspaceData?.users?.[uid]?.role;
 
     if (userRole !== 'admin') {
