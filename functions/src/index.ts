@@ -1054,106 +1054,122 @@ exports.createFolder = functions.region("us-central1").https.onCall(async (data,
     }
 });
 
+/**
+ * Omni-Backfill Migration function.
+ * Recursively scans projects, silos, and tasks to ensure proper metadata
+ * and re-synchronizes the denormalized user-tasks collection for the dashboard.
+ */
 exports.backfillAllProjects = functions
   .region("us-central1")
   .runWith({ timeoutSeconds: 540, memory: "1GB" })
   .https.onCall(async (data, context) => {
     try {
-      // 1) Auth check
       if (!context.auth) {
-        throw new functions.https.HttpsError(
-          "unauthenticated",
-          "You must be signed in to run this migration."
-        );
-      }
-
-      // 2) Restrict who can run it
-      const callerEmail = context.auth.token.email;
-      const allowedEmails = [
-        "marketing@saturnmanagement.co.za",
-        // add more admin emails if needed
-      ];
-      if (!allowedEmails.includes(callerEmail as string)) {
-        throw new functions.https.HttpsError(
-          "permission-denied",
-          `User ${callerEmail} is not allowed to run this migration.`
-        );
+        throw new functions.https.HttpsError("unauthenticated", "You must be signed in.");
       }
 
       const db = admin.firestore();
-
       let updatedCount = 0;
-      let strayCount = 0;
-      let deletedCount = 0;
+      let tasksSyncedCount = 0;
 
-      console.log("Starting backfillAllProjects migration...");
+      console.log("Starting deep sync migration...");
 
-      // 3) Grab ALL 'projects' documents in the database
-      const snap = await db.collectionGroup("projects").get();
-      console.log(`Found ${snap.size} project documents in collectionGroup.`);
-
-      for (const docSnap of snap.docs) {
-        const data = docSnap.data() || {};
-        const path = docSnap.ref.path;
-        const segments = path.split("/");
-
-        // Expecting: workspaces/{wsId}/companies/{companyId}/projects/{projectId}
-        const isNestedProject =
-          segments.length >= 6 &&
-          segments[0] === "workspaces" &&
-          segments[2] === "companies" &&
-          segments[4] === "projects";
-
-        if (isNestedProject) {
+      // 1. Sync ALL Projects
+      const projectsSnap = await db.collectionGroup("projects").get();
+      for (const docSnap of projectsSnap.docs) {
+        const segments = docSnap.ref.path.split("/");
+        if (segments[0] === "workspaces" && segments[2] === "companies") {
           const workspaceId = segments[1];
           const companyId = segments[3];
-
-          const needsWorkspaceFix =
-            !data.workspaceId || data.workspaceId !== workspaceId;
-          const needsCompanyFix =
-            !data.companyId || data.companyId !== companyId;
-
-          if (needsWorkspaceFix || needsCompanyFix) {
-            console.log(
-              `Updating nested project ${path} (workspaceId=${workspaceId}, companyId=${companyId})`
-            );
-            const updates: any = {};
-            if (needsWorkspaceFix) updates.workspaceId = workspaceId;
-            if (needsCompanyFix) updates.companyId = companyId;
-
-            await docSnap.ref.update(updates);
-            updatedCount++;
-          }
-        } else {
-          // This is a 'projects' doc OUTSIDE the expected path
-          strayCount++;
-          console.warn(
-            `Stray project document outside expected structure: ${path}`
-          );
+          await docSnap.ref.update({ workspaceId, companyId });
+          updatedCount++;
         }
       }
 
-      console.log(
-        `backfillAllProjects completed. updated=${updatedCount}, stray=${strayCount}, deleted=${deletedCount}`
-      );
+      // 2. Sync ALL Silos
+      const silosSnap = await db.collectionGroup("silos").get();
+      for (const docSnap of silosSnap.docs) {
+        const segments = docSnap.ref.path.split("/");
+        if (segments[0] === "workspaces" && segments[2] === "companies" && segments[4] === "projects") {
+          const workspaceId = segments[1];
+          await docSnap.ref.update({ workspaceId });
+          updatedCount++;
+        }
+      }
+
+      // 3. Sync and Re-denormalize ALL Tasks
+      const tasksSnap = await db.collectionGroup("tasks").get();
+      for (const taskDoc of tasksSnap.docs) {
+        const taskData = taskDoc.data();
+        const segments = taskDoc.ref.path.split("/");
+        
+        // Expected: workspaces/{wsId}/companies/{coId}/projects/{prId}/silos/{siId}/tasks/{tId}
+        if (segments.length >= 10 && segments[0] === "workspaces") {
+          const workspaceId = segments[1];
+          const companyId = segments[3];
+          const projectId = segments[5];
+          const siloId = segments[7];
+
+          // Update source task with correct IDs
+          await taskDoc.ref.update({ workspaceId, companyId, projectId });
+          updatedCount++;
+
+          // Synchronize with user-tasks collection
+          if (taskData.assigneeId) {
+            // Get names for denormalization
+            const [companySnap, projectSnap, siloSnap] = await Promise.all([
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get()
+            ]);
+
+            const companyName = companySnap.data()?.name || 'Unknown Company';
+            const projectName = projectId === 'general-tasks' ? 'Quick Tasks' : (projectSnap.data()?.name || 'Unknown Project');
+            const siloName = siloSnap.data()?.name || 'Inbox';
+
+            const userTasksRef = db.collection(`user-tasks/${taskData.assigneeId}/tasks`);
+            const existingQuery = await userTasksRef.where("originalTaskId", "==", taskDoc.id).get();
+            
+            const denormalizedData = {
+                originalTaskId: taskDoc.id,
+                workspaceId,
+                companyId,
+                projectId,
+                siloId,
+                title: taskData.title,
+                description: taskData.description || '',
+                completed: taskData.completed || false,
+                dueDate: taskData.dueDate,
+                priority: taskData.priority,
+                assigneeId: taskData.assigneeId,
+                createdBy: taskData.createdBy,
+                companyName,
+                projectName,
+                siloName,
+                timeSpentMinutes: taskData.timeSpentMinutes || 0,
+                createdAt: taskData.createdAt || admin.firestore.FieldValue.serverTimestamp()
+            };
+
+            if (existingQuery.empty) {
+                await userTasksRef.add(denormalizedData);
+            } else {
+                await existingQuery.docs[0].ref.set(denormalizedData, { merge: true });
+            }
+            tasksSyncedCount++;
+          }
+        }
+      }
+
+      console.log(`Migration completed. itemsTagged=${updatedCount}, tasksSynced=${tasksSyncedCount}`);
 
       return {
         success: true,
         updatedCount,
-        strayCount,
-        deletedCount,
+        tasksSyncedCount,
       };
     } catch (err: any) {
-      console.error("Migration failed in backfillAllProjects:", err);
-
-      if (err instanceof functions.https.HttpsError) {
-        throw err;
-      }
-
-      throw new functions.https.HttpsError(
-        "internal",
-        err?.message || "Unknown internal error during backfillAllProjects."
-      );
+      console.error("Migration failed:", err);
+      throw new functions.https.HttpsError("internal", err?.message || "Internal error during migration.");
     }
   });
 

@@ -3,7 +3,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-const { Resend } = require('resend');
+const resend_1 = require("resend");
 const defaultSidebarModules = [
     { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', route: '/dashboard', hidden: false, order: 0 },
     { id: 'companies', label: 'Companies', icon: 'Building', route: '/companies', hidden: false, order: 1 },
@@ -79,12 +79,14 @@ const createNotification = async (workspaceId, notificationData) => {
 };
 // Helper to send task assignment email
 const sendTaskAssignmentEmail = async (params) => {
-    const resendApiKey = process.env.RESEND_API_KEY || (functions.config() && functions.config().resend ? functions.config().resend.key : null) || "re_hfnUftgP_LxQrEY7o8aEKeHUumQfM1Zqw";
+    var _a, _b;
+    // Priority: process.env -> functions.config() -> Hardcoded Fallback
+    const resendApiKey = process.env.RESEND_API_KEY || ((_b = (_a = functions.config()) === null || _a === void 0 ? void 0 : _a.resend) === null || _b === void 0 ? void 0 : _b.key) || "re_hfnUftgP_LxQrEY7o8aEKeHUumQfM1Zqw";
     if (!resendApiKey) {
         console.error("CRITICAL: RESEND_API_KEY not found. Emails will not be sent.");
         return;
     }
-    const resend = new Resend(resendApiKey);
+    const resend = new resend_1.Resend(resendApiKey);
     const { to, userName, taskTitle, companyName, projectName } = params;
     console.log(`Attempting to send assignment email to: ${to}`);
     try {
@@ -249,6 +251,7 @@ exports.onTaskWrite = functions.firestore
     const beforeData = change.before.data();
     const afterData = change.after.data();
     // 1. Handle Notifications and Emails
+    // Trigger if: a) It's a new task with an assignee, or b) The assignee has changed
     if (afterData && (!beforeData || beforeData.assigneeId !== afterData.assigneeId)) {
         const actorUid = afterData.updatedBy || afterData.createdBy;
         const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
