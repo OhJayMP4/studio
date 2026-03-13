@@ -21,7 +21,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Archive, ArchiveRestore, MoreVertical, Trash2, LayoutGrid, List, Zap, Plus, CalendarIcon, Pin } from "lucide-react";
+import { Archive, ArchiveRestore, MoreVertical, Trash2, LayoutGrid, List, Zap, Plus, CalendarIcon, Pin, UserIcon } from "lucide-react";
 import { EditProjectDialog } from "@/components/common/edit-project-dialog";
 import { DeleteDialog } from "@/components/common/delete-dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -43,6 +43,13 @@ import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { useUserPrefs } from "@/hooks/use-sidebar-prefs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 function CompanyBreadcrumb({ companyName }: { companyName?: string }) {
   return (
@@ -70,8 +77,15 @@ function QuickTaskSection({ companyId }: { companyId: string }) {
     const firestore = useFirestore();
     const { toast } = useToast();
     const [title, setTitle] = useState('');
+    const [assigneeId, setAssigneeId] = useState<string>('');
     const [dueDate, setDueDate] = useState<Date>(new Date());
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        if (user && !assigneeId) {
+            setAssigneeId(user.uid);
+        }
+    }, [user, assigneeId]);
 
     // Fetch quick tasks (from the general project)
     const quickTasksQuery = useMemoFirebase(() => {
@@ -83,7 +97,7 @@ function QuickTaskSection({ companyId }: { companyId: string }) {
 
     const handleAdd = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!title.trim() || !user || !selectedWorkspace) return;
+        if (!title.trim() || !user || !selectedWorkspace || !assigneeId) return;
 
         setIsSubmitting(true);
         try {
@@ -95,7 +109,7 @@ function QuickTaskSection({ companyId }: { companyId: string }) {
                     completed: false,
                     dueDate: dueDate.toISOString(),
                     priority: 'medium',
-                    assigneeId: user.uid,
+                    assigneeId: assigneeId,
                     createdBy: user.uid,
                 }
             });
@@ -110,6 +124,9 @@ function QuickTaskSection({ companyId }: { companyId: string }) {
     };
 
     const activeQuickTasks = tasks?.filter(t => !t.completed) || [];
+    const workspaceUsers = selectedWorkspace?.users 
+        ? Object.entries(selectedWorkspace.users).map(([uid, data]) => ({ uid, name: data.name || data.email || 'Member' }))
+        : [];
 
     return (
         <Card className="border-primary/20 bg-primary/5">
@@ -129,32 +146,45 @@ function QuickTaskSection({ companyId }: { companyId: string }) {
                         disabled={isSubmitting}
                         className="bg-background"
                     />
-                    <div className="flex gap-2">
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button
-                                    variant={"outline"}
-                                    className={cn(
-                                        "justify-start text-left font-normal bg-background w-full",
-                                        !dueDate && "text-muted-foreground"
-                                    )}
-                                >
-                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {dueDate ? format(dueDate, "MMM d") : <span>Due date</span>}
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0">
-                                <Calendar
-                                    mode="single"
-                                    selected={dueDate}
-                                    onSelect={(date) => date && setDueDate(date)}
-                                    initialFocus
-                                />
-                            </PopoverContent>
-                        </Popover>
-                        <Button type="submit" disabled={isSubmitting || !title.trim()} className="px-6">
+                    <div className="flex flex-col gap-2">
+                        <div className="flex gap-2">
+                            <Select value={assigneeId} onValueChange={setAssigneeId}>
+                                <SelectTrigger className="bg-background">
+                                    <UserIcon className="mr-2 h-4 w-4 opacity-50" />
+                                    <SelectValue placeholder="Assignee" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {workspaceUsers.map((u) => (
+                                        <SelectItem key={u.uid} value={u.uid}>{u.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        variant={"outline"}
+                                        className={cn(
+                                            "justify-start text-left font-normal bg-background w-full",
+                                            !dueDate && "text-muted-foreground"
+                                        )}
+                                    >
+                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                        {dueDate ? format(dueDate, "MMM d") : <span>Due date</span>}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0">
+                                    <Calendar
+                                        mode="single"
+                                        selected={dueDate}
+                                        onSelect={(date) => date && setDueDate(date)}
+                                        initialFocus
+                                    />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                        <Button type="submit" disabled={isSubmitting || !title.trim()} className="w-full">
                             <Plus className="h-4 w-4 mr-2" />
-                            Add
+                            Add Quick Task
                         </Button>
                     </div>
                 </form>

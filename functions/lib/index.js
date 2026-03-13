@@ -588,7 +588,7 @@ exports.finalizeWorkspaceLogo = functions.https.onCall(async (data, context) => 
     if (!workspaceDoc.exists) {
         throw new functions.https.HttpsError('not-found', 'Workspace not found.');
     }
-    const workspaceData = workspaceSnap.data();
+    const workspaceData = workspaceDoc.data();
     const userRole = (_b = (_a = workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) === null || _a === void 0 ? void 0 : _a[uid]) === null || _b === void 0 ? void 0 : _b.role;
     if (userRole !== 'admin') {
         throw new functions.https.HttpsError('permission-denied', 'You must be an admin to change the workspace logo.');

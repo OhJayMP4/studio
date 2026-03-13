@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -35,7 +35,7 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Zap, CalendarIcon } from 'lucide-react';
+import { Plus, Zap, CalendarIcon, UserIcon } from 'lucide-react';
 import { FormControl, FormField, FormItem, FormMessage } from '../ui/form';
 import { AddCompanyDialog } from './add-company-dialog';
 import { AddProjectDialog } from './add-project-dialog';
@@ -58,7 +58,9 @@ export function GlobalQuickAdd() {
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedEntityType, setSelectedEntityType] = useState<AddEntityType | null>(null);
+  
   const [quickTaskTitle, setQuickTaskTitle] = useState('');
+  const [quickTaskAssigneeId, setQuickTaskAssigneeId] = useState<string>('');
   const [quickTaskDueDate, setQuickTaskDueDate] = useState<Date>(new Date());
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -66,6 +68,12 @@ export function GlobalQuickAdd() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedSiloId, setSelectedSiloId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user && !quickTaskAssigneeId) {
+        setQuickTaskAssigneeId(user.uid);
+    }
+  }, [user, quickTaskAssigneeId]);
 
   // --- Data Fetching ---
   const companiesQuery = useMemoFirebase(() => {
@@ -99,10 +107,11 @@ export function GlobalQuickAdd() {
     setSelectedSiloId(null);
     setQuickTaskTitle('');
     setQuickTaskDueDate(new Date());
+    if (user) setQuickTaskAssigneeId(user.uid);
   }
 
   const handleAddQuickTask = async () => {
-      if (!selectedCompanyId || !quickTaskTitle.trim() || !user || !selectedWorkspace) return;
+      if (!selectedCompanyId || !quickTaskTitle.trim() || !user || !selectedWorkspace || !quickTaskAssigneeId) return;
       setIsSubmitting(true);
       try {
           await addQuickTask(firestore, {
@@ -113,7 +122,7 @@ export function GlobalQuickAdd() {
                   completed: false,
                   dueDate: quickTaskDueDate.toISOString(),
                   priority: 'medium',
-                  assigneeId: user.uid,
+                  assigneeId: quickTaskAssigneeId,
                   createdBy: user.uid,
               }
           });
@@ -129,6 +138,10 @@ export function GlobalQuickAdd() {
   if (!selectedWorkspace) {
     return null;
   }
+
+  const workspaceUsers = selectedWorkspace?.users 
+    ? Object.entries(selectedWorkspace.users).map(([uid, data]) => ({ uid, name: data.name || data.email || 'Member' }))
+    : [];
   
   const renderDialogContent = () => {
     switch (selectedEntityType) {
@@ -155,36 +168,50 @@ export function GlobalQuickAdd() {
                                     autoFocus
                                 />
                             </div>
-                            <div>
-                                <Label>Due Date</Label>
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <Button
-                                            variant={"outline"}
-                                            className={cn(
-                                                "w-full justify-start text-left font-normal",
-                                                !quickTaskDueDate && "text-muted-foreground"
-                                            )}
-                                        >
-                                            <CalendarIcon className="mr-2 h-4 w-4" />
-                                            {quickTaskDueDate ? format(quickTaskDueDate, "PPP") : <span>Pick a date</span>}
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0">
-                                        <Calendar
-                                            mode="single"
-                                            selected={quickTaskDueDate}
-                                            onSelect={(date) => date && setQuickTaskDueDate(date)}
-                                            initialFocus
-                                        />
-                                    </PopoverContent>
-                                </Popover>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="space-y-2">
+                                    <Label>Assignee</Label>
+                                    <Select value={quickTaskAssigneeId} onValueChange={setQuickTaskAssigneeId}>
+                                        <SelectTrigger>
+                                            <UserIcon className="mr-2 h-4 w-4 opacity-50" />
+                                            <SelectValue placeholder="Assign To" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {workspaceUsers.map(u => <SelectItem key={u.uid} value={u.uid}>{u.name}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Due Date</Label>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <Button
+                                                variant={"outline"}
+                                                className={cn(
+                                                    "w-full justify-start text-left font-normal",
+                                                    !quickTaskDueDate && "text-muted-foreground"
+                                                )}
+                                            >
+                                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                                {quickTaskDueDate ? format(quickTaskDueDate, "MMM d") : <span>Date</span>}
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0">
+                                            <Calendar
+                                                mode="single"
+                                                selected={quickTaskDueDate}
+                                                onSelect={(date) => date && setQuickTaskDueDate(date)}
+                                                initialFocus
+                                            />
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
                             </div>
                         </>
                     )}
                     <Button 
                         className="w-full" 
-                        disabled={!selectedCompanyId || !quickTaskTitle.trim() || isSubmitting}
+                        disabled={!selectedCompanyId || !quickTaskTitle.trim() || isSubmitting || !quickTaskAssigneeId}
                         onClick={handleAddQuickTask}
                     >
                         Create Quick Task

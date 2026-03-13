@@ -20,7 +20,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useUserTasks } from "@/hooks/use-user-tasks";
 
-type DashboardDetailView = 'main' | 'active-projects' | 'completed-projects' | 'total-tasks' | 'overdue-tasks';
+type DashboardDetailView = 'main' | 'active-projects' | 'completed-projects' | 'active-tasks' | 'overdue-tasks';
 
 function TaskListRow({ task }: { task: UserTask }) {
   const dueDate = new Date(task.dueDate);
@@ -88,11 +88,8 @@ function DashboardView() {
   
   // 1. Optimized User Task Fetching (Personalized)
   const { tasks: userTaskGroups, isLoading: isTasksLoading } = useUserTasks(selectedWorkspace?.id);
-  const userTasks = useMemo(() => [...userTaskGroups.active, ...userTaskGroups.completed], [userTaskGroups]);
 
   // 2. Fetch all projects workspace-wide
-  // We avoid collectionGroup here to bypass brittle security rule condition errors.
-  // Instead, we fetch all companies and then fetch their projects in parallel.
   useEffect(() => {
     if (!selectedWorkspace?.id || !firestore) return;
 
@@ -154,9 +151,9 @@ function DashboardView() {
         overdueTasks: overdueTasksList, 
         highPriorityUpcoming, 
         quickTasksList,
-        userTasksCount: userTasks.length
+        activeTasksCount: userTaskGroups.active.length
     };
-  }, [allWorkspaceProjects, userTaskGroups, userTasks]);
+  }, [allWorkspaceProjects, userTaskGroups]);
 
   const isLoading = isTasksLoading || isProjectsLoading;
 
@@ -238,35 +235,29 @@ function DashboardView() {
     );
   }
 
-  if (detailView === 'total-tasks') {
+  if (detailView === 'active-tasks') {
     return (
         <div className="space-y-6">
-            <DetailHeader title="My Tasks" onBack={() => setDetailView('main')} />
+            <DetailHeader title="My Active Tasks" onBack={() => setDetailView('main')} />
             <Card>
                 <CardContent className="p-0">
                     <Table>
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Task</TableHead>
-                                <TableHead>Status</TableHead>
                                 <TableHead>Company / Project</TableHead>
                                 <TableHead>Due Date</TableHead>
                                 <TableHead className="text-right">Priority</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {userTasks.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).map(t => (
+                            {userTaskGroups.active.map(t => (
                                 <TableRow key={t.id}>
                                     <TableCell className="font-medium">
                                         <div className="flex items-center gap-2">
                                             {t.projectId === 'general-tasks' && <Zap className="h-3 w-3 text-primary fill-current" />}
-                                            <span className={cn(t.completed && "line-through text-muted-foreground")}>{t.title}</span>
+                                            <span>{t.title}</span>
                                         </div>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge variant={t.completed ? "secondary" : "outline"}>
-                                            {t.completed ? "Completed" : "In Progress"}
-                                        </Badge>
                                     </TableCell>
                                     <TableCell className="text-xs text-muted-foreground">
                                         {t.companyName} <span className="mx-1">/</span> {t.projectName}
@@ -368,13 +359,13 @@ function DashboardView() {
         </Card>
         <Card 
             className="cursor-pointer hover:bg-accent transition-colors"
-            onClick={() => setDetailView('total-tasks')}
+            onClick={() => setDetailView('active-tasks')}
         >
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">My Total Tasks</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">My Active Tasks</CardTitle>
           </CardHeader>
           <CardContent>
-             {isLoading ? <Skeleton className="h-8 w-16"/> : <p className="text-3xl font-bold">{stats.userTasksCount}</p>}
+             {isLoading ? <Skeleton className="h-8 w-16"/> : <p className="text-3xl font-bold">{stats.activeTasksCount}</p>}
           </CardContent>
         </Card>
         <Card 
@@ -490,7 +481,7 @@ function DashboardView() {
 
       <div className="grid gap-8 md:grid-cols-2">
         <ProjectStatusChart projects={allWorkspaceProjects} isLoading={isLoading} />
-        <TaskPriorityChart tasks={userTasks} isLoading={isLoading} />
+        <TaskPriorityChart tasks={userTaskGroups.active} isLoading={isLoading} />
       </div>
     </div>
   );
