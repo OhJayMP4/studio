@@ -292,3 +292,116 @@ export async function updateTaskCompletion(
         errorEmitter.emit('permission-error', permissionError);
     });
 }
+
+/**
+ * Duplicates a project, its silos, and its tasks to a target company.
+ * Reassigns all tasks to a specified user.
+ */
+export async function duplicateProject(
+    firestore: Firestore,
+    params: {
+        workspaceId: string;
+        sourceCompanyId: string;
+        sourceProjectId: string;
+        targetCompanyId: string;
+        targetAssigneeId: string;
+        currentUserId: string;
+    }
+) {
+    const { workspaceId, sourceCompanyId, sourceProjectId, targetCompanyId, targetAssigneeId, currentUserId } = params;
+
+    // 1. Get Source Data
+    const sourceProjectRef = doc(firestore, `workspaces/${workspaceId}/companies/${sourceCompanyId}/projects/${sourceProjectId}`);
+    const targetCompanyRef = doc(firestore, `workspaces/${workspaceId}/companies/${targetCompanyId}`);
+    
+    const [sourceProjectSnap, targetCompanySnap] = await Promise.all([
+        getDoc(sourceProjectRef),
+        getDoc(targetCompanyRef)
+    ]);
+
+    if (!sourceProjectSnap.exists()) throw new Error("Source project not found.");
+    if (!targetCompanySnap.exists()) throw new Error("Target company not found.");
+
+    const sourceProjectData = sourceProjectSnap.data() as Project;
+    const targetCompanyData = targetCompanySnap.data() as Company;
+
+    // 2. Create Target Project
+    const targetProjectsCol = collection(firestore, `workspaces/${workspaceId}/companies/${targetCompanyId}/projects`);
+    const targetProjectRef = doc(targetProjectsCol);
+    const targetProjectData = {
+        ...sourceProjectData,
+        name: `${sourceProjectData.name} (Copy)`,
+        companyId: targetCompanyId,
+        createdBy: currentUserId,
+        progress: 0,
+        totalSalesValue: 0,
+        status: 'active',
+        completedAt: null,
+        createdAt: serverTimestamp(),
+    };
+
+    const batch = writeBatch(firestore);
+    batch.set(targetProjectRef, targetProjectData);
+
+    // 3. Fetch and Duplicate Silos & Tasks
+    const silosQuery = collection(sourceProjectRef, 'silos');
+    const silosSnap = await getDocs(silosQuery);
+
+    for (const siloDoc of silosSnap.docs) {
+        const siloData = siloDoc.data() as Silo;
+        const targetSiloRef = doc(collection(targetProjectRef, 'silos'));
+        
+        batch.set(targetSiloRef, {
+            ...siloData,
+            workspaceId,
+            createdBy: currentUserId,
+        });
+
+        // Fetch tasks for this silo
+        const tasksQuery = collection(siloDoc.ref, 'tasks');
+        const tasksSnap = await getDocs(tasksQuery);
+
+        for (const taskDoc of tasksSnap.docs) {
+            const taskData = taskDoc.data() as Task;
+            const targetTaskRef = doc(collection(targetSiloRef, 'tasks'));
+            
+            const newTaskData = {
+                ...taskData,
+                workspaceId,
+                projectId: targetProjectRef.id,
+                assigneeId: targetAssigneeId,
+                completed: false,
+                timeSpentMinutes: 0,
+                createdBy: currentUserId,
+                createdAt: serverTimestamp(),
+            };
+
+            batch.set(targetTaskRef, newTaskData);
+
+            // Denormalize for the new assignee
+            const userTaskRef = doc(collection(firestore, `user-tasks/${targetAssigneeId}/tasks`));
+            batch.set(userTaskRef, {
+                originalTaskId: targetTaskRef.id,
+                workspaceId,
+                companyId: targetCompanyId,
+                projectId: targetProjectRef.id,
+                siloId: targetSiloRef.id,
+                title: taskData.title,
+                description: taskData.description || '',
+                completed: false,
+                dueDate: taskData.dueDate,
+                priority: taskData.priority,
+                assigneeId: targetAssigneeId,
+                createdBy: currentUserId,
+                companyName: targetCompanyData.name,
+                projectName: targetProjectData.name,
+                siloName: siloData.name,
+                timeSpentMinutes: 0,
+                createdAt: serverTimestamp()
+            });
+        }
+    }
+
+    // 4. Commit everything
+    return batch.commit();
+}

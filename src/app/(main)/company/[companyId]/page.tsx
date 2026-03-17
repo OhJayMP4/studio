@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
@@ -21,9 +22,10 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Archive, ArchiveRestore, MoreVertical, Trash2, LayoutGrid, List, Zap, Plus, CalendarIcon, Pin, UserIcon } from "lucide-react";
+import { Archive, ArchiveRestore, MoreVertical, Trash2, LayoutGrid, List, Zap, Plus, CalendarIcon, Pin, UserIcon, Copy } from "lucide-react";
 import { EditProjectDialog } from "@/components/common/edit-project-dialog";
 import { DeleteDialog } from "@/components/common/delete-dialog";
+import { DuplicateProjectDialog } from "@/components/common/duplicate-project-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useMemo, useState, useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -292,11 +294,19 @@ function ProjectActions({ project, companyId }: { project: Project, companyId: s
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-                    <EditProjectDialog project={project} companyId={companyId}>
-                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                <EditProjectDialog project={project} companyId={companyId}>
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                         Edit
                     </DropdownMenuItem>
                 </EditProjectDialog>
+                
+                <DuplicateProjectDialog project={project} companyId={companyId}>
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                        <Copy className="mr-2 h-4 w-4" />
+                        Duplicate to Company...
+                    </DropdownMenuItem>
+                </DuplicateProjectDialog>
+
                 {project.status === 'archived' ? (
                     <DropdownMenuItem onClick={handleRestore}>
                         <ArchiveRestore className="mr-2 h-4 w-4" />
