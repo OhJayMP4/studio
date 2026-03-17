@@ -1,4 +1,3 @@
-
 'use client';
 import { collection, doc, writeBatch, getDoc, setDoc, Firestore, query, where, getDocs, updateDoc, serverTimestamp } from "firebase/firestore";
 import type { Company, Project, Silo, Task, Workspace } from "./types";
@@ -251,13 +250,13 @@ export async function addQuickTask(firestore: Firestore, params: {
 export async function updateTaskCompletion(
     firestore: Firestore, 
     originalTaskPath: string, 
-    userId: string, 
+    assigneeId: string, 
     originalTaskId: string, 
     completed: boolean,
     timeSpentMinutes?: number
 ) {
     const originalTaskRef = doc(firestore, originalTaskPath);
-    const userTasksRef = collection(firestore, `user-tasks/${userId}/tasks`);
+    const userTasksRef = collection(firestore, `user-tasks/${assigneeId}/tasks`);
     const q = query(userTasksRef, where("originalTaskId", "==", originalTaskId));
     
     const [originalTaskSnap, userTasksSnap] = await Promise.all([
@@ -267,11 +266,6 @@ export async function updateTaskCompletion(
 
     if (!originalTaskSnap.exists()) throw new Error("Original task not found.");
     
-    if (originalTaskSnap.data().assigneeId !== userId) {
-        console.error(`Security violation: User ${userId} attempted to update a task not assigned to them.`);
-        return;
-    }
-
     const batch = writeBatch(firestore);
     const updateData: any = { completed };
     if (completed) {

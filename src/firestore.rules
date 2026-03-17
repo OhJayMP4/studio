@@ -116,11 +116,12 @@ service cloud.firestore {
     
     /**
      * @description User-specific tasks (denormalized).
+     * Now allows workspace admins to manage these records for duplication/admin purposes.
      */
      match /user-tasks/{userId}/tasks/{taskId} {
         allow get, list: if isSignedIn() && isOwner(userId);
         allow create: if isSignedIn() && isWorkspaceMember(request.resource.data.workspaceId);
-        allow update, delete: if isSignedIn() && isOwner(userId);
+        allow update, delete: if isSignedIn() && (isOwner(userId) || isWorkspaceAdmin(resource.data.workspaceId));
     }
 
     /**
