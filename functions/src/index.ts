@@ -937,7 +937,7 @@ exports.getUserActivity = functions.https.onCall(async (data, context) => {
 
     // Secure verify: is caller a member?
     const workspaceSnap = await db.doc(`workspaces/${workspaceId}`).get();
-    if (!workspaceSnap.exists()) throw new functions.https.HttpsError('not-found', 'Workspace not found.');
+    if (!workspaceSnap.exists) throw new functions.https.HttpsError('not-found', 'Workspace not found.');
     const wsData = workspaceSnap.data();
     if (!wsData?.memberIds?.includes(context.auth.uid)) throw new functions.https.HttpsError('permission-denied', 'Membership required.');
 
