@@ -68,6 +68,20 @@
     },
     {
       "collectionGroup": "activities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "isRelevantTo",
+          "order": "ARRAY_CONTAINS"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "activities",
       "queryScope": "COLLECTION_GROUP",
       "fields": [
         {
