@@ -197,7 +197,6 @@ export default function SettingsPage() {
         <p className="text-muted-foreground text-lg">Personalize your environment and manage workspace security.</p>
       </div>
 
-      {/* Appearance Section */}
       <Card className="border-none shadow-sm bg-card/50">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-2xl">
@@ -277,7 +276,6 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Notifications Section */}
       <Card className="border-none shadow-sm bg-card/50">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-2xl">

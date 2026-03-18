@@ -91,7 +91,9 @@ const getActorAndRelevantUsers = async (workspaceId: string, actorUid: string) =
     const workspaceData = workspaceSnap.data();
     const actor = workspaceData?.users?.[actorUid];
     const actorName = actor?.name || actor?.email || 'A user';
-    const isRelevantTo = Object.keys(workspaceData?.users || {}).filter(uid => uid !== actorUid);
+    
+    // Everyone in the workspace is relevant, including the actor
+    const isRelevantTo = Object.keys(workspaceData?.users || {});
     return { actorName, isRelevantTo };
 };
 

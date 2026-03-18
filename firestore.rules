@@ -1,42 +1,25 @@
 /**
  * @fileoverview Firestore Security Rules for the application.
- *
- * Core Philosophy:
- * This ruleset enforces a strict, hierarchical access control model based on workspace membership and ownership.
- * Users can only access their own profile data. Workspaces, companies, projects, silos, and tasks are gated by workspace membership.
- * Denormalized data in /user-tasks allows efficient user-specific task queries.
  */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    /**
-     * @description Checks if the user is signed in.
-     */
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /**
-     * @description Checks if the authenticated user is the owner of the resource.
-     */
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
 
-    /**
-     * @description Checks if the authenticated user is a member of the specified workspace.
-     */
     function isMemberOfWorkspace(workspaceId) {
       return isSignedIn() && 
              workspaceId != null && 
              workspaceId != "" &&
-             request.auth.uid in get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users;
+             request.auth.uid in get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds;
     }
 
-    /**
-     * @description Checks if the authenticated user is an admin of the specified workspace.
-     */
     function isWorkspaceAdmin(workspaceId) {
       return isSignedIn() && 
              workspaceId != null && 
@@ -44,20 +27,14 @@ service cloud.firestore {
              get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == 'admin';
     }
 
-    /**
-     * @description User profile documents.
-     */
     match /users/{userId} {
       allow get: if isSignedIn();
       allow list: if false;
       allow create, update, delete: if isSignedIn() && isOwner(userId);
     }
 
-    /**
-     * @description Workspace documents and nested resources.
-     */
     match /workspaces/{workspaceId} {
-      allow get: if isSignedIn() && request.auth.uid in resource.data.users;
+      allow get: if isSignedIn() && request.auth.uid in resource.data.memberIds;
       allow list: if isSignedIn() && request.auth.uid in resource.data.memberIds;
       allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
       allow update: if isWorkspaceAdmin(workspaceId);
@@ -102,18 +79,12 @@ service cloud.firestore {
       }
     }
     
-    /**
-     * @description Denormalized user tasks.
-     */
      match /user-tasks/{userId}/tasks/{taskId} {
         allow get, list: if isSignedIn() && (isOwner(userId) || isMemberOfWorkspace(request.query.workspaceId));
         allow create: if isSignedIn() && isMemberOfWorkspace(request.resource.data.workspaceId);
         allow update, delete: if isSignedIn() && (isOwner(userId) || isWorkspaceAdmin(resource.data.workspaceId));
     }
 
-    /**
-     * @description System collections.
-     */
     match /invites/{inviteId} {
       allow create: if isWorkspaceAdmin(request.resource.data.workspaceId);
       allow get, list, update, delete: if false;

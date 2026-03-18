@@ -66,7 +66,7 @@ export function UserDetailSheet({ userId, onClose, tasks }: UserDetailSheetProps
 
   return (
     <Sheet open={!!userId} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="sm:max-w-xl w-full flex flex-col p-0 overflow-hidden">
+      <SheetContent className="sm:max-w-[600px] w-full flex flex-col p-0 overflow-hidden">
         <SheetHeader className="p-6 pb-2 border-b bg-muted/10">
           <div className="flex items-center gap-4">
             <SheetTitle className="text-2xl font-headline font-bold">{user.name || user.email}</SheetTitle>
@@ -78,7 +78,6 @@ export function UserDetailSheet({ userId, onClose, tasks }: UserDetailSheetProps
 
         <ScrollArea className="flex-1">
           <div className="p-6 space-y-10 pb-20">
-            {/* Workload Summary */}
             <div className="grid grid-cols-3 gap-4">
               <div className="bg-primary/5 border border-primary/10 p-4 rounded-xl text-center">
                 <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">Active</p>
@@ -105,9 +104,7 @@ export function UserDetailSheet({ userId, onClose, tasks }: UserDetailSheetProps
                 </TabsList>
 
                 <TabsContent value="tasks" className="space-y-8">
-                    {/* Task Breakdown */}
                     <div className="space-y-6">
-                        {/* Overdue */}
                         {stats.overdue.length > 0 && (
                             <div className="space-y-3">
                             <p className="text-xs font-bold text-destructive flex items-center gap-1.5 uppercase tracking-wider">
@@ -129,7 +126,6 @@ export function UserDetailSheet({ userId, onClose, tasks }: UserDetailSheetProps
                             </div>
                         )}
 
-                        {/* Finished This Week */}
                         <div className="space-y-3">
                             <p className="text-xs font-bold text-green-600 flex items-center gap-1.5 uppercase tracking-wider">
                                 <TrendingUp className="h-3.5 w-3.5" /> Finished This Week
@@ -156,7 +152,6 @@ export function UserDetailSheet({ userId, onClose, tasks }: UserDetailSheetProps
                             )}
                         </div>
 
-                        {/* Upcoming */}
                         <div className="space-y-3">
                             <p className="text-xs font-bold text-blue-500 flex items-center gap-1.5 uppercase tracking-wider">
                                 <CalendarRange className="h-3.5 w-3.5" /> Upcoming Queue

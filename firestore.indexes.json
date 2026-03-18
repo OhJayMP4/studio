@@ -67,6 +67,20 @@
       ]
     },
     {
+      "collectionGroup": "activities",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "isRelevantTo",
+          "order": "ARRAY_CONTAINS"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "workspace-files",
       "queryScope": "COLLECTION",
       "fields": [
