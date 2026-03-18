@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useMemo, useState } from 'react';
@@ -8,10 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { isPast, isToday, addDays, isWithinInterval, startOfDay, endOfDay, startOfWeek } from 'date-fns';
-import { cn } from '@/lib/utils';
 import { UserDetailSheet } from './user-detail-sheet';
-import { AlertCircle, Calendar, ClipboardCheck, TrendingUp } from 'lucide-react';
-import { Timestamp } from 'firebase/firestore';
+import { Calendar, ClipboardCheck, TrendingUp } from 'lucide-react';
 
 interface UserSummary {
   uid: string;
@@ -24,6 +21,18 @@ interface UserSummary {
   nextDueTask: Task | null;
   tasks: Task[];
 }
+
+/**
+ * Safely converts a value to a Date object.
+ * Handles Firestore Timestamps, serialized timestamp objects {seconds, nanoseconds}, and strings.
+ */
+const safeToDate = (val: any): Date | null => {
+    if (!val) return null;
+    if (val instanceof Date) return val;
+    if (typeof val.toDate === 'function') return val.toDate();
+    if (val.seconds !== undefined) return new Date(val.seconds * 1000);
+    return new Date(val);
+};
 
 export function TeamOverview({ tasks }: { tasks: Task[] }) {
   const { selectedWorkspace } = useSelectedWorkspace();
@@ -55,8 +64,8 @@ export function TeamOverview({ tasks }: { tasks: Task[] }) {
 
       const completedThisWeek = userTasks.filter(t => {
         if (!t.completed || !t.completedAt) return false;
-        const compDate = (t.completedAt as Timestamp).toDate();
-        return compDate >= weekStart;
+        const compDate = safeToDate(t.completedAt);
+        return compDate && compDate >= weekStart;
       });
 
       const sortedActive = [...activeTasks].sort((a, b) => 

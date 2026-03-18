@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useMemo } from 'react';
@@ -10,22 +9,29 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import type { Task, Notification } from '@/lib/types';
+import type { Task } from '@/lib/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { isPast, isToday, addDays, isWithinInterval, startOfDay, endOfDay, differenceInDays, startOfWeek } from 'date-fns';
+import { isPast, isToday, addDays, isWithinInterval, startOfDay, endOfDay, differenceInDays, startOfWeek, formatDistanceToNow } from 'date-fns';
 import { UserActivityFeed } from './user-activity-feed';
 import { ClipboardCheck, Clock, AlertCircle, CalendarRange, CheckCircle2, TrendingUp } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { Timestamp } from 'firebase/firestore';
 
 interface UserDetailSheetProps {
   userId: string;
   onClose: () => void;
   tasks: Task[];
 }
+
+/**
+ * Safely converts a value to a Date object.
+ */
+const safeToDate = (val: any): Date | null => {
+    if (!val) return null;
+    if (val instanceof Date) return val;
+    if (typeof val.toDate === 'function') return val.toDate();
+    if (val.seconds !== undefined) return new Date(val.seconds * 1000);
+    return new Date(val);
+};
 
 export function UserDetailSheet({ userId, onClose, tasks }: UserDetailSheetProps) {
   const { selectedWorkspace } = useSelectedWorkspace();
@@ -45,12 +51,16 @@ export function UserDetailSheet({ userId, onClose, tasks }: UserDetailSheetProps
     
     const finishedThisWeek = tasks.filter(t => {
         if (!t.completed || !t.completedAt) return false;
-        const compDate = (t.completedAt as Timestamp).toDate();
-        return compDate >= weekStart;
-    }).sort((a, b) => (b.completedAt as Timestamp).toMillis() - (a.completedAt as Timestamp).toMillis());
+        const compDate = safeToDate(t.completedAt);
+        return compDate && compDate >= weekStart;
+    }).sort((a, b) => {
+        const dateA = safeToDate(a.completedAt)?.getTime() || 0;
+        const dateB = safeToDate(b.completedAt)?.getTime() || 0;
+        return dateB - dateA;
+    });
 
     return { active, overdue, upcoming, finishedThisWeek };
-  }, [tasks]);
+  }, [tasks, weekStart, next7Days, now]);
 
   if (!user) return null;
 
@@ -126,17 +136,20 @@ export function UserDetailSheet({ userId, onClose, tasks }: UserDetailSheetProps
                             </p>
                             {stats.finishedThisWeek.length > 0 ? (
                                 <div className="space-y-2">
-                                    {stats.finishedThisWeek.map(task => (
-                                        <div key={task.id} className="p-3 bg-green-500/5 border border-green-500/10 rounded-lg flex justify-between items-center text-sm">
-                                            <div className="flex items-center gap-2 truncate pr-4">
-                                                <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                                                <span className="font-medium truncate line-through opacity-70">{task.title}</span>
+                                    {stats.finishedThisWeek.map(task => {
+                                        const compDate = safeToDate(task.completedAt);
+                                        return (
+                                            <div key={task.id} className="p-3 bg-green-500/5 border border-green-500/10 rounded-lg flex justify-between items-center text-sm">
+                                                <div className="flex items-center gap-2 truncate pr-4">
+                                                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                                                    <span className="font-medium truncate line-through opacity-70">{task.title}</span>
+                                                </div>
+                                                <span className="text-[10px] font-bold text-green-600 whitespace-nowrap">
+                                                    {compDate ? formatDistanceToNow(compDate, { addSuffix: true }) : 'Completed'}
+                                                </span>
                                             </div>
-                                            <span className="text-[10px] font-bold text-green-600 whitespace-nowrap">
-                                                {formatDistanceToNow((task.completedAt as Timestamp).toDate(), { addSuffix: true })}
-                                            </span>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             ) : (
                                 <p className="text-xs text-muted-foreground italic pl-5">No tasks completed yet this week.</p>
