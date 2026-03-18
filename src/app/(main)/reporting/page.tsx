@@ -5,7 +5,7 @@ import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, Link as LinkIcon, Users } from "lucide-react";
+import { FileText, Link as LinkIcon, Users, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TeamReportDialog } from "@/components/reporting/team-report-dialog";
@@ -46,11 +46,28 @@ export default function ReportingPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-headline">Reporting for {selectedWorkspace.name}</h1>
+        <h1 className="text-3xl font-headline font-bold">Reporting for {selectedWorkspace.name}</h1>
         <p className="text-muted-foreground">Generate reports for your workspace. Archived projects are excluded from these reports.</p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <Card className="hover:shadow-md transition-shadow border-primary/10">
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                    <UsersRound className="text-primary" />
+                    My Team Breakdown
+                </CardTitle>
+                <CardDescription>
+                    High-level overview of team workload, overdue tasks, and upcoming priorities across the workspace.
+                </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Button className="w-full" asChild>
+                    <Link href="/reporting/team-breakdown">View Team Breakdown</Link>
+                </Button>
+            </CardContent>
+        </Card>
+
         <Card>
             <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -62,7 +79,7 @@ export default function ReportingPage() {
                 </CardDescription>
             </CardHeader>
             <CardContent>
-                <Button asChild>
+                <Button className="w-full" asChild>
                     <Link href="/reporting/summary" target="_blank">Generate Printable Report</Link>
                 </Button>
             </CardContent>
@@ -78,7 +95,7 @@ export default function ReportingPage() {
                 </CardDescription>
             </CardHeader>
             <CardContent>
-                <Button onClick={handleLiveReportClick}>Copy Link & Open</Button>
+                <Button className="w-full" onClick={handleLiveReportClick}>Copy Link & Open</Button>
             </CardContent>
         </Card>
          <Card>
