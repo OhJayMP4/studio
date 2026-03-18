@@ -345,7 +345,7 @@ export default function SettingsPage() {
                         name="email"
                         render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Email Address</Label>
+                            <FormLabel>Email Address</FormLabel>
                             <FormControl>
                             <Input type="email" {...field} disabled className="bg-muted/50" />
                             </FormControl>
