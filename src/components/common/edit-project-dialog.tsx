@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -41,17 +42,17 @@ const formSchema = z.object({
   deadline: z.date({ required_error: 'A deadline is required.' }),
   hasMonetaryValue: z.boolean().default(false),
   monetaryValue: z.preprocess(
-    (a) => (a === '' || a === undefined ? undefined : parseFloat(String(a))),
-    z.number().positive('Value must be a positive number.').optional()
+    (a) => (a === '' || a === undefined || a === null ? undefined : parseFloat(String(a))),
+    z.number().min(0, 'Value must be 0 or more.').optional()
   ),
   status: z.enum(['active', 'completed', 'archived']),
 }).refine(data => {
     if (data.hasMonetaryValue) {
-        return data.monetaryValue !== undefined && Number(data.monetaryValue) > 0;
+        return data.monetaryValue !== undefined && data.monetaryValue >= 0;
     }
     return true;
 }, {
-    message: 'Monetary value is required and must be a positive number.',
+    message: 'Monetary value is required when enabled.',
     path: ['monetaryValue'],
 });
 
@@ -88,9 +89,9 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
     if (isOpen) {
       reset({
         name: project.name,
-        deadline: new Date(project.deadline),
-        hasMonetaryValue: project.hasMonetaryValue,
-        monetaryValue: project.monetaryValue,
+        deadline: project.deadline ? new Date(project.deadline) : new Date(),
+        hasMonetaryValue: project.hasMonetaryValue || false,
+        monetaryValue: project.monetaryValue ?? 0,
         status: project.status || 'active',
       });
     }
@@ -112,7 +113,7 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
       name: data.name,
       deadline: data.deadline.toISOString(),
       hasMonetaryValue: data.hasMonetaryValue,
-      monetaryValue: data.hasMonetaryValue ? Number(data.monetaryValue) : null,
+      monetaryValue: data.hasMonetaryValue ? (data.monetaryValue ?? 0) : null,
       status: data.status,
       updatedBy: user.uid,
     };
@@ -130,7 +131,7 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
       .then(() => {
         toast({
           title: 'Project Updated',
-          description: `The "${data.name}" project has been successfully updated.`,
+          description: `"${data.name}" has been successfully updated.`,
         });
         setIsOpen(false);
       })
@@ -146,18 +147,16 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
         toast({
           variant: 'destructive',
           title: 'Update Failed',
-          description: serverError.message || 'You might not have permission to edit this project.',
+          description: 'You might not have permission to edit this project.',
         });
       });
   };
-
-  const formId = `edit-project-form-${project.id}`;
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
-        <form id={formId} onSubmit={handleSubmit(handleUpdateProject)}>
+        <form onSubmit={handleSubmit(handleUpdateProject)}>
             <DialogHeader>
                 <DialogTitle>Edit Project</DialogTitle>
                 <DialogDescription>
@@ -221,7 +220,7 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
                 <div className="flex items-center justify-between space-y-2">
                     <div className='space-y-0.5'>
                         <Label htmlFor="hasMonetaryValue">Has Monetary Value?</Label>
-                        <p className='text-xs text-muted-foreground'>Does this project have a budget or contract value?</p>
+                        <p className='text-xs text-muted-foreground'>Does this project have a budget or target?</p>
                     </div>
                   <Controller
                     name="hasMonetaryValue"
@@ -236,14 +235,14 @@ export function EditProjectDialog({ project, companyId, children }: EditProjectD
                 {hasMonetaryValue && (
                   <div className="space-y-2">
                     <Label htmlFor="monetaryValue">Monetary Value (ZAR)</Label>
-                    <Input id="monetaryValue" type="number" {...register('monetaryValue')} />
+                    <Input id="monetaryValue" type="number" step="0.01" {...register('monetaryValue')} />
                     {errors.monetaryValue && <p className="text-sm text-destructive mt-1">{errors.monetaryValue.message}</p>}
                   </div>
                 )}
             </div>
 
             <DialogFooter>
-                <Button type="submit" form={formId} disabled={isSubmitting}>
+                <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? 'Saving...' : 'Save Changes'}
                 </Button>
             </DialogFooter>
