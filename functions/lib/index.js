@@ -776,7 +776,7 @@ exports.getUserActivity = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('invalid-argument', 'Missing parameters.');
     // Secure verify: is caller a member?
     const workspaceSnap = await db.doc(`workspaces/${workspaceId}`).get();
-    if (!workspaceSnap.exists())
+    if (!workspaceSnap.exists)
         throw new functions.https.HttpsError('not-found', 'Workspace not found.');
     const wsData = workspaceSnap.data();
     if (!((_a = wsData === null || wsData === void 0 ? void 0 : wsData.memberIds) === null || _a === void 0 ? void 0 : _a.includes(context.auth.uid)))
