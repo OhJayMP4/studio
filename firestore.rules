@@ -5,7 +5,6 @@
  * This ruleset enforces a strict, hierarchical access control model based on workspace membership and ownership.
  * Users can only access their own profile data. Workspaces, companies, projects, silos, and tasks are gated by workspace membership.
  * Denormalized data in /user-tasks allows efficient user-specific task queries.
- * Invites can only be created via trusted server to ensure security.
  */
 rules_version = '2';
 service cloud.firestore {
@@ -19,7 +18,7 @@ service cloud.firestore {
     }
 
     /**
-     * @description Checks if the authenticated user is the owner of the resource (identified by userId).
+     * @description Checks if the authenticated user is the owner of the resource.
      */
     function isOwner(userId) {
       return request.auth.uid == userId;
@@ -27,12 +26,12 @@ service cloud.firestore {
 
     /**
      * @description Checks if the authenticated user is a member of the specified workspace.
+     * Uses a direct get() to avoid recursion and ensure data consistency.
      */
-    function isWorkspaceMember(workspaceId) {
+    function isMemberOfWorkspace(workspaceId) {
       return isSignedIn() && 
              workspaceId != null && 
              workspaceId != "" &&
-             exists(/databases/$(database)/documents/workspaces/$(workspaceId)) &&
              request.auth.uid in get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users;
     }
 
@@ -40,12 +39,14 @@ service cloud.firestore {
      * @description Checks if the authenticated user is an admin of the specified workspace.
      */
     function isWorkspaceAdmin(workspaceId) {
-      return isWorkspaceMember(workspaceId) && 
+      return isSignedIn() && 
+             workspaceId != null && 
+             workspaceId != "" &&
              get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == 'admin';
     }
 
     /**
-     * @description Rules for user profile documents.
+     * @description User profile documents.
      */
     match /users/{userId} {
       allow get: if isSignedIn();
@@ -57,62 +58,63 @@ service cloud.firestore {
     // These allow the cross-company dashboard and search views.
     // We restrict these to ensure they are always filtered by a workspaceId the user belongs to.
     match /{path=**}/companies/{companyId} {
-      allow get: if isWorkspaceMember(resource.data.workspaceId);
-      allow list: if isWorkspaceMember(request.query.workspaceId);
+      allow get: if isMemberOfWorkspace(resource.data.workspaceId);
+      allow list: if isMemberOfWorkspace(request.query.workspaceId);
     }
     match /{path=**}/projects/{projectId} {
-      allow get: if isWorkspaceMember(resource.data.workspaceId);
-      allow list: if isWorkspaceMember(request.query.workspaceId);
+      allow get: if isMemberOfWorkspace(resource.data.workspaceId);
+      allow list: if isMemberOfWorkspace(request.query.workspaceId);
     }
     match /{path=**}/silos/{siloId} {
-      allow get: if isWorkspaceMember(resource.data.workspaceId);
-      allow list: if isWorkspaceMember(request.query.workspaceId);
+      allow get: if isMemberOfWorkspace(resource.data.workspaceId);
+      allow list: if isMemberOfWorkspace(request.query.workspaceId);
     }
     match /{path=**}/tasks/{taskId} {
-      allow get: if isWorkspaceMember(resource.data.workspaceId);
-      allow list: if isWorkspaceMember(request.query.workspaceId);
+      allow get: if isMemberOfWorkspace(resource.data.workspaceId);
+      allow list: if isMemberOfWorkspace(request.query.workspaceId);
     }
 
     /**
-     * @description Rules for workspace documents.
+     * @description Workspace documents and nested resources.
      */
     match /workspaces/{workspaceId} {
-      allow get, list: if isWorkspaceMember(workspaceId);
+      allow get: if isSignedIn() && request.auth.uid in resource.data.users;
+      allow list: if isSignedIn() && request.auth.uid in resource.data.memberIds;
       allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
       allow update: if isWorkspaceAdmin(workspaceId);
-      allow delete: if false; // Deletion must be done via Cloud Function
+      allow delete: if false;
 
       match /chatMessages/{messageId} {
-        allow read, create: if isWorkspaceMember(workspaceId);
-        allow update, delete: if isWorkspaceMember(workspaceId) && isOwner(resource.data.senderId);
+        allow read, create: if isMemberOfWorkspace(workspaceId);
+        allow update, delete: if isMemberOfWorkspace(workspaceId) && isOwner(resource.data.senderId);
       }
 
       match /companies/{companyId} {
-        allow read, write: if isWorkspaceMember(workspaceId);
+        allow read, write: if isMemberOfWorkspace(workspaceId);
 
         match /projects/{projectId} {
-          allow read, write: if isWorkspaceMember(workspaceId);
+          allow read, write: if isMemberOfWorkspace(workspaceId);
 
           match /silos/{siloId} {
-            allow read, write: if isWorkspaceMember(workspaceId);
+            allow read, write: if isMemberOfWorkspace(workspaceId);
 
             match /tasks/{taskId} {
-              allow read, write: if isWorkspaceMember(workspaceId);
+              allow read, write: if isMemberOfWorkspace(workspaceId);
 
               match /comments/{commentId=**} {
-                allow get, list, create: if isWorkspaceMember(workspaceId);
-                allow update, delete: if isWorkspaceMember(workspaceId) && isOwner(resource.data.createdBy);
+                allow get, list, create: if isMemberOfWorkspace(workspaceId);
+                allow update, delete: if isMemberOfWorkspace(workspaceId) && isOwner(resource.data.createdBy);
               }
             }
           }
           
           match /sales/{saleId} {
-            allow read, write: if isWorkspaceMember(workspaceId);
+            allow read, write: if isMemberOfWorkspace(workspaceId);
           }
         }
         
         match /socialPosts/{postId} {
-          allow read, write: if isWorkspaceMember(workspaceId);
+          allow read, write: if isMemberOfWorkspace(workspaceId);
         }
 
         match /socialAccounts/{accountId} {
@@ -122,31 +124,30 @@ service cloud.firestore {
     }
     
     /**
-     * @description Rules for denormalized user task documents.
+     * @description Denormalized user tasks.
      */
      match /user-tasks/{userId}/tasks/{taskId} {
         allow get, list: if isSignedIn() && isOwner(userId);
-        allow create: if isWorkspaceMember(request.resource.data.workspaceId);
-        allow update, delete: if isSignedIn() && isOwner(userId);
+        allow create: if isSignedIn() && isMemberOfWorkspace(request.resource.data.workspaceId);
+        allow update, delete: if isSignedIn() && (isOwner(userId) || isWorkspaceAdmin(resource.data.workspaceId));
     }
 
     /**
-     * @description System collections (Invites, Notifications, Presence, Prefs).
+     * @description System collections.
      */
     match /invites/{inviteId} {
-      allow get, list, update, delete: if false;
       allow create: if isWorkspaceAdmin(request.resource.data.workspaceId);
+      allow get, list, update, delete: if false;
     }
 
     match /notifications/{workspaceId}/activities/{activityId} {
-      allow read, list, update: if isWorkspaceMember(workspaceId);
+      allow read, list, update: if isMemberOfWorkspace(workspaceId);
       allow create, delete: if false;
     }
 
-     match /presence/{workspaceId}/users/{userId} {
-      allow read, list: if isWorkspaceMember(workspaceId);
-      allow create, update: if isOwner(userId) && isWorkspaceMember(workspaceId);
-      allow delete: if false;
+    match /presence/{workspaceId}/users/{userId} {
+      allow read, list: if isMemberOfWorkspace(workspaceId);
+      allow create, update: if isOwner(userId) && isMemberOfWorkspace(workspaceId);
     }
 
     match /user-workspace-prefs/{docId} {
@@ -157,8 +158,8 @@ service cloud.firestore {
 
     match /workspace-files/{fileId} {
       allow list: if isSignedIn();
-      allow get, update: if isWorkspaceMember(resource.data.workspaceId);
-      allow create: if isSignedIn() && isWorkspaceMember(request.resource.data.workspaceId);
+      allow get, update: if isMemberOfWorkspace(resource.data.workspaceId);
+      allow create: if isSignedIn() && isMemberOfWorkspace(request.resource.data.workspaceId);
       allow delete: if isWorkspaceAdmin(request.resource.data.workspaceId);
     }
   }

@@ -1,4 +1,3 @@
-
 'use server';
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
@@ -420,8 +419,8 @@ exports.onSiloDelete = functions.firestore
         const projectName = projectSnap.exists ? projectSnap.data()?.name : '';
 
         await createNotification(workspaceId, {
-            type: 'silo_deleted',
-            actorUid,
+            type: 'silo_added',
+            actorUid: siloData.createdBy,
             actorName,
             target: { id: snap.id, name: siloData.name, type: 'silo', path: `/company/${companyId}/project/${projectId}` },
             context: { companyName, projectName },
@@ -866,7 +865,7 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
             tasksQuery.get(),
         ]);
 
-        const userProfile = userSnap.exists ? { id: userSnap.id, ...userSnap.data() } : { uid: userId, name: 'Unknown User' };
+        const userProfile = userSnap.exists ? { id: userSnap.id, ...userSnap.data() } : { uid: userId, name: 'Unnamed User' };
         const tasks = tasksSnap.docs.map(doc => {
             const taskData = doc.data() as UserTask;
             return {
@@ -979,6 +978,11 @@ exports.createFolder = functions.region("us-central1").https.onCall(async (data,
     }
 });
 
+/**
+ * Omni-Backfill Migration function.
+ * Recursively scans projects, silos, and tasks to ensure proper metadata
+ * and re-synchronizes the denormalized user-tasks collection for the dashboard.
+ */
 exports.backfillAllProjects = functions
   .region("us-central1")
   .runWith({ timeoutSeconds: 540, memory: "1GB" })
@@ -994,6 +998,7 @@ exports.backfillAllProjects = functions
 
       console.log("Starting deep sync migration...");
 
+      // 1. Sync ALL Projects
       const projectsSnap = await db.collectionGroup("projects").get();
       for (const docSnap of projectsSnap.docs) {
         const segments = docSnap.ref.path.split("/");
@@ -1005,6 +1010,7 @@ exports.backfillAllProjects = functions
         }
       }
 
+      // 2. Sync ALL Silos
       const silosSnap = await db.collectionGroup("silos").get();
       for (const docSnap of silosSnap.docs) {
         const segments = docSnap.ref.path.split("/");
@@ -1015,17 +1021,20 @@ exports.backfillAllProjects = functions
         }
       }
 
+      // 3. Sync and Re-denormalize ALL Tasks
       const tasksSnap = await db.collectionGroup("tasks").get();
       for (const taskDoc of tasksSnap.docs) {
         const taskData = taskDoc.data();
         const segments = taskDoc.ref.path.split("/");
         
+        // Expected: workspaces/{wsId}/companies/{coId}/projects/{prId}/silos/{siId}/tasks/{tId}
         if (segments.length >= 10 && segments[0] === "workspaces") {
           const workspaceId = segments[1];
           const companyId = segments[3];
           const projectId = segments[5];
           const siloId = segments[7];
 
+          // Update source task with correct IDs
           await taskDoc.ref.update({ 
             workspaceId, 
             companyId, 
@@ -1034,7 +1043,9 @@ exports.backfillAllProjects = functions
           });
           updatedCount++;
 
+          // Synchronize with user-tasks collection
           if (taskData.assigneeId) {
+            // Get names for denormalization
             const [companySnap, projectSnap, siloSnap] = await Promise.all([
                 db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
                 db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
@@ -1092,3 +1103,176 @@ exports.backfillAllProjects = functions
       throw new functions.https.HttpsError("internal", err?.message || "Internal error during migration.");
     }
   });
+
+
+async function publishToFacebook(postDoc: admin.firestore.DocumentSnapshot): Promise<'success' | 'skip' | 'failed'> {
+  const post = postDoc.data() as any;
+  const pathSegments = postDoc.ref.path.split('/');
+  const workspaceId = pathSegments[1];
+  const companyId   = pathSegments[3];
+
+  const companyRef = db.doc(`workspaces/${workspaceId}/companies/${companyId}`);
+  const companySnap = await companyRef.get();
+  if (!companySnap.exists) {
+    console.warn('publishToFacebook: company not found for', companyRef.path);
+    return 'failed';
+  }
+
+  const companyData = companySnap.data() as any;
+  const fbConfig = companyData?.socialIntegration?.facebook;
+
+  if (!fbConfig?.pageId || !fbConfig?.pageAccessToken) {
+    console.log('publishToFacebook: no facebook config, skipping', companyRef.path);
+    return 'skip';
+  }
+
+  const message: string = post.captionDefault || '';
+  if (!message.trim()) {
+    console.log('publishToFacebook: empty message, skipping', postDoc.ref.path);
+    return 'skip';
+  }
+
+  const url = `https://graph.facebook.com/v19.0/${fbConfig.pageId}/feed`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        access_token: fbConfig.pageAccessToken,
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error('publishToFacebook: Facebook API error', res.status, text);
+      return 'failed';
+    }
+
+    const data = await res.json();
+    console.log('publishToFacebook: success, facebook response:', data);
+    return 'success';
+  } catch (err) {
+    console.error('publishToFacebook: network error', err);
+    return 'failed';
+  }
+}
+
+exports.publishSocialPosts = functions.pubsub
+  .schedule('every 1 minutes')
+  .onRun(async (context) => {
+    try {
+      console.log('publishSocialPosts: function started at', new Date().toISOString());
+      const now = new Date();
+
+      const snapshot = await db
+        .collectionGroup('socialPosts')
+        .where('scheduledAt', '<=', now)
+        .get();
+
+      console.log('publishSocialPosts: found (by date only)', snapshot.size, 'posts');
+
+      if (snapshot.empty) {
+        return null;
+      }
+
+      const batch = db.batch();
+      const updateTimestamp = admin.firestore.FieldValue.serverTimestamp();
+
+      for (const doc of snapshot.docs) {
+        const post = doc.data() as any;
+
+        if (!['approved', 'scheduled'].includes(post.status)) {
+          continue;
+        }
+
+        const platforms: string[] = post.platforms || [];
+        let anyFailed = false;
+        let anySuccess = false;
+
+        if (platforms.includes('facebook')) {
+          const result = await publishToFacebook(doc);
+          if (result === 'failed') anyFailed = true;
+          if (result === 'success') anySuccess = true;
+        }
+
+        let newStatus = post.status;
+        let errorMessage = null;
+
+        if (anyFailed) {
+          newStatus = 'failed';
+          errorMessage = 'One or more platforms failed to publish.';
+        } else if (anySuccess) {
+          newStatus = 'published';
+        }
+
+        if (newStatus !== post.status) {
+          batch.update(doc.ref, {
+            status: newStatus,
+            errorMessage,
+            updatedAt: updateTimestamp,
+          });
+        }
+      }
+
+      await batch.commit();
+      console.log('publishSocialPosts: batch commit complete.');
+      return null;
+    } catch (error) {
+      console.error('Error publishing social posts:', error);
+      return null;
+    }
+  });
+
+
+exports.setCompanyFacebookConfig = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'You must be signed in to perform this action.');
+  }
+  const uid = context.auth.uid;
+  const { workspaceId, companyId, pageId, pageName, pageAccessToken } = data;
+
+  if (!workspaceId || !companyId || !pageId || !pageName || !pageAccessToken) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing required parameters for Facebook configuration.');
+  }
+
+  const workspaceRef = db.doc(`workspaces/${workspaceId}`);
+  try {
+    const workspaceSnap = await workspaceRef.get();
+    if (!workspaceSnap.exists) {
+      throw new functions.https.HttpsError('not-found', 'Workspace not found.');
+    }
+    const workspaceData = workspaceSnap.data();
+    const userRole = workspaceData?.users?.[uid]?.role;
+
+    if (userRole !== 'admin') {
+      throw new functions.https.HttpsError('permission-denied', 'You must be a workspace admin to configure social media integrations.');
+    }
+  } catch (error) {
+    console.error("Permission check failed:", error);
+    if (error instanceof functions.https.HttpsError) {
+      throw error;
+    }
+    throw new functions.https.HttpsError('internal', 'An error occurred while verifying your permissions.');
+  }
+
+  const companyRef = db.doc(`workspaces/${workspaceId}/companies/${companyId}`);
+  const facebookConfig = {
+    pageId,
+    pageName,
+    pageAccessToken,
+    connectedBy: uid,
+    connectedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  try {
+    await companyRef.update({
+      'socialIntegration.facebook': facebookConfig,
+    });
+    return { success: true };
+  } catch (error) {
+    console.error("Error updating company document with Facebook config:", error);
+    throw new functions.https.HttpsError('internal', 'Failed to save the Facebook configuration to the company.');
+  }
+});

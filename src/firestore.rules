@@ -1,4 +1,11 @@
-
+/**
+ * @fileoverview Firestore Security Rules for the application.
+ *
+ * Core Philosophy:
+ * This ruleset enforces a strict, hierarchical access control model based on workspace membership and ownership.
+ * Users can only access their own profile data. Workspaces, companies, projects, silos, and tasks are gated by workspace membership.
+ * Denormalized data in /user-tasks allows efficient user-specific task queries.
+ */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -18,13 +25,13 @@ service cloud.firestore {
     }
 
     /**
-     * @description Basic membership check for the workspace document to avoid recursion.
+     * @description Checks if the authenticated user is a member of the specified workspace.
+     * Uses a direct get() to avoid recursion and ensure data consistency.
      */
     function isMemberOfWorkspace(workspaceId) {
       return isSignedIn() && 
              workspaceId != null && 
              workspaceId != "" &&
-             exists(/databases/$(database)/documents/workspaces/$(workspaceId)) &&
              request.auth.uid in get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users;
     }
 
@@ -32,12 +39,14 @@ service cloud.firestore {
      * @description Checks if the authenticated user is an admin of the specified workspace.
      */
     function isWorkspaceAdmin(workspaceId) {
-      return isMemberOfWorkspace(workspaceId) && 
+      return isSignedIn() && 
+             workspaceId != null && 
+             workspaceId != "" &&
              get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == 'admin';
     }
 
     /**
-     * @description User Profiles.
+     * @description User profile documents.
      */
     match /users/{userId} {
       allow get: if isSignedIn();
@@ -45,11 +54,9 @@ service cloud.firestore {
       allow create, update, delete: if isSignedIn() && isOwner(userId);
     }
     
-    /**
-     * @description Global Collection Group Queries.
-     * These allow the cross-company dashboard and search views.
-     * They are secured by requiring a workspaceId equality filter in the query.
-     */
+    // --- Global Collection Group Queries ---
+    // These allow the cross-company dashboard and search views.
+    // We restrict these to ensure they are always filtered by a workspaceId the user belongs to.
     match /{path=**}/companies/{companyId} {
       allow get: if isMemberOfWorkspace(resource.data.workspaceId);
       allow list: if isMemberOfWorkspace(request.query.workspaceId);
@@ -68,10 +75,9 @@ service cloud.firestore {
     }
 
     /**
-     * @description Workspaces and nested content.
+     * @description Workspace documents and nested resources.
      */
     match /workspaces/{workspaceId} {
-      // Use resource.data directly for the document itself to avoid recursive get() calls
       allow get: if isSignedIn() && request.auth.uid in resource.data.users;
       allow list: if isSignedIn() && request.auth.uid in resource.data.memberIds;
       allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
@@ -118,8 +124,7 @@ service cloud.firestore {
     }
     
     /**
-     * @description User-specific tasks (denormalized).
-     * Now allows workspace admins to manage these records for duplication/admin purposes.
+     * @description Denormalized user tasks.
      */
      match /user-tasks/{userId}/tasks/{taskId} {
         allow get, list: if isSignedIn() && isOwner(userId);
@@ -128,7 +133,7 @@ service cloud.firestore {
     }
 
     /**
-     * @description Invites, Presence, and Prefs.
+     * @description System collections.
      */
     match /invites/{inviteId} {
       allow create: if isWorkspaceAdmin(request.resource.data.workspaceId);
