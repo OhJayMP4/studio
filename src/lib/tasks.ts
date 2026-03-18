@@ -1,3 +1,4 @@
+
 'use client';
 import { collection, doc, writeBatch, getDoc, setDoc, Firestore, query, where, getDocs, updateDoc, serverTimestamp } from "firebase/firestore";
 import type { Company, Project, Silo, Task, Workspace } from "./types";
@@ -23,7 +24,6 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
     
     const batch = writeBatch(firestore);
 
-    // 1. Get all documents needed for denormalization
     const [workspaceSnap, companySnap, projectSnap, siloSnap] = await Promise.all([
         getDoc(workspaceRef),
         getDoc(companyRef),
@@ -36,7 +36,6 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
     if (!projectSnap.exists()) throw new Error("Project not found!");
     if (!siloSnap.exists()) throw new Error("Silo not found!");
 
-    const workspaceData = workspaceSnap.data() as Workspace;
     const companyData = companySnap.data() as Company;
     const projectData = projectSnap.data() as Project;
     const siloData = siloSnap.data() as Silo;
@@ -48,38 +47,34 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
         projectId, 
         workspaceId, 
         timeSpentMinutes: 0,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        type: 'original' // Tag as the source of truth
     };
 
-    // 2. Create the original task
     batch.set(taskRef, originalTaskData);
 
-    // 3. Denormalize
-    if (workspaceData.users && workspaceData.users[taskData.assigneeId]) {
-        const userTaskRef = doc(collection(firestore, `user-tasks/${taskData.assigneeId}/tasks`));
-        
-        batch.set(userTaskRef, {
-            originalTaskId: taskRef.id,
-            workspaceId,
-            companyId,
-            projectId,
-            siloId,
-            title: taskData.title,
-            description: taskData.description || '',
-            completed: taskData.completed,
-            dueDate: taskData.dueDate,
-            priority: taskData.priority,
-            assigneeId: taskData.assigneeId,
-            createdBy: taskData.createdBy,
-            companyName: companyData.name,
-            projectName: projectName,
-            siloName: siloData.name,
-            timeSpentMinutes: 0,
-            createdAt: serverTimestamp()
-        });
-    }
+    const userTaskRef = doc(collection(firestore, `user-tasks/${taskData.assigneeId}/tasks`));
+    batch.set(userTaskRef, {
+        originalTaskId: taskRef.id,
+        workspaceId,
+        companyId,
+        projectId,
+        siloId,
+        title: taskData.title,
+        description: taskData.description || '',
+        completed: taskData.completed,
+        dueDate: taskData.dueDate,
+        priority: taskData.priority,
+        assigneeId: taskData.assigneeId,
+        createdBy: taskData.createdBy,
+        companyName: companyData.name,
+        projectName: projectName,
+        siloName: siloData.name,
+        timeSpentMinutes: 0,
+        createdAt: serverTimestamp(),
+        type: 'denormalized'
+    });
 
-    // Commit non-blocking
     batch.commit().catch(async (serverError) => {
         const permissionError = new FirestorePermissionError({
             path: taskRef.path,
@@ -90,9 +85,6 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
     });
 }
 
-/**
- * Updates a task and ensures all denormalized copies stay in sync.
- */
 export async function updateTask(
     firestore: Firestore,
     originalTaskPath: string,
@@ -103,10 +95,8 @@ export async function updateTask(
     const originalTaskRef = doc(firestore, originalTaskPath);
     const batch = writeBatch(firestore);
 
-    // 1. Update the original task
-    batch.update(originalTaskRef, updates);
+    batch.update(originalTaskRef, { ...updates, updatedAt: serverTimestamp() });
 
-    // 2. Sync with denormalized user-tasks
     const isAssigneeChanged = updates.assigneeId && updates.assigneeId !== oldAssigneeId;
     
     const oldUserTasksQuery = query(
@@ -122,9 +112,6 @@ export async function updateTask(
         const originalSnap = await getDoc(originalTaskRef);
         const taskData = originalSnap.data() as Task;
         
-        const projectId = originalTaskPath.split('/')[5];
-        const isQuickTask = projectId === 'general-tasks';
-
         const denormalizedData = {
             originalTaskId,
             workspaceId: taskData.workspaceId,
@@ -134,25 +121,26 @@ export async function updateTask(
             title: updates.title ?? taskData.title,
             description: updates.description ?? taskData.description ?? '',
             completed: updates.completed ?? taskData.completed,
+            completedAt: updates.completed ? (taskData.completedAt ?? serverTimestamp()) : null,
             dueDate: updates.dueDate ?? taskData.dueDate,
             priority: updates.priority ?? taskData.priority,
             assigneeId: updates.assigneeId,
             createdBy: taskData.createdBy,
             companyName: (oldUserTasksSnap.docs[0]?.data() as any)?.companyName || 'Company',
-            projectName: isQuickTask ? 'Quick Tasks' : ((oldUserTasksSnap.docs[0]?.data() as any)?.projectName || 'Project'),
+            projectName: (oldUserTasksSnap.docs[0]?.data() as any)?.projectName || 'Project',
             siloName: (oldUserTasksSnap.docs[0]?.data() as any)?.siloName || 'Silo',
             timeSpentMinutes: taskData.timeSpentMinutes ?? 0,
             createdAt: taskData.createdAt || null,
+            type: 'denormalized'
         };
         
         batch.set(newUserTaskRef, denormalizedData);
     } else {
         oldUserTasksSnap.forEach(document => {
-            batch.update(document.ref, updates);
+            batch.update(document.ref, { ...updates, updatedAt: serverTimestamp() });
         });
     }
 
-    // Commit non-blocking
     batch.commit().catch(async (serverError) => {
         const permissionError = new FirestorePermissionError({
             path: originalTaskRef.path,
@@ -163,9 +151,6 @@ export async function updateTask(
     });
 }
 
-/**
- * Deletes a task and ensures all denormalized copies are removed.
- */
 export async function deleteTask(
     firestore: Firestore,
     originalTaskPath: string,
@@ -175,17 +160,14 @@ export async function deleteTask(
     const originalTaskRef = doc(firestore, originalTaskPath);
     const batch = writeBatch(firestore);
 
-    // 1. Delete original task
     batch.delete(originalTaskRef);
 
-    // 2. Delete denormalized task(s)
     const userTasksRef = collection(firestore, `user-tasks/${assigneeId}/tasks`);
     const q = query(userTasksRef, where("originalTaskId", "==", originalTaskId));
     const userTasksSnap = await getDocs(q);
     
     userTasksSnap.forEach(d => batch.delete(d.ref));
 
-    // Commit non-blocking
     batch.commit().catch(async (serverError) => {
         const permissionError = new FirestorePermissionError({
             path: originalTaskRef.path,
@@ -195,9 +177,6 @@ export async function deleteTask(
     });
 }
 
-/**
- * Adds a task to a "Quick Tasks" container for a company.
- */
 export async function addQuickTask(firestore: Firestore, params: {
     workspaceId: string;
     companyId: string;
@@ -236,7 +215,6 @@ export async function addQuickTask(firestore: Firestore, params: {
         });
     }
 
-    // Don't await the final add, let it happen in background
     return addTask(firestore, {
         workspaceId,
         companyId,
@@ -245,7 +223,6 @@ export async function addQuickTask(firestore: Firestore, params: {
         taskData: { ...taskData, projectId }
     });
 }
-
 
 export async function updateTaskCompletion(
     firestore: Firestore, 
@@ -267,14 +244,19 @@ export async function updateTaskCompletion(
     if (!originalTaskSnap.exists()) throw new Error("Original task not found.");
     
     const batch = writeBatch(firestore);
-    const updateData: any = { completed };
+    const ts = serverTimestamp();
+    const updateData: any = { 
+        completed,
+        completedAt: completed ? ts : null,
+        updatedAt: ts
+    };
     if (completed) {
         updateData.timeSpentMinutes = timeSpentMinutes || 0;
     }
 
     batch.update(originalTaskRef, updateData);
     userTasksSnap.forEach(document => {
-        batch.update(document.ref, { "completed": completed, timeSpentMinutes: timeSpentMinutes || 0 });
+        batch.update(document.ref, updateData);
     });
 
     batch.commit().catch(async (serverError) => {
@@ -287,10 +269,6 @@ export async function updateTaskCompletion(
     });
 }
 
-/**
- * Duplicates a project, its silos, and its tasks to a target company.
- * Reassigns all tasks to a specified user.
- */
 export async function duplicateProject(
     firestore: Firestore,
     params: {
@@ -304,7 +282,6 @@ export async function duplicateProject(
 ) {
     const { workspaceId, sourceCompanyId, sourceProjectId, targetCompanyId, targetAssigneeId, currentUserId } = params;
 
-    // 1. Get Source Data
     const sourceProjectRef = doc(firestore, `workspaces/${workspaceId}/companies/${sourceCompanyId}/projects/${sourceProjectId}`);
     const targetCompanyRef = doc(firestore, `workspaces/${workspaceId}/companies/${targetCompanyId}`);
     
@@ -319,7 +296,6 @@ export async function duplicateProject(
     const sourceProjectData = sourceProjectSnap.data() as Project;
     const targetCompanyData = targetCompanySnap.data() as Company;
 
-    // 2. Create Target Project
     const targetProjectsCol = collection(firestore, `workspaces/${workspaceId}/companies/${targetCompanyId}/projects`);
     const targetProjectRef = doc(targetProjectsCol);
     const targetProjectData = {
@@ -337,7 +313,6 @@ export async function duplicateProject(
     const batch = writeBatch(firestore);
     batch.set(targetProjectRef, targetProjectData);
 
-    // 3. Fetch and Duplicate Silos & Tasks
     const silosQuery = collection(sourceProjectRef, 'silos');
     const silosSnap = await getDocs(silosQuery);
 
@@ -351,7 +326,6 @@ export async function duplicateProject(
             createdBy: currentUserId,
         });
 
-        // Fetch tasks for this silo
         const tasksQuery = collection(siloDoc.ref, 'tasks');
         const tasksSnap = await getDocs(tasksQuery);
 
@@ -365,14 +339,15 @@ export async function duplicateProject(
                 projectId: targetProjectRef.id,
                 assigneeId: targetAssigneeId,
                 completed: false,
+                completedAt: null,
                 timeSpentMinutes: 0,
                 createdBy: currentUserId,
                 createdAt: serverTimestamp(),
+                type: 'original'
             };
 
             batch.set(targetTaskRef, newTaskData);
 
-            // Denormalize for the new assignee
             const userTaskRef = doc(collection(firestore, `user-tasks/${targetAssigneeId}/tasks`));
             batch.set(userTaskRef, {
                 originalTaskId: targetTaskRef.id,
@@ -383,6 +358,7 @@ export async function duplicateProject(
                 title: taskData.title,
                 description: taskData.description || '',
                 completed: false,
+                completedAt: null,
                 dueDate: taskData.dueDate,
                 priority: taskData.priority,
                 assigneeId: targetAssigneeId,
@@ -391,11 +367,11 @@ export async function duplicateProject(
                 projectName: targetProjectData.name,
                 siloName: siloData.name,
                 timeSpentMinutes: 0,
-                createdAt: serverTimestamp()
+                createdAt: serverTimestamp(),
+                type: 'denormalized'
             });
         }
     }
 
-    // 4. Commit everything
     return batch.commit();
 }

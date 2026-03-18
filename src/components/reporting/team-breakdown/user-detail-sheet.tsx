@@ -14,10 +14,12 @@ import type { Task, Notification } from '@/lib/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { isPast, isToday, addDays, isWithinInterval, startOfDay, endOfDay, differenceInDays } from 'date-fns';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { isPast, isToday, addDays, isWithinInterval, startOfDay, endOfDay, differenceInDays, startOfWeek } from 'date-fns';
 import { UserActivityFeed } from './user-activity-feed';
-import { ClipboardCheck, Clock, AlertCircle, CalendarRange, Building } from 'lucide-react';
+import { ClipboardCheck, Clock, AlertCircle, CalendarRange, CheckCircle2, TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Timestamp } from 'firebase/firestore';
 
 interface UserDetailSheetProps {
   userId: string;
@@ -31,6 +33,7 @@ export function UserDetailSheet({ userId, onClose, tasks }: UserDetailSheetProps
 
   const now = new Date();
   const next7Days = addDays(now, 7);
+  const weekStart = startOfWeek(now);
 
   const stats = useMemo(() => {
     const active = tasks.filter(t => !t.completed);
@@ -39,16 +42,14 @@ export function UserDetailSheet({ userId, onClose, tasks }: UserDetailSheetProps
       start: startOfDay(now),
       end: endOfDay(next7Days)
     }));
+    
+    const finishedThisWeek = tasks.filter(t => {
+        if (!t.completed || !t.completedAt) return false;
+        const compDate = (t.completedAt as Timestamp).toDate();
+        return compDate >= weekStart;
+    }).sort((a, b) => (b.completedAt as Timestamp).toMillis() - (a.completedAt as Timestamp).toMillis());
 
-    // Project/Company distribution
-    const projectMap: Record<string, number> = {};
-    tasks.forEach(t => {
-      if (!t.completed) {
-        projectMap[t.projectId] = (projectMap[t.projectId] || 0) + 1;
-      }
-    });
-
-    return { active, overdue, upcoming, projectMap };
+    return { active, overdue, upcoming, finishedThisWeek };
   }, [tasks]);
 
   if (!user) return null;
@@ -77,71 +78,98 @@ export function UserDetailSheet({ userId, onClose, tasks }: UserDetailSheetProps
                 <p className="text-[10px] font-black uppercase tracking-widest text-destructive mb-1">Overdue</p>
                 <p className="text-2xl font-bold">{stats.overdue.length}</p>
               </div>
-              <div className="bg-muted p-4 rounded-xl text-center">
-                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">This Week</p>
-                <p className="text-2xl font-bold">{stats.upcoming.length}</p>
+              <div className="bg-green-500/5 border border-green-500/10 p-4 rounded-xl text-center">
+                <p className="text-[10px] font-black uppercase tracking-widest text-green-600 mb-1">This Week</p>
+                <p className="text-2xl font-bold text-green-600">{stats.finishedThisWeek.length}</p>
               </div>
             </div>
 
-            {/* Task Breakdown */}
-            <div className="space-y-6">
-              <h3 className="text-sm font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-2">
-                <ClipboardCheck className="h-4 w-4" /> Task Breakdown
-              </h3>
+            <Tabs defaultValue="tasks" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-6">
+                    <TabsTrigger value="tasks" className="gap-2">
+                        <ClipboardCheck className="h-4 w-4" /> Workload
+                    </TabsTrigger>
+                    <TabsTrigger value="activity" className="gap-2">
+                        <Clock className="h-4 w-4" /> Activity
+                    </TabsTrigger>
+                </TabsList>
 
-              {/* Overdue */}
-              {stats.overdue.length > 0 && (
-                <div className="space-y-3">
-                  <p className="text-xs font-bold text-destructive flex items-center gap-1.5">
-                    <AlertCircle className="h-3.5 w-3.5" /> Overdue Attention
-                  </p>
-                  <div className="space-y-2">
-                    {stats.overdue.map(task => {
-                      const days = differenceInDays(now, new Date(task.dueDate));
-                      return (
-                        <div key={task.id} className="p-3 bg-destructive/5 border border-destructive/10 rounded-lg flex justify-between items-center text-sm">
-                          <span className="font-semibold truncate pr-4">{task.title}</span>
-                          <span className="text-[10px] font-black text-destructive whitespace-nowrap bg-white px-2 py-0.5 rounded shadow-sm">
-                            {days} DAYS LATE
-                          </span>
+                <TabsContent value="tasks" className="space-y-8">
+                    {/* Task Breakdown */}
+                    <div className="space-y-6">
+                        {/* Overdue */}
+                        {stats.overdue.length > 0 && (
+                            <div className="space-y-3">
+                            <p className="text-xs font-bold text-destructive flex items-center gap-1.5 uppercase tracking-wider">
+                                <AlertCircle className="h-3.5 w-3.5" /> Overdue Attention
+                            </p>
+                            <div className="space-y-2">
+                                {stats.overdue.map(task => {
+                                const days = differenceInDays(now, new Date(task.dueDate));
+                                return (
+                                    <div key={task.id} className="p-3 bg-destructive/5 border border-destructive/10 rounded-lg flex justify-between items-center text-sm">
+                                    <span className="font-semibold truncate pr-4">{task.title}</span>
+                                    <span className="text-[10px] font-black text-destructive whitespace-nowrap bg-white px-2 py-0.5 rounded shadow-sm">
+                                        {days} DAYS LATE
+                                    </span>
+                                    </div>
+                                );
+                                })}
+                            </div>
+                            </div>
+                        )}
+
+                        {/* Finished This Week */}
+                        <div className="space-y-3">
+                            <p className="text-xs font-bold text-green-600 flex items-center gap-1.5 uppercase tracking-wider">
+                                <TrendingUp className="h-3.5 w-3.5" /> Finished This Week
+                            </p>
+                            {stats.finishedThisWeek.length > 0 ? (
+                                <div className="space-y-2">
+                                    {stats.finishedThisWeek.map(task => (
+                                        <div key={task.id} className="p-3 bg-green-500/5 border border-green-500/10 rounded-lg flex justify-between items-center text-sm">
+                                            <div className="flex items-center gap-2 truncate pr-4">
+                                                <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                                                <span className="font-medium truncate line-through opacity-70">{task.title}</span>
+                                            </div>
+                                            <span className="text-[10px] font-bold text-green-600 whitespace-nowrap">
+                                                {formatDistanceToNow((task.completedAt as Timestamp).toDate(), { addSuffix: true })}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-xs text-muted-foreground italic pl-5">No tasks completed yet this week.</p>
+                            )}
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
 
-              {/* Upcoming */}
-              <div className="space-y-3">
-                <p className="text-xs font-bold text-blue-500 flex items-center gap-1.5">
-                  <CalendarRange className="h-3.5 w-3.5" /> Upcoming (Next 7 Days)
-                </p>
-                {stats.upcoming.length > 0 ? (
-                  <div className="space-y-2">
-                    {stats.upcoming.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).map(task => (
-                      <div key={task.id} className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-lg flex justify-between items-center text-sm">
-                        <span className="font-medium truncate pr-4">{task.title}</span>
-                        <span className="text-[10px] font-bold text-blue-600 whitespace-nowrap">
-                          {new Date(task.dueDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground italic pl-5">No upcoming tasks due this week.</p>
-                )}
-              </div>
-            </div>
+                        {/* Upcoming */}
+                        <div className="space-y-3">
+                            <p className="text-xs font-bold text-blue-500 flex items-center gap-1.5 uppercase tracking-wider">
+                                <CalendarRange className="h-3.5 w-3.5" /> Upcoming Queue
+                            </p>
+                            {stats.upcoming.length > 0 ? (
+                            <div className="space-y-2">
+                                {stats.upcoming.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).map(task => (
+                                <div key={task.id} className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-lg flex justify-between items-center text-sm">
+                                    <span className="font-medium truncate pr-4">{task.title}</span>
+                                    <span className="text-[10px] font-bold text-blue-600 whitespace-nowrap">
+                                    {new Date(task.dueDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                                    </span>
+                                </div>
+                                ))}
+                            </div>
+                            ) : (
+                            <p className="text-xs text-muted-foreground italic pl-5">No upcoming tasks due in the next 7 days.</p>
+                            )}
+                        </div>
+                    </div>
+                </TabsContent>
 
-            <Separator />
-
-            {/* Activity Feed */}
-            <div className="space-y-6">
-              <h3 className="text-sm font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-2">
-                <Clock className="h-4 w-4" /> Recent Activity
-              </h3>
-              <UserActivityFeed userId={userId} />
-            </div>
+                <TabsContent value="activity">
+                    <UserActivityFeed userId={userId} />
+                </TabsContent>
+            </Tabs>
           </div>
         </ScrollArea>
       </SheetContent>

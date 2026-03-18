@@ -7,10 +7,11 @@ import type { Task } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { isPast, isToday, addDays, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
+import { isPast, isToday, addDays, isWithinInterval, startOfDay, endOfDay, startOfWeek } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { UserDetailSheet } from './user-detail-sheet';
-import { AlertCircle, Calendar, ClipboardCheck } from 'lucide-react';
+import { AlertCircle, Calendar, ClipboardCheck, TrendingUp } from 'lucide-react';
+import { Timestamp } from 'firebase/firestore';
 
 interface UserSummary {
   uid: string;
@@ -19,6 +20,7 @@ interface UserSummary {
   activeCount: number;
   overdueCount: number;
   upcomingCount: number;
+  completedThisWeek: number;
   nextDueTask: Task | null;
   tasks: Task[];
 }
@@ -32,6 +34,7 @@ export function TeamOverview({ tasks }: { tasks: Task[] }) {
 
     const now = new Date();
     const next7Days = addDays(now, 7);
+    const weekStart = startOfWeek(now);
 
     return Object.entries(selectedWorkspace.users).map(([uid, userData]) => {
       const userTasks = tasks.filter(t => t.assigneeId === uid);
@@ -50,6 +53,12 @@ export function TeamOverview({ tasks }: { tasks: Task[] }) {
         });
       });
 
+      const completedThisWeek = userTasks.filter(t => {
+        if (!t.completed || !t.completedAt) return false;
+        const compDate = (t.completedAt as Timestamp).toDate();
+        return compDate >= weekStart;
+      });
+
       const sortedActive = [...activeTasks].sort((a, b) => 
         new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
       );
@@ -61,12 +70,13 @@ export function TeamOverview({ tasks }: { tasks: Task[] }) {
         activeCount: activeTasks.length,
         overdueCount: overdueTasks.length,
         upcomingCount: upcomingTasks.length,
+        completedThisWeek: completedThisWeek.length,
         nextDueTask: sortedActive[0] || null,
         tasks: userTasks,
       } as UserSummary;
     })
-    .filter(u => u.activeCount > 0 || u.tasks.length > 0) // Only show users with some task presence
-    .sort((a, b) => b.overdueCount - a.overdueCount); // Default sort: most overdue first
+    .filter(u => u.activeCount > 0 || u.tasks.length > 0 || u.completedThisWeek > 0)
+    .sort((a, b) => b.overdueCount - a.overdueCount || b.activeCount - a.activeCount);
   }, [tasks, selectedWorkspace]);
 
   return (
@@ -75,7 +85,7 @@ export function TeamOverview({ tasks }: { tasks: Task[] }) {
         {teamSummaries.map((summary) => (
           <Card 
             key={summary.uid}
-            className="group hover:border-primary/50 transition-all cursor-pointer active:scale-[0.98]"
+            className="group hover:border-primary/50 transition-all cursor-pointer active:scale-[0.98] relative overflow-hidden"
             onClick={() => setSelectedUserId(summary.uid)}
           >
             <CardHeader className="flex flex-row items-center gap-4 pb-2">
@@ -100,20 +110,18 @@ export function TeamOverview({ tasks }: { tasks: Task[] }) {
             <CardContent className="space-y-4 pt-2">
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="bg-muted/30 p-2 rounded-md">
-                  <p className="text-muted-foreground font-bold uppercase tracking-widest text-[9px] mb-1">Upcoming (7d)</p>
+                  <p className="text-muted-foreground font-bold uppercase tracking-widest text-[9px] mb-1">Due This Week</p>
                   <p className="text-lg font-bold">{summary.upcomingCount}</p>
                 </div>
-                <div className="bg-muted/30 p-2 rounded-md">
-                  <p className="text-muted-foreground font-bold uppercase tracking-widest text-[9px] mb-1">Success Rate</p>
-                  <p className="text-lg font-bold">
-                    {summary.tasks.length > 0 
-                      ? Math.round((summary.tasks.filter(t => t.completed).length / summary.tasks.length) * 100) 
-                      : 0}%
+                <div className="bg-primary/5 border border-primary/10 p-2 rounded-md">
+                  <p className="text-primary font-bold uppercase tracking-widest text-[9px] mb-1 flex items-center gap-1">
+                    <TrendingUp className="h-2 w-2" /> Finished This Week
                   </p>
+                  <p className="text-lg font-bold text-primary">{summary.completedThisWeek}</p>
                 </div>
               </div>
 
-              {summary.nextDueTask && (
+              {summary.nextDueTask ? (
                 <div className="border-t pt-3">
                   <p className="text-muted-foreground font-bold uppercase tracking-widest text-[9px] mb-1.5 flex items-center gap-1">
                     <Calendar className="h-3 w-3" /> Next Priority
@@ -122,6 +130,11 @@ export function TeamOverview({ tasks }: { tasks: Task[] }) {
                   <p className="text-[11px] text-muted-foreground mt-0.5">
                     Due: {new Date(summary.nextDueTask.dueDate).toLocaleDateString()}
                   </p>
+                </div>
+              ) : (
+                <div className="border-t pt-3 flex items-center justify-center gap-2 py-2">
+                    <ClipboardCheck className="h-4 w-4 text-green-500" />
+                    <span className="text-xs font-medium text-muted-foreground">Queue is clear!</span>
                 </div>
               )}
             </CardContent>

@@ -34,13 +34,13 @@ export function TeamBreakdownView() {
   }, [firestore, selectedWorkspace, selectedCompanyId]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
-  // 3. Fetch ALL Active Tasks in the Workspace (Collection Group Query)
-  // This is efficient and allows us to group by assignee in memory
+  // 3. Fetch ALL Original Active Tasks in the Workspace (Collection Group Query)
   const tasksQuery = useMemoFirebase(() => {
     if (!selectedWorkspace) return null;
     return query(
       collectionGroup(firestore, 'tasks'),
-      where('workspaceId', '==', selectedWorkspace.id)
+      where('workspaceId', '==', selectedWorkspace.id),
+      where('type', '==', 'original') // Crucial: Only pull original tasks to avoid duplicates
     );
   }, [firestore, selectedWorkspace]);
 
@@ -50,7 +50,9 @@ export function TeamBreakdownView() {
   const filteredTasks = useMemo(() => {
     if (!allTasks) return [];
     return allTasks.filter(task => {
-      const companyMatch = selectedCompanyId === 'all' || task.path?.split('/')[3] === selectedCompanyId;
+      // For collection group queries, the parent IDs are often embedded or part of the path
+      // but the tagging from backfillAllProjects ensures workspaceId/companyId/projectId are present
+      const companyMatch = selectedCompanyId === 'all' || task.companyId === selectedCompanyId;
       const projectMatch = selectedProjectId === 'all' || task.projectId === selectedProjectId;
       return companyMatch && projectMatch;
     });
