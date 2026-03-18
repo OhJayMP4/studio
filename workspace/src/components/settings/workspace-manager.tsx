@@ -1,12 +1,12 @@
-
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useFirebase, useUser } from '@/firebase';
 import { doc, updateDoc, writeBatch, getDoc } from 'firebase/firestore';
@@ -22,7 +22,8 @@ import { InviteMemberButton } from '@/components/common/invite-member-button';
 export function WorkspaceManager() {
     const { selectedWorkspace, setSelectedWorkspace } = useSelectedWorkspace();
     const [workspaceName, setWorkspaceName] = useState(selectedWorkspace?.name || '');
-    const [isSubmittingName, setIsSubmittingName] = useState(false);
+    const [isTimeTrackingEnabled, setIsTimeTrackingEnabled] = useState(selectedWorkspace?.isTimeTrackingEnabled ?? false);
+    const [isSubmittingSettings, setIsSubmittingSettings] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const { toast } = useToast();
@@ -31,21 +32,31 @@ export function WorkspaceManager() {
     const { firebaseApp } = useFirebase();
     const router = useRouter();
 
-    const handleSaveWorkspaceName = async () => {
+    useEffect(() => {
+        if (selectedWorkspace) {
+            setWorkspaceName(selectedWorkspace.name);
+            setIsTimeTrackingEnabled(selectedWorkspace.isTimeTrackingEnabled ?? false);
+        }
+    }, [selectedWorkspace]);
+
+    const handleSaveWorkspaceSettings = async () => {
         if (!selectedWorkspace || !workspaceName.trim()) {
             toast({ variant: 'destructive', title: 'Workspace name cannot be empty.' });
             return;
         }
 
-        setIsSubmittingName(true);
+        setIsSubmittingSettings(true);
         try {
             const workspaceRef = doc(firestore, 'workspaces', selectedWorkspace.id);
-            await updateDoc(workspaceRef, { name: workspaceName });
-            toast({ title: 'Workspace name updated successfully.' });
+            await updateDoc(workspaceRef, { 
+                name: workspaceName,
+                isTimeTrackingEnabled: isTimeTrackingEnabled
+            });
+            toast({ title: 'Workspace settings updated successfully.' });
         } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Failed to update workspace name', description: error.message });
+            toast({ variant: 'destructive', title: 'Failed to update workspace settings', description: error.message });
         } finally {
-            setIsSubmittingName(false);
+            setIsSubmittingSettings(false);
         }
     };
 
@@ -149,6 +160,7 @@ export function WorkspaceManager() {
     }
 
     const fallback = selectedWorkspace.name.charAt(0).toUpperCase();
+    const isChanged = workspaceName !== selectedWorkspace.name || isTimeTrackingEnabled !== (selectedWorkspace.isTimeTrackingEnabled ?? false);
 
     return (
         <div className="space-y-6">
@@ -178,10 +190,22 @@ export function WorkspaceManager() {
                             />
                         </div>
                     </div>
+
+                    <div className="flex items-center justify-between space-x-2 pt-4 border-t">
+                        <div className="flex flex-col space-y-1">
+                            <Label htmlFor="time-tracking">Mandatory Time Tracking</Label>
+                            <p className="text-sm text-muted-foreground">Require users to enter time spent when completing tasks.</p>
+                        </div>
+                        <Switch
+                            id="time-tracking"
+                            checked={isTimeTrackingEnabled}
+                            onCheckedChange={setIsTimeTrackingEnabled}
+                        />
+                    </div>
                 </CardContent>
                 <CardFooter>
-                    <Button onClick={handleSaveWorkspaceName} disabled={isSubmittingName || workspaceName === selectedWorkspace.name}>
-                        {isSubmittingName ? 'Saving...' : 'Save Workspace Name'}
+                    <Button onClick={handleSaveWorkspaceSettings} disabled={isSubmittingSettings || !isChanged}>
+                        {isSubmittingSettings ? 'Saving...' : 'Save Settings'}
                     </Button>
                 </CardFooter>
             </Card>
