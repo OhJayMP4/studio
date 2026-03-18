@@ -1,4 +1,3 @@
-
 'use client';
 import { collection, doc, writeBatch, getDoc, setDoc, Firestore, query, where, getDocs, updateDoc, serverTimestamp } from "firebase/firestore";
 import type { Company, Project, Silo, Task, Workspace } from "./types";
@@ -48,7 +47,7 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
         workspaceId, 
         timeSpentMinutes: 0,
         createdAt: serverTimestamp(),
-        type: 'original' // Tag as the source of truth
+        type: 'original'
     };
 
     batch.set(taskRef, originalTaskData);
@@ -63,6 +62,7 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
         title: taskData.title,
         description: taskData.description || '',
         completed: taskData.completed,
+        completedAt: null,
         dueDate: taskData.dueDate,
         priority: taskData.priority,
         assigneeId: taskData.assigneeId,
@@ -251,7 +251,7 @@ export async function updateTaskCompletion(
         updatedAt: ts
     };
     if (completed) {
-        updateData.timeSpentMinutes = timeSpentMinutes || 0;
+        updateData.timeSpentMinutes = (originalTaskSnap.data()?.timeSpentMinutes || 0) + (timeSpentMinutes || 0);
     }
 
     batch.update(originalTaskRef, updateData);

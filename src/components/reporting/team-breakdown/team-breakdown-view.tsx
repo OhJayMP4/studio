@@ -1,24 +1,31 @@
-
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collectionGroup, query, where, collection } from 'firebase/firestore';
+import { useFirebase, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection } from 'firebase/firestore';
 import type { Task, Company, Project } from '@/lib/types';
 import { TeamOverview } from './team-overview';
 import { TeamBreakdownFilters } from './team-breakdown-filters';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Info } from 'lucide-react';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { useToast } from '@/hooks/use-toast';
 
 export function TeamBreakdownView() {
-  const { selectedWorkspace } = useSelectedWorkspace();
+  const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
+  const { firebaseApp } = useFirebase();
   const firestore = useFirestore();
+  const { toast } = useToast();
 
   // Filters state
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>('all');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+  
+  // Data state
+  const [allTasks, setAllTasks] = useState<Task[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // 1. Fetch Companies for filters
   const companiesQuery = useMemoFirebase(() => {
@@ -34,31 +41,70 @@ export function TeamBreakdownView() {
   }, [firestore, selectedWorkspace, selectedCompanyId]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
-  // 3. Fetch ALL Original Active Tasks in the Workspace (Collection Group Query)
-  const tasksQuery = useMemoFirebase(() => {
-    if (!selectedWorkspace) return null;
-    return query(
-      collectionGroup(firestore, 'tasks'),
-      where('workspaceId', '==', selectedWorkspace.id),
-      where('type', '==', 'original') // Crucial: Only pull original tasks to avoid duplicates
-    );
-  }, [firestore, selectedWorkspace]);
+  // 3. Fetch Team Data via Cloud Function (Backend Powered)
+  useEffect(() => {
+    if (!selectedWorkspace || !firebaseApp || !isUserAdmin) {
+        setIsLoading(false);
+        return;
+    }
 
-  const { data: allTasks, isLoading: isTasksLoading } = useCollection<Task>(tasksQuery);
+    const fetchTeamData = async () => {
+        setIsLoading(true);
+        try {
+            const functions = getFunctions(firebaseApp);
+            const generateTeamReport = httpsCallable(functions, 'generateTeamReport');
+            
+            // Get all workspace users
+            const userIds = Object.keys(selectedWorkspace.users);
+            
+            const result = await generateTeamReport({
+                workspaceId: selectedWorkspace.id,
+                userIds: userIds,
+            });
+
+            // result.data is an array of { user: Profile, tasks: Task[] }
+            const reportData = result.data as any[];
+            const aggregatedTasks = reportData.flatMap(u => u.tasks);
+            
+            setAllTasks(aggregatedTasks);
+        } catch (error: any) {
+            console.error("Failed to fetch team breakdown:", error);
+            toast({
+                variant: 'destructive',
+                title: 'Data Load Failed',
+                description: error.message || 'Could not load team workload data.'
+            });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    fetchTeamData();
+  }, [selectedWorkspace, firebaseApp, isUserAdmin, toast]);
 
   // Filter tasks based on selections
   const filteredTasks = useMemo(() => {
     if (!allTasks) return [];
     return allTasks.filter(task => {
-      // For collection group queries, the parent IDs are often embedded or part of the path
-      // but the tagging from backfillAllProjects ensures workspaceId/companyId/projectId are present
       const companyMatch = selectedCompanyId === 'all' || task.companyId === selectedCompanyId;
       const projectMatch = selectedProjectId === 'all' || task.projectId === selectedProjectId;
       return companyMatch && projectMatch;
     });
   }, [allTasks, selectedCompanyId, selectedProjectId]);
 
-  if (isTasksLoading) {
+  if (!isUserAdmin) {
+      return (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertTitle>Admin Access Required</AlertTitle>
+          <AlertDescription>
+            You must be a workspace admin to view the team breakdown report.
+          </AlertDescription>
+        </Alert>
+      );
+  }
+
+  if (isLoading) {
     return (
       <div className="space-y-6">
         <div className="flex gap-4">
@@ -91,9 +137,9 @@ export function TeamBreakdownView() {
       {filteredTasks.length === 0 ? (
         <Alert>
           <Info className="h-4 w-4" />
-          <AlertTitle>No Tasks Found</AlertTitle>
+          <AlertTitle>No Active Workload</AlertTitle>
           <AlertDescription>
-            There are no tasks matching your current filters.
+            There are no active tasks matching your current filters.
           </AlertDescription>
         </Alert>
       ) : (

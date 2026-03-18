@@ -12,9 +12,7 @@ const defaultSidebarModules = [
 ];
 admin.initializeApp();
 const db = admin.firestore();
-// Enable ignoreUndefinedProperties to prevent crashes during migration
 db.settings({ ignoreUndefinedProperties: true });
-// Helper to update project progress based on tasks and sales
 const updateProjectProgress = async (workspaceId, companyId, projectId) => {
     const projectRef = db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`);
     try {
@@ -25,7 +23,6 @@ const updateProjectProgress = async (workspaceId, companyId, projectId) => {
         if (!projectSnap.exists)
             return;
         const projectData = projectSnap.data();
-        // 1. Aggregate Tasks across all silos
         let totalTasks = 0;
         let completedTasks = 0;
         const taskPromises = silosSnap.docs.map(silo => silo.ref.collection('tasks').get());
@@ -38,11 +35,9 @@ const updateProjectProgress = async (workspaceId, companyId, projectId) => {
             });
         });
         const taskProgress = totalTasks > 0 ? (completedTasks / totalTasks) : 0;
-        // 2. Calculate Sales Progress
         const salesTarget = (projectData === null || projectData === void 0 ? void 0 : projectData.monetaryValue) || 0;
         const currentSales = (projectData === null || projectData === void 0 ? void 0 : projectData.totalSalesValue) || 0;
         const salesProgress = salesTarget > 0 ? Math.min(currentSales / salesTarget, 1) : 0;
-        // 3. Overall Progress (Weighted 50/50 if monetary, else 100% tasks)
         const newOverallProgress = Math.round((projectData === null || projectData === void 0 ? void 0 : projectData.hasMonetaryValue)
             ? (salesProgress * 0.5 + taskProgress * 0.5) * 100
             : taskProgress * 100);
@@ -56,7 +51,6 @@ const updateProjectProgress = async (workspaceId, companyId, projectId) => {
         console.error(`Failed to update progress for project ${projectId}:`, error);
     }
 };
-// Helper to get user info and workspace members
 const getActorAndRelevantUsers = async (workspaceId, actorUid) => {
     var _a;
     const workspaceSnap = await db.doc(`workspaces/${workspaceId}`).get();
@@ -70,7 +64,6 @@ const getActorAndRelevantUsers = async (workspaceId, actorUid) => {
     const isRelevantTo = Object.keys((workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) || {}).filter(uid => uid !== actorUid);
     return { actorName, isRelevantTo };
 };
-// Helper to create a notification document
 const createNotification = async (workspaceId, notificationData) => {
     try {
         await db.collection(`notifications/${workspaceId}/activities`).add(Object.assign(Object.assign({}, notificationData), { timestamp: admin.firestore.FieldValue.serverTimestamp(), readBy: [] }));
@@ -79,7 +72,6 @@ const createNotification = async (workspaceId, notificationData) => {
         console.error(`Failed to create notification for workspace ${workspaceId}:`, error);
     }
 };
-// Helper to send task assignment email
 const sendTaskAssignmentEmail = async (params) => {
     var _a, _b;
     const resendApiKey = process.env.RESEND_API_KEY || ((_b = (_a = functions.config()) === null || _a === void 0 ? void 0 : _a.resend) === null || _b === void 0 ? void 0 : _b.key) || "re_hfnUftgP_LxQrEY7o8aEKeHUumQfM1Zqw";
@@ -126,7 +118,6 @@ const sendTaskAssignmentEmail = async (params) => {
         console.error("Failed to send task assignment email:", error);
     }
 };
-// --- Notification Triggers ---
 exports.onCommentCreate = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}/comments/{commentId}')
     .onCreate(async (snap, context) => {
@@ -361,8 +352,8 @@ exports.onSiloDelete = functions.firestore
     const companyName = companySnap.exists ? (_a = companySnap.data()) === null || _a === void 0 ? void 0 : _a.name : '';
     const projectName = projectSnap.exists ? (_b = projectSnap.data()) === null || _b === void 0 ? void 0 : _b.name : '';
     await createNotification(workspaceId, {
-        type: 'silo_deleted',
-        actorUid,
+        type: 'silo_added',
+        actorUid: siloData.createdBy,
         actorName,
         target: { id: snap.id, name: siloData.name, type: 'silo', path: `/company/${companyId}/project/${projectId}` },
         context: { companyName, projectName },
@@ -725,7 +716,7 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
             userRef.get(),
             tasksQuery.get(),
         ]);
-        const userProfile = userSnap.exists ? Object.assign({ id: userSnap.id }, userSnap.data()) : { uid: userId, name: 'Unknown User' };
+        const userProfile = userSnap.exists ? Object.assign({ id: userSnap.id }, userSnap.data()) : { uid: userId, name: 'Unnamed User' };
         const tasks = tasksSnap.docs.map(doc => {
             const taskData = doc.data();
             return Object.assign(Object.assign({}, taskData), { id: doc.id });
@@ -771,7 +762,7 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
             fullPath: finalFile.name,
             parentPath: targetParentPath,
             size: fileSize,
-            mimeType: mimeType,
+            mimeType: fileName.endsWith('mp4') ? 'video/mp4' : mimeType,
             downloadURL: downloadURL,
             uploadedBy: uid,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -872,7 +863,12 @@ exports.backfillAllProjects = functions
                 const projectId = segments[5];
                 const siloId = segments[7];
                 // Update source task with correct IDs
-                await taskDoc.ref.update({ workspaceId, companyId, projectId });
+                await taskDoc.ref.update({
+                    workspaceId,
+                    companyId,
+                    projectId,
+                    type: 'original'
+                });
                 updatedCount++;
                 // Synchronize with user-tasks collection
                 if (taskData.assigneeId) {
@@ -896,6 +892,7 @@ exports.backfillAllProjects = functions
                         title: taskData.title,
                         description: taskData.description || '',
                         completed: taskData.completed || false,
+                        completedAt: taskData.completed ? (taskData.completedAt || admin.firestore.FieldValue.serverTimestamp()) : null,
                         dueDate: taskData.dueDate || new Date().toISOString(),
                         priority: taskData.priority || 'medium',
                         assigneeId: taskData.assigneeId,
@@ -904,7 +901,8 @@ exports.backfillAllProjects = functions
                         projectName,
                         siloName,
                         timeSpentMinutes: taskData.timeSpentMinutes || 0,
-                        createdAt: taskData.createdAt || admin.firestore.FieldValue.serverTimestamp()
+                        createdAt: taskData.createdAt || admin.firestore.FieldValue.serverTimestamp(),
+                        type: 'denormalized'
                     };
                     if (existingQuery.empty) {
                         await userTasksRef.add(denormalizedData);

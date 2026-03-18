@@ -13,12 +13,16 @@ interface UserTask {
     title: string;
     description?: string;
     completed: boolean;
+    completedAt: any | null;
     dueDate: string;
     priority: 'low' | 'medium' | 'high';
     assigneeId: string;
     companyName: string;
     projectName: string;
     siloName: string;
+    timeSpentMinutes: number;
+    createdAt: any;
+    type: 'denormalized';
 }
 
 const defaultSidebarModules = [
@@ -285,11 +289,12 @@ exports.onSaleCreate = functions.firestore
 exports.onTaskWrite = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
     .onWrite(async (change, context) => {
-        const { workspaceId, companyId, projectId, siloId } = context.params;
+        const { workspaceId, companyId, projectId, siloId, taskId } = context.params;
         
         const beforeData = change.before.data();
         const afterData = change.after.data();
 
+        // 1. Handle Notifications & Emails
         if (afterData && (!beforeData || beforeData.assigneeId !== afterData.assigneeId)) {
             const actorUid = afterData.updatedBy || afterData.createdBy;
             const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
@@ -356,6 +361,46 @@ exports.onTaskWrite = functions.firestore
                 context: { companyName, projectName, siloName },
                 isRelevantTo,
             });
+        }
+
+        // 2. Synchronize Dashboard (UserTask)
+        if (afterData && afterData.assigneeId) {
+            const userTasksRef = db.collection(`user-tasks/${afterData.assigneeId}/tasks`);
+            const existingQuery = await userTasksRef.where("originalTaskId", "==", taskId).get();
+            
+            const [companySnap, projectSnap, siloSnap] = await Promise.all([
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get(),
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
+                db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get()
+            ]);
+
+            const denormalizedData = {
+                originalTaskId: taskId,
+                workspaceId,
+                companyId,
+                projectId,
+                siloId,
+                title: afterData.title,
+                description: afterData.description || '',
+                completed: afterData.completed || false,
+                completedAt: afterData.completed ? (afterData.completedAt || admin.firestore.FieldValue.serverTimestamp()) : null,
+                dueDate: afterData.dueDate,
+                priority: afterData.priority,
+                assigneeId: afterData.assigneeId,
+                createdBy: afterData.createdBy,
+                companyName: companySnap.data()?.name || 'Unknown Company',
+                projectName: projectSnap.data()?.name || 'Unknown Project',
+                siloName: siloSnap.data()?.name || 'Inbox',
+                timeSpentMinutes: afterData.timeSpentMinutes || 0,
+                createdAt: afterData.createdAt || admin.firestore.FieldValue.serverTimestamp(),
+                type: 'denormalized'
+            };
+
+            if (existingQuery.empty) {
+                await userTasksRef.add(denormalizedData);
+            } else {
+                await existingQuery.docs[0].ref.update(denormalizedData);
+            }
         }
 
         await updateProjectProgress(workspaceId, companyId, projectId);
@@ -922,7 +967,7 @@ exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
             fullPath: finalFile.name,
             parentPath: targetParentPath,
             size: fileSize,
-            mimeType: fileName.endsWith('mp4') ? 'video/mp4' : mimeType,
+            mimeType: mimeType,
             downloadURL: downloadURL,
             uploadedBy: uid,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1035,12 +1080,7 @@ exports.backfillAllProjects = functions
           const siloId = segments[7];
 
           // Update source task with correct IDs
-          await taskDoc.ref.update({ 
-            workspaceId, 
-            companyId, 
-            projectId,
-            type: 'original' 
-          });
+          await taskDoc.ref.update({ workspaceId, companyId, projectId, type: 'original' });
           updatedCount++;
 
           // Synchronize with user-tasks collection
