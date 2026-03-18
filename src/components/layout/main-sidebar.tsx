@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/sidebar";
 import {
   Settings,
-  Plus,
   X,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
@@ -111,15 +110,6 @@ export default function MainSidebar() {
       </SidebarContent>
       <SidebarFooter>
         <div className="w-full px-2 space-y-2">
-             <Button 
-                variant="default" 
-                className="w-full justify-center shadow-md font-bold transition-all active:scale-95" 
-                onClick={() => setIsAddModuleOpen(true)}
-             >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Module
-            </Button>
-            
             <FeedbackDialog />
         </div>
         <Separator className="my-2" />
