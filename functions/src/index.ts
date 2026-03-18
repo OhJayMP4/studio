@@ -261,6 +261,31 @@ exports.onSiloCreate = functions.firestore
         });
     });
 
+exports.onSiloDelete = functions.firestore
+    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}')
+    .onDelete(async (snap, context) => {
+        const { workspaceId, companyId, projectId } = context.params;
+        const siloData = snap.data();
+        const actorUid = siloData.updatedBy || siloData.createdBy;
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+
+        if (!actorName) return;
+
+        const companySnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get();
+        const projectSnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get();
+        const companyName = companySnap.exists ? companySnap.data()?.name : '';
+        const projectName = projectSnap.exists ? projectSnap.data()?.name : '';
+
+        await createNotification(workspaceId, {
+            type: 'silo_added',
+            actorUid: siloData.createdBy,
+            actorName,
+            target: { id: snap.id, name: siloData.name, type: 'silo', path: `/company/${companyId}/project/${projectId}` },
+            context: { companyName, projectName },
+            isRelevantTo,
+        });
+    });
+
 exports.onSaleCreate = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/sales/{saleId}')
     .onCreate(async (snap, context) => {
@@ -446,31 +471,6 @@ exports.onProjectDelete = functions.firestore
             actorName,
             target: { id: snap.id, name: projectData.name, type: 'project', path: `/company/${companyId}` },
             context: { companyName },
-            isRelevantTo,
-        });
-    });
-
-exports.onSiloDelete = functions.firestore
-    .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}')
-    .onDelete(async (snap, context) => {
-        const { workspaceId, companyId, projectId } = context.params;
-        const siloData = snap.data();
-        const actorUid = siloData.updatedBy || siloData.createdBy;
-        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
-
-        if (!actorName) return;
-
-        const companySnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get();
-        const projectSnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get();
-        const companyName = companySnap.exists ? companySnap.data()?.name : '';
-        const projectName = projectSnap.exists ? projectSnap.data()?.name : '';
-
-        await createNotification(workspaceId, {
-            type: 'silo_added',
-            actorUid: siloData.createdBy,
-            actorName,
-            target: { id: snap.id, name: siloData.name, type: 'silo', path: `/company/${companyId}/project/${projectId}` },
-            context: { companyName, projectName },
             isRelevantTo,
         });
     });
@@ -928,6 +928,28 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
     }
 
     return reportData;
+});
+
+exports.getUserActivity = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Signed in user only.');
+    const { workspaceId, targetUserId } = data;
+    if (!workspaceId || !targetUserId) throw new functions.https.HttpsError('invalid-argument', 'Missing parameters.');
+
+    // Secure verify: is caller a member?
+    const workspaceSnap = await db.doc(`workspaces/${workspaceId}`).get();
+    if (!workspaceSnap.exists()) throw new functions.https.HttpsError('not-found', 'Workspace not found.');
+    const wsData = workspaceSnap.data();
+    if (!wsData?.memberIds?.includes(context.auth.uid)) throw new functions.https.HttpsError('permission-denied', 'Membership required.');
+
+    // Query for activities where this user is the Actor OR the Assignee
+    const activitiesRef = db.collection(`notifications/${workspaceId}/activities`);
+    const q = activitiesRef.where(admin.firestore.Filter.or(
+        admin.firestore.Filter.where('actorUid', '==', targetUserId),
+        admin.firestore.Filter.where('assignee.uid', '==', targetUserId)
+    )).orderBy('timestamp', 'desc').limit(20);
+
+    const snapshot = await q.get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 });
 
 exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {

@@ -61,7 +61,8 @@ const getActorAndRelevantUsers = async (workspaceId, actorUid) => {
     const workspaceData = workspaceSnap.data();
     const actor = (_a = workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) === null || _a === void 0 ? void 0 : _a[actorUid];
     const actorName = (actor === null || actor === void 0 ? void 0 : actor.name) || (actor === null || actor === void 0 ? void 0 : actor.email) || 'A user';
-    const isRelevantTo = Object.keys((workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) || {}).filter(uid => uid !== actorUid);
+    // Everyone in the workspace is relevant, including the actor
+    const isRelevantTo = Object.keys((workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) || {});
     return { actorName, isRelevantTo };
 };
 const createNotification = async (workspaceId, notificationData) => {

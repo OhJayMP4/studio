@@ -203,7 +203,7 @@ export default function SettingsPage() {
             <Palette className="h-6 w-6 text-primary" />
             Appearance
           </CardTitle>
-          <CardDescription>Customize how SaturnSync looks for your account in this workspace.</CardDescription>
+          <CardDescription>Customize how SaturnSync looks for your account.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-10">
           <div className="space-y-4">
@@ -268,10 +268,6 @@ export default function SettingsPage() {
                 </button>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground italic leading-relaxed pt-2">
-              The accent color affects buttons, active sidebar menus, and highlights across the entire app. 
-              Changes are saved instantly to your workspace profile.
-            </p>
           </div>
         </CardContent>
       </Card>

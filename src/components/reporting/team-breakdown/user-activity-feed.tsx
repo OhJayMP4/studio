@@ -1,13 +1,11 @@
-
 'use client';
 
-import React from 'react';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, orderBy, limit } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { useFirebase } from '@/firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { Notification } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
 import { UserPlus, CheckCircle2, MessageSquare, Trash2, Bell, Sparkles } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 
 const getIcon = (type: Notification['type']) => {
@@ -36,23 +34,39 @@ const getFeedText = (n: Notification) => {
 }
 
 export function UserActivityFeed({ userId }: { userId: string }) {
-  const firestore = useFirestore();
+  const { firebaseApp } = useFirebase();
   const { selectedWorkspace } = useSelectedWorkspace();
+  const [activities, setActivities] = useState<Notification[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const activityQuery = useMemoFirebase(() => {
-    if (!selectedWorkspace) return null;
-    // Query for activities where this user is the actor OR the assignee
-    return query(
-      collection(firestore, `notifications/${selectedWorkspace.id}/activities`),
-      where('isRelevantTo', 'array-contains', userId),
-      orderBy('timestamp', 'desc'),
-      limit(15)
-    );
-  }, [firestore, selectedWorkspace, userId]);
+  useEffect(() => {
+    if (!selectedWorkspace || !firebaseApp || !userId) return;
 
-  const { data: activities, isLoading } = useCollection<Notification>(activityQuery);
+    const fetchActivity = async () => {
+        setIsLoading(true);
+        try {
+            const functions = getFunctions(firebaseApp);
+            const getUserActivity = httpsCallable(functions, 'getUserActivity');
+            const result = await getUserActivity({
+                workspaceId: selectedWorkspace.id,
+                targetUserId: userId
+            });
+            setActivities(result.data as Notification[]);
+        } catch (error) {
+            console.error("Failed to fetch user activity from backend:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
-  if (isLoading) return <div className="space-y-4">{[...Array(3)].map((_, i) => <div key={i} className="h-12 w-full bg-muted animate-pulse rounded-lg" />)}</div>;
+    fetchActivity();
+  }, [selectedWorkspace, firebaseApp, userId]);
+
+  if (isLoading) return (
+    <div className="space-y-4">
+        {[...Array(3)].map((_, i) => <div key={i} className="h-12 w-full bg-muted animate-pulse rounded-lg" />)}
+    </div>
+  );
 
   if (!activities || activities.length === 0) {
     return (

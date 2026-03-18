@@ -13,18 +13,22 @@ service cloud.firestore {
       return request.auth.uid == userId;
     }
 
+    function getWorkspace(workspaceId) {
+      return get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
+    }
+
     function isMemberOfWorkspace(workspaceId) {
       return isSignedIn() && 
              workspaceId != null && 
              workspaceId != "" &&
-             request.auth.uid in get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.memberIds;
+             request.auth.uid in getWorkspace(workspaceId).memberIds;
     }
 
     function isWorkspaceAdmin(workspaceId) {
       return isSignedIn() && 
              workspaceId != null && 
              workspaceId != "" &&
-             get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.users[request.auth.uid].role == 'admin';
+             getWorkspace(workspaceId).users[request.auth.uid].role == 'admin';
     }
 
     match /users/{userId} {
@@ -91,7 +95,8 @@ service cloud.firestore {
     }
 
     match /notifications/{workspaceId}/activities/{activityId} {
-      allow read, list, update: if isMemberOfWorkspace(workspaceId);
+      allow read, list: if isMemberOfWorkspace(workspaceId);
+      allow update: if isMemberOfWorkspace(workspaceId);
       allow create, delete: if false;
     }
 
