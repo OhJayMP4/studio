@@ -3,7 +3,7 @@
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { Company, Project, Silo, Task, UserProfile, Comment } from "@/lib/types";
-import { collection, getDocs, query, orderBy, where } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, where, Timestamp } from "firebase/firestore";
 import { useEffect, useState, useMemo } from "react";
 import { format, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { Progress } from "@/components/ui/progress";
@@ -35,6 +35,21 @@ type ReportData = {
     })[];
     users: { [uid: string]: { name: string, email: string } };
 }
+
+/**
+ * Safely converts a Firestore timestamp or serializable object to a Date.
+ */
+const safeToDate = (val: any): Date | null => {
+    if (!val) return null;
+    if (val instanceof Date) return val;
+    if (typeof val.toDate === 'function') return val.toDate();
+    if (val.seconds !== undefined) return new Date(val.seconds * 1000);
+    if (typeof val === 'string') {
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? null : d;
+    }
+    return null;
+};
 
 function ReportLoader() {
     return (
@@ -128,13 +143,22 @@ export default function SummaryReportPage() {
                                 return { ...task, comments };
                             }));
 
+                        // STRICT DATE FILTERING:
+                        // Only include tasks that were DUE in range OR COMPLETED in range
                         const filteredTasks = tasksData.filter(task => {
-                            const taskDate = new Date(task.dueDate);
-                            const isDueInRange = isWithinInterval(taskDate, { 
+                            const taskDueDate = new Date(task.dueDate);
+                            const isDueInRange = isWithinInterval(taskDueDate, { 
                                 start: startOfDay(startDate), 
                                 end: endOfDay(endDate) 
                             });
-                            return isDueInRange || !task.completed;
+                            
+                            const compDate = task.completedAt ? safeToDate(task.completedAt) : null;
+                            const isCompletedInRange = compDate && isWithinInterval(compDate, {
+                                start: startOfDay(startDate),
+                                end: endOfDay(endDate)
+                            });
+
+                            return isDueInRange || isCompletedInRange;
                         });
                         
                         siloMinutes = filteredTasks.reduce((acc, t) => acc + (t.timeSpentMinutes || 0), 0);
@@ -165,7 +189,7 @@ export default function SummaryReportPage() {
             const reportDataResult = { companies: filteredCompanies, users: userMap };
             setReportData(reportDataResult);
 
-            // Generate AI Summary if requested
+            // Generate Team Summary (AI) if requested
             if (includeAISummary) {
                 const aiInputUsers: any[] = [];
                 
@@ -246,7 +270,7 @@ export default function SummaryReportPage() {
                         <div className="mx-auto bg-primary/10 p-3 rounded-full w-fit mb-4">
                             <FileText className="h-8 w-8 text-primary" />
                         </div>
-                        <CardTitle className="text-2xl font-headline">Generate Weekly Summary</CardTitle>
+                        <CardTitle className="text-2xl font-headline">Generate Team Summary</CardTitle>
                         <CardDescription>Select the period and companies you would like to report on.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
@@ -316,7 +340,7 @@ export default function SummaryReportPage() {
                             <div className="space-y-0.5">
                                 <Label className="text-sm font-bold flex items-center gap-2">
                                     <Sparkles className="h-4 w-4 text-primary" />
-                                    Include AI Executive Summary
+                                    Include AI Team Summary
                                 </Label>
                                 <p className="text-xs text-muted-foreground">
                                     Uses AI to write a natural summary of team member focus and achievements.
@@ -389,7 +413,7 @@ export default function SummaryReportPage() {
                  </div>
             </div>
 
-            {/* AI Executive Summary */}
+            {/* Team Summary */}
             {aiSummary && (
                 <div className="mb-12 p-8 bg-primary/5 rounded-2xl border-2 border-primary/10 break-inside-avoid relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-4 opacity-10">
@@ -399,7 +423,7 @@ export default function SummaryReportPage() {
                         <div className="bg-primary p-2 rounded-lg">
                             <Sparkles className="h-5 w-5 text-white" />
                         </div>
-                        <h2 className="text-2xl font-bold font-headline tracking-tight">AI Executive Insights</h2>
+                        <h2 className="text-2xl font-bold font-headline tracking-tight">Team Summary</h2>
                     </div>
                     <div className="space-y-10 relative z-10">
                         {aiSummary.summaries.map((s, i) => (

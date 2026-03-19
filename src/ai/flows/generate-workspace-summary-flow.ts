@@ -47,11 +47,11 @@ const prompt = ai.definePrompt({
   input: { schema: WorkspaceSummaryInputSchema },
   output: { schema: SummaryOutputSchema },
   prompt: `You are an expert executive assistant and project manager. 
-Your goal is to write a highly professional, natural-sounding executive summary for a workspace report.
+Your goal is to write a highly professional, natural-sounding team summary for a workspace report.
 
 The reporting period is from {{{startDate}}} to {{{endDate}}}.
 
-For each user listed below, write a first-person style summary (as if they are reporting to their manager) that captures:
+For each user listed below, write a first-person style summary (as if they are reporting to their manager) that captures their focus during this SPECIFIC period:
 1. How many tasks they focused on.
 2. Their "main company" (the one with the most tasks or time).
 3. A few specific achievements (x, y, & z) based on task titles and descriptions.
