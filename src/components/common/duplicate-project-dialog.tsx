@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -20,13 +19,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useFirestore, useUser, useCollection, useMemoFirebase } from '@/firebase';
+import { useFirestore, useUser, useCollection, useMemoFirebase, useDocs } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { collection } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { Copy } from 'lucide-react';
 import { duplicateProject } from '@/lib/tasks';
-import type { Company, Project } from '@/lib/types';
+import type { Company, Project, UserProfile } from '@/lib/types';
 
 interface DuplicateProjectDialogProps {
   project: Project;
@@ -52,13 +51,28 @@ export function DuplicateProjectDialog({ project, companyId, children }: Duplica
   }, [firestore, selectedWorkspace]);
   const { data: companies } = useCollection<Company>(companiesQuery);
 
+  // Resolve fresh names for all workspace members
+  const memberPaths = useMemo(() => 
+    (selectedWorkspace?.memberIds || []).map(uid => `users/${uid}`),
+    [selectedWorkspace?.memberIds]
+  );
+  const { data: userProfiles } = useDocs<UserProfile>(memberPaths);
+
   const workspaceUsers = useMemo(() => {
-    if (!selectedWorkspace?.users) return [];
-    return Object.entries(selectedWorkspace.users).map(([uid, data]) => ({
-      uid,
-      name: data.name || data.email || 'Team Member',
+    const fallback = selectedWorkspace?.users 
+        ? Object.entries(selectedWorkspace.users).map(([uid, data]) => ({
+            uid,
+            name: data.name || data.email || 'Team Member',
+        }))
+        : [];
+
+    if (!userProfiles || userProfiles.length === 0) return fallback;
+
+    return userProfiles.map(p => ({
+        uid: p.uid,
+        name: p.name || p.email || 'Team Member',
     }));
-  }, [selectedWorkspace]);
+  }, [userProfiles, selectedWorkspace?.users]);
 
   const handleDuplicate = async () => {
     if (!selectedWorkspace || !user || !targetCompanyId || !targetAssigneeId) {

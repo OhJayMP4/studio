@@ -1,8 +1,7 @@
-
 'use client';
 
-import { useState } from 'react';
-import { useForm, Controller, FormProvider } from 'react-hook-form';
+import { useState, useMemo } from 'react';
+import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
@@ -17,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFirestore, useUser } from '@/firebase';
+import { useFirestore, useUser, useDocs } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useToast } from '@/hooks/use-toast';
 import { CalendarIcon, PlusCircle } from 'lucide-react';
@@ -32,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { Workspace } from '@/lib/types';
+import type { Workspace, Task, UserProfile } from '@/lib/types';
 import { FormControl, FormField, FormItem, FormMessage } from '../ui/form';
 import { addTask } from '@/lib/tasks';
 import { Textarea } from '../ui/textarea';
@@ -56,14 +55,6 @@ interface AddTaskDialogProps {
   children?: React.ReactNode;
 }
 
-const getWorkspaceUsers = (workspace: Workspace | null) => {
-    if (!workspace || !workspace.users) return [];
-    return Object.entries(workspace.users).map(([uid, userData]) => ({
-        id: uid,
-        name: userData.name || userData.email || 'Unnamed User',
-    }));
-}
-
 export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTaskDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const firestore = useFirestore();
@@ -82,7 +73,28 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
     },
   });
   
-  const workspaceUsers = getWorkspaceUsers(selectedWorkspace);
+  // Resolve fresh names for all workspace members
+  const memberPaths = useMemo(() => 
+    (selectedWorkspace?.memberIds || []).map(uid => `users/${uid}`),
+    [selectedWorkspace?.memberIds]
+  );
+  const { data: userProfiles } = useDocs<UserProfile>(memberPaths);
+
+  const workspaceUsers = useMemo(() => {
+    const fallback = selectedWorkspace?.users 
+        ? Object.entries(selectedWorkspace.users).map(([uid, data]) => ({
+            id: uid,
+            name: data.name || data.email || 'Unnamed User',
+        }))
+        : [];
+
+    if (!userProfiles || userProfiles.length === 0) return fallback;
+
+    return userProfiles.map(p => ({
+        id: p.uid,
+        name: p.name || p.email || 'Unnamed User',
+    }));
+  }, [userProfiles, selectedWorkspace?.users]);
 
   const handleCreateTask = async (data: FormValues) => {
     if (!selectedWorkspace || !user) {
@@ -95,7 +107,6 @@ export function AddTaskDialog({ companyId, projectId, siloId, children }: AddTas
     }
 
     try {
-      // Initiate non-blocking add
       addTask(firestore, {
         workspaceId: selectedWorkspace.id,
         companyId,

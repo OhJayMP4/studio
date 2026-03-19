@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
@@ -7,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import type { Company, Project, Task } from "@/lib/types";
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, useDocs } from "@/firebase";
+import type { Company, Project, Task, UserProfile } from "@/lib/types";
 import { collection, doc, deleteDoc, updateDoc, serverTimestamp, Timestamp } from "firebase/firestore";
 import { format } from "date-fns";
 import Link from "next/link";
@@ -95,7 +94,27 @@ function QuickTaskSection({ companyId }: { companyId: string }) {
         return collection(firestore, `workspaces/${selectedWorkspace.id}/companies/${companyId}/projects/general-tasks/silos/inbox/tasks`);
     }, [firestore, selectedWorkspace, companyId]);
 
-    const { data: tasks, isLoading } = useCollection<Task>(quickTasksQuery);
+    const { data: tasks } = useCollection<Task>(quickTasksQuery);
+
+    // Resolve fresh names for workspace members
+    const memberPaths = useMemo(() => 
+        (selectedWorkspace?.memberIds || []).map(uid => `users/${uid}`),
+        [selectedWorkspace?.memberIds]
+    );
+    const { data: userProfiles } = useDocs<UserProfile>(memberPaths);
+
+    const workspaceUsers = useMemo(() => {
+        const fallback = selectedWorkspace?.users 
+            ? Object.entries(selectedWorkspace.users).map(([uid, data]) => ({ uid, name: data.name || data.email || 'Member' }))
+            : [];
+
+        if (!userProfiles || userProfiles.length === 0) return fallback;
+
+        return userProfiles.map(p => ({
+            uid: p.uid,
+            name: p.name || p.email || 'Member',
+        }));
+    }, [userProfiles, selectedWorkspace?.users]);
 
     const handleAdd = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -126,9 +145,6 @@ function QuickTaskSection({ companyId }: { companyId: string }) {
     };
 
     const activeQuickTasks = tasks?.filter(t => !t.completed) || [];
-    const workspaceUsers = selectedWorkspace?.users 
-        ? Object.entries(selectedWorkspace.users).map(([uid, data]) => ({ uid, name: data.name || data.email || 'Member' }))
-        : [];
 
     return (
         <Card className="border-primary/20 bg-primary/5">

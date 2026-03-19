@@ -1,7 +1,6 @@
-
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm, Controller, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -17,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFirestore, useUser } from '@/firebase';
+import { useFirestore, useUser, useDocs } from '@/firebase';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useToast } from '@/hooks/use-toast';
 import { CalendarIcon } from 'lucide-react';
@@ -32,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { Workspace, Task } from '@/lib/types';
+import type { Workspace, Task, UserProfile } from '@/lib/types';
 import { FormControl, FormField, FormItem, FormMessage } from '../ui/form';
 import { Textarea } from '../ui/textarea';
 import { updateTask } from '@/lib/tasks';
@@ -55,14 +54,6 @@ interface EditTaskDialogProps {
   children: React.ReactNode;
 }
 
-const getWorkspaceUsers = (workspace: Workspace | null) => {
-    if (!workspace || !workspace.users) return [];
-    return Object.entries(workspace.users).map(([uid, userData]) => ({
-        id: uid,
-        name: userData.name || userData.email || 'Unnamed User',
-    }));
-}
-
 export function EditTaskDialog({ task, path, children }: EditTaskDialogProps) {
   const [isOpen, setIsOpen] = useState(false);
   const firestore = useFirestore();
@@ -74,7 +65,28 @@ export function EditTaskDialog({ task, path, children }: EditTaskDialogProps) {
     resolver: zodResolver(formSchema),
   });
   
-  const workspaceUsers = getWorkspaceUsers(selectedWorkspace);
+  // Resolve fresh names for all workspace members
+  const memberPaths = useMemo(() => 
+    (selectedWorkspace?.memberIds || []).map(uid => `users/${uid}`),
+    [selectedWorkspace?.memberIds]
+  );
+  const { data: userProfiles } = useDocs<UserProfile>(memberPaths);
+
+  const workspaceUsers = useMemo(() => {
+    const fallback = selectedWorkspace?.users 
+        ? Object.entries(selectedWorkspace.users).map(([uid, data]) => ({
+            id: uid,
+            name: data.name || data.email || 'Unnamed User',
+        }))
+        : [];
+
+    if (!userProfiles || userProfiles.length === 0) return fallback;
+
+    return userProfiles.map(p => ({
+        id: p.uid,
+        name: p.name || p.email || 'Unnamed User',
+    }));
+  }, [userProfiles, selectedWorkspace?.users]);
 
   useEffect(() => {
     if (isOpen) {
@@ -104,7 +116,7 @@ export function EditTaskDialog({ task, path, children }: EditTaskDialogProps) {
             assigneeId: data.assigneeId,
             updatedBy: user.uid,
         },
-        task.assigneeId // Passing old assignee to handle synchronization
+        task.assigneeId
       );
       
       toast({

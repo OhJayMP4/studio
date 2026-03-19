@@ -5,9 +5,9 @@ import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useUser, useDocs } from '@/firebase';
 import { collection, query } from 'firebase/firestore';
-import type { Company, Project, Silo } from '@/lib/types';
+import type { Company, Project, Silo, UserProfile } from '@/lib/types';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -94,6 +94,29 @@ export function GlobalQuickAdd() {
   }, [firestore, selectedWorkspace, selectedCompanyId, selectedProjectId]);
   const { data: silos } = useCollection<Silo>(silosQuery);
 
+  // Resolve fresh names for all workspace members
+  const memberPaths = useMemo(() => 
+    (selectedWorkspace?.memberIds || []).map(uid => `users/${uid}`),
+    [selectedWorkspace?.memberIds]
+  );
+  const { data: userProfiles } = useDocs<UserProfile>(memberPaths);
+
+  const workspaceUsers = useMemo(() => {
+    const fallback = selectedWorkspace?.users 
+        ? Object.entries(selectedWorkspace.users).map(([uid, data]) => ({
+            uid,
+            name: data.name || data.email || 'Member',
+        }))
+        : [];
+
+    if (!userProfiles || userProfiles.length === 0) return fallback;
+
+    return userProfiles.map(p => ({
+        uid: p.uid,
+        name: p.name || p.email || 'Member',
+    }));
+  }, [userProfiles, selectedWorkspace?.users]);
+
   const openDialog = (type: AddEntityType) => {
     setSelectedEntityType(type);
     setDialogOpen(true);
@@ -139,10 +162,6 @@ export function GlobalQuickAdd() {
     return null;
   }
 
-  const workspaceUsers = selectedWorkspace?.users 
-    ? Object.entries(selectedWorkspace.users).map(([uid, data]) => ({ uid, name: data.name || data.email || 'Member' }))
-    : [];
-  
   const renderDialogContent = () => {
     switch (selectedEntityType) {
         case 'quick-task':
