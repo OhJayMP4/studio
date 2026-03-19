@@ -2,7 +2,7 @@
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { Company, Project, Silo, Task, UserProfile } from "@/lib/types";
+import { Company, Project, Silo, Task, UserProfile, Comment } from "@/lib/types";
 import { collection, getDocs, query, orderBy, where } from "firebase/firestore";
 import { useEffect, useState, useMemo } from "react";
 import { format, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
@@ -13,13 +13,15 @@ import { formatDuration } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, FileText, Printer, ArrowLeft, BarChart3, Building2, CheckCircle2, Clock } from "lucide-react";
+import { CalendarIcon, FileText, Printer, ArrowLeft, BarChart3, Building2, CheckCircle2, Clock, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Cell } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { generateWorkspaceAISummary, type WorkspaceSummaryOutput } from "@/ai/flows/generate-workspace-summary-flow";
 
 type ReportData = {
     companies: (Company & { 
@@ -60,9 +62,11 @@ export default function SummaryReportPage() {
     const [startDate, setStartDate] = useState<Date | undefined>(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
     const [endDate, setEndDate] = useState<Date | undefined>(new Date());
     const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
+    const [includeAISummary, setIncludeAISummary] = useState(false);
     
     // Data State
     const [reportData, setReportData] = useState<ReportData | null>(null);
+    const [aiSummary, setAiSummary] = useState<WorkspaceSummaryOutput | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
     // Fetch available companies for selection
@@ -84,6 +88,7 @@ export default function SummaryReportPage() {
 
         setIsLoading(true);
         setIsConfiguring(false);
+        setAiSummary(null);
         
         try {
             const companiesToFetch = availableCompanies?.filter(c => selectedCompanyIds.includes(c.id)) || [];
@@ -108,21 +113,34 @@ export default function SummaryReportPage() {
                         const tasksRef = collection(siloDoc.ref, 'tasks');
                         const tasksSnap = await getDocs(query(tasksRef));
                         
-                        const tasksData = tasksSnap.docs
-                            .map(taskDoc => ({ id: taskDoc.id, ...taskDoc.data() } as Task))
-                            .filter(task => {
-                                const taskDate = new Date(task.dueDate);
-                                const isDueInRange = isWithinInterval(taskDate, { 
-                                    start: startOfDay(startDate), 
-                                    end: endOfDay(endDate) 
-                                });
-                                return isDueInRange || !task.completed;
+                        const tasksData = await Promise.all(tasksSnap.docs
+                            .map(async (taskDoc) => {
+                                const task = { id: taskDoc.id, ...taskDoc.data() } as Task;
+                                
+                                // Fetch comments if AI summary is requested
+                                let comments: string[] = [];
+                                if (includeAISummary) {
+                                    const commentsRef = collection(firestore, `${taskDoc.ref.path}/comments`);
+                                    const commentsSnap = await getDocs(query(commentsRef, orderBy('createdAt', 'desc')));
+                                    comments = commentsSnap.docs.map(d => (d.data() as Comment).text);
+                                }
+
+                                return { ...task, comments };
+                            }));
+
+                        const filteredTasks = tasksData.filter(task => {
+                            const taskDate = new Date(task.dueDate);
+                            const isDueInRange = isWithinInterval(taskDate, { 
+                                start: startOfDay(startDate), 
+                                end: endOfDay(endDate) 
                             });
+                            return isDueInRange || !task.completed;
+                        });
                         
-                        siloMinutes = tasksData.reduce((acc, t) => acc + (t.timeSpentMinutes || 0), 0);
+                        siloMinutes = filteredTasks.reduce((acc, t) => acc + (t.timeSpentMinutes || 0), 0);
                         companyTotalMinutes += siloMinutes;
                         
-                        return { ...silo, siloMinutes, tasks: tasksData };
+                        return { ...silo, siloMinutes, tasks: filteredTasks };
                     }));
 
                     return { ...project, silos: silosData };
@@ -143,7 +161,55 @@ export default function SummaryReportPage() {
                     };
                 }
             }
-            setReportData({ companies: filteredCompanies, users: userMap });
+            
+            const reportDataResult = { companies: filteredCompanies, users: userMap };
+            setReportData(reportDataResult);
+
+            // Generate AI Summary if requested
+            if (includeAISummary) {
+                const aiInputUsers: any[] = [];
+                
+                // Group tasks by user for AI context
+                Object.keys(userMap).forEach(uid => {
+                    const userTasks: any[] = [];
+                    filteredCompanies.forEach(c => {
+                        c.projects.forEach(p => {
+                            p.silos.forEach(s => {
+                                s.tasks.forEach(t => {
+                                    if (t.assigneeId === uid) {
+                                        userTasks.push({
+                                            title: t.title,
+                                            description: t.description,
+                                            companyName: c.name,
+                                            projectName: p.id === 'general-tasks' ? 'Quick Tasks' : p.name,
+                                            timeSpentMinutes: t.timeSpentMinutes,
+                                            comments: (t as any).comments,
+                                            completed: t.completed
+                                        });
+                                    }
+                                });
+                            });
+                        });
+                    });
+
+                    if (userTasks.length > 0) {
+                        aiInputUsers.push({
+                            userName: userMap[uid].name,
+                            tasks: userTasks
+                        });
+                    }
+                });
+
+                if (aiInputUsers.length > 0) {
+                    const summary = await generateWorkspaceAISummary({
+                        startDate: format(startDate, 'PPP'),
+                        endDate: format(endDate, 'PPP'),
+                        users: aiInputUsers
+                    });
+                    setAiSummary(summary);
+                }
+            }
+
         } catch (error) {
             console.error("Error fetching report data:", error);
         } finally {
@@ -245,6 +311,22 @@ export default function SummaryReportPage() {
                                 </ScrollArea>
                             </div>
                         </div>
+
+                        <div className="flex items-center justify-between p-4 bg-primary/5 border border-primary/20 rounded-xl">
+                            <div className="space-y-0.5">
+                                <Label className="text-sm font-bold flex items-center gap-2">
+                                    <Sparkles className="h-4 w-4 text-primary" />
+                                    Include AI Executive Summary
+                                </Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Uses AI to write a natural summary of team member focus and achievements.
+                                </p>
+                            </div>
+                            <Switch 
+                                checked={includeAISummary}
+                                onCheckedChange={setIncludeAISummary}
+                            />
+                        </div>
                     </CardContent>
                     <CardFooter className="flex-col gap-3">
                         <Button className="w-full" size="lg" onClick={handleGenerateReport} disabled={!startDate || !endDate || selectedCompanyIds.length === 0}>
@@ -306,6 +388,33 @@ export default function SummaryReportPage() {
                     </Button>
                  </div>
             </div>
+
+            {/* AI Executive Summary */}
+            {aiSummary && (
+                <div className="mb-12 p-8 bg-primary/5 rounded-2xl border-2 border-primary/10 break-inside-avoid relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-4 opacity-10">
+                        <Sparkles className="h-24 w-24 text-primary" />
+                    </div>
+                    <div className="flex items-center gap-3 mb-6 relative z-10">
+                        <div className="bg-primary p-2 rounded-lg">
+                            <Sparkles className="h-5 w-5 text-white" />
+                        </div>
+                        <h2 className="text-2xl font-bold font-headline tracking-tight">AI Executive Insights</h2>
+                    </div>
+                    <div className="space-y-10 relative z-10">
+                        {aiSummary.summaries.map((s, i) => (
+                            <div key={i} className="space-y-2">
+                                <h3 className="text-lg font-black uppercase tracking-widest text-primary/80 border-b border-primary/10 pb-1">
+                                    {s.userName}
+                                </h3>
+                                <p className="text-sm leading-relaxed text-slate-700 italic font-medium">
+                                    "{s.summary}"
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Chart Section */}
             <div className="mb-12 break-inside-avoid bg-slate-50/50 p-6 rounded-xl border border-slate-100">
