@@ -13,16 +13,26 @@ import {
 } from "@/components/ui/dropdown-menu";
 import Link from "next/link";
 import { ChevronsUpDown } from "lucide-react";
-import { useUser, useAuth } from "@/firebase";
+import { useUser, useAuth, useFirestore, useDoc, useMemoFirebase } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { signOut } from "firebase/auth";
 import { useSelectedWorkspace } from "@/app/(main)/layout";
+import { doc } from "firebase/firestore";
+import type { UserProfile } from "@/lib/types";
 
 export function UserNav() {
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
+  const firestore = useFirestore();
   const router = useRouter();
   const { selectedWorkspace } = useSelectedWorkspace();
+
+  // Fetch Firestore profile for real-time avatar/name updates
+  const profileRef = useMemoFirebase(() => {
+    return user ? doc(firestore, 'users', user.uid) : null;
+  }, [firestore, user]);
+  
+  const { data: profile } = useDoc<UserProfile>(profileRef);
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -43,9 +53,9 @@ export function UserNav() {
     );
   }
 
-  const name = user.displayName || user.email || 'Anonymous';
+  const name = profile?.name || user.displayName || user.email || 'Anonymous';
   const email = user.email || '';
-  const avatarUrl = user.photoURL || '';
+  const avatarUrl = profile?.avatarUrl || user.photoURL || '';
   const fallback = name.charAt(0).toUpperCase();
 
   const role = selectedWorkspace?.users?.[user.uid]?.role;
@@ -57,7 +67,7 @@ export function UserNav() {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-auto w-full justify-start gap-2 px-2 py-1.5 group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:justify-center">
           <Avatar className="h-8 w-8 shrink-0">
-            <AvatarImage src={avatarUrl} alt={name} />
+            <AvatarImage src={avatarUrl} alt={name} className="object-cover" />
             <AvatarFallback>{fallback}</AvatarFallback>
           </Avatar>
           <div className="flex flex-col items-start group-data-[collapsible=icon]:hidden overflow-hidden">

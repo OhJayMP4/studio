@@ -3,7 +3,7 @@
 import { useSelectedWorkspace } from "@/app/(main)/layout";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { Company, Project, Silo, Task, UserProfile, Comment } from "@/lib/types";
-import { collection, getDocs, query, orderBy, where, Timestamp } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, where, Timestamp, doc, getDoc } from "firebase/firestore";
 import { useEffect, useState, useMemo } from "react";
 import { format, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { Progress } from "@/components/ui/progress";
@@ -175,16 +175,23 @@ export default function SummaryReportPage() {
 
             const filteredCompanies = companiesData.filter(c => c.projects.some(p => p.silos.some(s => s.tasks.length > 0)));
 
+            // Build fresh user map from profiles to ensure latest names
             const userMap: { [uid: string]: { name: string, email: string } } = {};
-            if (selectedWorkspace.users) {
-                for (const uid in selectedWorkspace.users) {
-                    const u = selectedWorkspace.users[uid];
-                    userMap[uid] = {
-                        name: u.name || 'Unnamed User',
-                        email: u.email || '',
-                    };
-                }
-            }
+            const workspaceUids = Object.keys(selectedWorkspace.users || {});
+            
+            const profilePromises = workspaceUids.map(uid => getDoc(doc(firestore, 'users', uid)));
+            const profileSnaps = await Promise.all(profilePromises);
+            
+            profileSnaps.forEach((snap, index) => {
+                const uid = workspaceUids[index];
+                const profileData = snap.data() as UserProfile | undefined;
+                const wsUserData = selectedWorkspace.users[uid];
+                
+                userMap[uid] = {
+                    name: profileData?.name || wsUserData?.name || wsUserData?.email || 'Unnamed User',
+                    email: profileData?.email || wsUserData?.email || '',
+                };
+            });
             
             const reportDataResult = { companies: filteredCompanies, users: userMap };
             setReportData(reportDataResult);

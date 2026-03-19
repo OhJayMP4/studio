@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useFirestore, useMemoFirebase } from "@/firebase";
@@ -133,7 +132,8 @@ export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
         await updateTaskCompletion(firestore, path, task.assigneeId, task.id, true, minutes);
     }
 
-    const name = assignee?.name || 'N/A';
+    // Resolve Name prioritizing Profile Name -> Profile Email -> Stale Workspace Name
+    const name = assignee?.name || assignee?.email || selectedWorkspace?.users?.[task.assigneeId]?.name || 'Unassigned';
     const avatarUrl = assignee?.avatarUrl || '';
     const fallback = name.charAt(0).toUpperCase();
 

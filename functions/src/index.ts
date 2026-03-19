@@ -83,14 +83,22 @@ const updateProjectProgress = async (workspaceId: string, companyId: string, pro
 };
 
 const getActorAndRelevantUsers = async (workspaceId: string, actorUid: string) => {
-    const workspaceSnap = await db.doc(`workspaces/${workspaceId}`).get();
+    // Fetch fresh actor data from the users collection instead of relying on workspace map
+    const [workspaceSnap, userSnap] = await Promise.all([
+        db.doc(`workspaces/${workspaceId}`).get(),
+        db.doc(`users/${actorUid}`).get()
+    ]);
+
     if (!workspaceSnap.exists) {
         console.error(`Workspace ${workspaceId} not found.`);
         return { actorName: null, isRelevantTo: [] };
     }
+
+    const userData = userSnap.data();
     const workspaceData = workspaceSnap.data();
-    const actor = workspaceData?.users?.[actorUid];
-    const actorName = actor?.name || actor?.email || 'A user';
+    
+    // Prioritize Fresh Name -> Fresh Email -> Stale Workspace Name -> Generic
+    const actorName = userData?.name || userData?.email || workspaceData?.users?.[actorUid]?.name || 'A user';
     
     // Everyone in the workspace is relevant, including the actor
     const isRelevantTo = Object.keys(workspaceData?.users || {});
@@ -337,7 +345,8 @@ exports.onTaskWrite = functions.firestore
             const companyName = companySnap.data()?.name || '';
             const projectName = projectSnap.data()?.name || '';
             const siloName = siloSnap.data()?.name || '';
-            const assigneeName = assigneeSnap.exists ? (assigneeSnap.data()?.name || assigneeSnap.data()?.email) : 'an unknown user';
+            const assigneeData = assigneeSnap.exists ? assigneeSnap.data() : null;
+            const assigneeName = assigneeData?.name || assigneeData?.email || 'an unknown user';
             
             await createNotification(workspaceId, {
                 type: 'task_assigned',
@@ -350,7 +359,6 @@ exports.onTaskWrite = functions.firestore
             });
 
             if (assigneeSnap.exists) {
-                const assigneeData = assigneeSnap.data();
                 const isEmailEnabled = assigneeData?.emailNotificationsEnabled !== false;
                 const email = assigneeData?.email;
 
@@ -912,7 +920,16 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
             tasksQuery.get(),
         ]);
 
-        const userProfile = userSnap.exists ? { id: userSnap.id, ...userSnap.data() } : { uid: userId, name: 'Unnamed User' };
+        const userData = userSnap.data();
+        // Resolve display name prioritizing Fresh Name -> Fresh Email -> Stale Workspace Name
+        const resolvedName = userData?.name || userData?.email || workspaceData?.users?.[userId]?.name || 'Unnamed User';
+        
+        const userProfile = userSnap.exists ? { 
+            id: userSnap.id, 
+            ...userData,
+            name: resolvedName 
+        } : { uid: userId, name: resolvedName };
+
         const tasks = tasksSnap.docs.map(doc => {
             const taskData = doc.data() as UserTask;
             return {
@@ -1119,7 +1136,7 @@ exports.backfillAllProjects = functions
           const siloId = segments[7];
 
           // Update source task with correct IDs
-          await taskDoc.ref.update({ workspaceId, companyId, projectId, type: 'original' });
+          await taskDoc.ref.update({ workspaceId, companyId, projectId });
           updatedCount++;
 
           // Synchronize with user-tasks collection

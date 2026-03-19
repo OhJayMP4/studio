@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from "react";
@@ -70,7 +69,8 @@ export function TaskListItem({ userTask }: TaskListItemProps) {
         await updateTaskCompletion(firestore, originalTaskPath, userTask.assigneeId, originalTaskId, true, minutes);
     }
 
-    const name = assignee?.name || 'N/A';
+    // Resolve Name prioritizing Profile Name -> Profile Email -> Stale Workspace Name
+    const name = assignee?.name || assignee?.email || selectedWorkspace?.users?.[userTask.assigneeId]?.name || 'N/A';
     const avatarUrl = assignee?.avatarUrl || '';
     const fallback = name.charAt(0).toUpperCase();
 

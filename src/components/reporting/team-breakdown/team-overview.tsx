@@ -83,9 +83,12 @@ export function TeamOverview({ reportData }: { reportData: any[] }) {
         new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
       );
 
+      // Prioritize name -> email fallback
+      const displayName = item.user.name || item.user.email || 'Unnamed User';
+
       return {
         uid: item.user.uid,
-        name: item.user.name || item.user.email || 'Unnamed User',
+        name: displayName,
         avatarUrl: item.user.avatarUrl || null,
         activeCount: activeTasks.length,
         overdueCount: overdueTasks.length,
