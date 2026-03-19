@@ -30,9 +30,12 @@ function TeamMemberRow({ uid, role, email, isOwner, canBeRemoved, onRoleChange, 
     const { data: profile } = useDoc<UserProfile>(userRef);
 
     const isCurrentUser = uid === currentUser?.uid;
-    const name = profile?.name || 'Unnamed User';
+
+    const primaryDisplay = profile?.name || email || 'Unnamed User';
+    const secondaryDisplay = (profile?.name && email) ? email : null; // Show email only if a name exists AND email exists
+
     const avatarUrl = profile?.avatarUrl || null;
-    const fallback = name.charAt(0).toUpperCase();
+    const fallback = primaryDisplay.charAt(0).toUpperCase();
 
     return (
         <TableRow>
@@ -43,8 +46,8 @@ function TeamMemberRow({ uid, role, email, isOwner, canBeRemoved, onRoleChange, 
                         <AvatarFallback>{fallback}</AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col">
-                        <span className="font-medium">{name} {isCurrentUser && '(You)'}</span>
-                        <span className="text-xs text-muted-foreground">{email}</span>
+                        <span className="font-medium">{primaryDisplay} {isCurrentUser && '(You)'}</span>
+                        {secondaryDisplay && <span className="text-xs text-muted-foreground">{secondaryDisplay}</span>}
                         {isOwner && <span className="text-[10px] mt-1 bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold uppercase tracking-wider w-fit">Owner</span>}
                     </div>
                 </div>
@@ -67,8 +70,8 @@ function TeamMemberRow({ uid, role, email, isOwner, canBeRemoved, onRoleChange, 
             </TableCell>
             <TableCell className="text-right">
                 <DeleteDialog
-                    onConfirm={() => onRemove(uid, name)}
-                    itemName={name}
+                    onConfirm={() => onRemove(uid, primaryDisplay)}
+                    itemName={primaryDisplay}
                 >
                     <Button
                         variant="ghost"

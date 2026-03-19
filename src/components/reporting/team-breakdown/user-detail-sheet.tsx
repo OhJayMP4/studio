@@ -8,8 +8,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet';
-import { useSelectedWorkspace } from '@/app/(main)/layout';
-import type { Task } from '@/lib/types';
+import type { Task, UserProfile } from '@/lib/types';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { isPast, isToday, addDays, isWithinInterval, startOfDay, endOfDay, differenceInDays, startOfWeek, formatDistanceToNow } from 'date-fns';
@@ -17,26 +16,36 @@ import { UserActivityFeed } from './user-activity-feed';
 import { ClipboardCheck, Clock, AlertCircle, CalendarRange, CheckCircle2, TrendingUp } from 'lucide-react';
 
 interface UserDetailSheetProps {
-  userId: string;
+  user: UserProfile;
   onClose: () => void;
   tasks: Task[];
 }
 
 /**
- * Safely converts a value to a Date object.
+ * Safely converts a value to a Date object, handling Firestore Timestamps,
+ * serialized callable function responses, strings, and direct Date objects.
  */
 const safeToDate = (val: any): Date | null => {
     if (!val) return null;
     if (val instanceof Date) return val;
     if (typeof val.toDate === 'function') return val.toDate();
-    if (val.seconds !== undefined) return new Date(val.seconds * 1000);
-    return new Date(val);
+    
+    // Handle serialized Timestamp from Cloud Functions (Callable)
+    const seconds = val.seconds ?? val._seconds;
+    if (seconds !== undefined) {
+        return new Date(seconds * 1000);
+    }
+    
+    // Handle strings (ISO format)
+    if (typeof val === 'string') {
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? null : d;
+    }
+    
+    return null;
 };
 
-export function UserDetailSheet({ userId, onClose, tasks }: UserDetailSheetProps) {
-  const { selectedWorkspace } = useSelectedWorkspace();
-  const user = selectedWorkspace?.users[userId];
-
+export function UserDetailSheet({ user, onClose, tasks }: UserDetailSheetProps) {
   const now = new Date();
   const next7Days = addDays(now, 7);
   const weekStart = startOfWeek(now);
@@ -65,7 +74,7 @@ export function UserDetailSheet({ userId, onClose, tasks }: UserDetailSheetProps
   if (!user) return null;
 
   return (
-    <Sheet open={!!userId} onOpenChange={(open) => !open && onClose()}>
+    <Sheet open={!!user} onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="sm:max-w-[600px] w-full flex flex-col p-0 overflow-hidden">
         <SheetHeader className="p-6 pb-2 border-b bg-muted/10">
           <div className="flex items-center gap-4">
@@ -175,7 +184,7 @@ export function UserDetailSheet({ userId, onClose, tasks }: UserDetailSheetProps
                 </TabsContent>
 
                 <TabsContent value="activity">
-                    <UserActivityFeed userId={userId} />
+                    <UserActivityFeed userId={user.uid} />
                 </TabsContent>
             </Tabs>
           </div>

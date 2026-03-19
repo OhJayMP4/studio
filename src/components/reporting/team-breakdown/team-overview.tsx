@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { useSelectedWorkspace } from '@/app/(main)/layout';
-import type { Task } from '@/lib/types';
+import type { Task, UserProfile } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -20,41 +19,53 @@ interface UserSummary {
   completedThisWeek: number;
   nextDueTask: Task | null;
   tasks: Task[];
+  user: UserProfile;
 }
 
 /**
- * Safely converts a value to a Date object.
- * Handles Firestore Timestamps, serialized timestamp objects {seconds, nanoseconds}, and strings.
+ * Safely converts a value to a Date object, handling Firestore Timestamps,
+ * serialized callable function responses, strings, and direct Date objects.
  */
 const safeToDate = (val: any): Date | null => {
     if (!val) return null;
     if (val instanceof Date) return val;
     if (typeof val.toDate === 'function') return val.toDate();
-    if (val.seconds !== undefined) return new Date(val.seconds * 1000);
-    return new Date(val);
+    
+    // Handle serialized Timestamp from Cloud Functions (Callable)
+    const seconds = val.seconds ?? val._seconds;
+    if (seconds !== undefined) {
+        return new Date(seconds * 1000);
+    }
+    
+    // Handle strings (ISO format)
+    if (typeof val === 'string') {
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? null : d;
+    }
+    
+    return null;
 };
 
-export function TeamOverview({ tasks }: { tasks: Task[] }) {
-  const { selectedWorkspace } = useSelectedWorkspace();
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+export function TeamOverview({ reportData }: { reportData: any[] }) {
+  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
 
   const teamSummaries = useMemo(() => {
-    if (!selectedWorkspace?.users) return [];
+    if (!reportData) return [];
 
     const now = new Date();
     const next7Days = addDays(now, 7);
     const weekStart = startOfWeek(now);
 
-    return Object.entries(selectedWorkspace.users).map(([uid, userData]) => {
-      const userTasks = tasks.filter(t => t.assigneeId === uid);
-      const activeTasks = userTasks.filter(t => !t.completed);
+    return reportData.map(item => {
+      const userTasks = item.tasks || [];
+      const activeTasks = userTasks.filter((t: Task) => !t.completed);
       
-      const overdueTasks = activeTasks.filter(t => {
+      const overdueTasks = activeTasks.filter((t: Task) => {
         const dueDate = new Date(t.dueDate);
         return isPast(dueDate) && !isToday(dueDate);
       });
 
-      const upcomingTasks = activeTasks.filter(t => {
+      const upcomingTasks = activeTasks.filter((t: Task) => {
         const dueDate = new Date(t.dueDate);
         return isWithinInterval(dueDate, {
           start: startOfDay(now),
@@ -62,31 +73,32 @@ export function TeamOverview({ tasks }: { tasks: Task[] }) {
         });
       });
 
-      const completedThisWeek = userTasks.filter(t => {
+      const completedThisWeek = userTasks.filter((t: Task) => {
         if (!t.completed || !t.completedAt) return false;
         const compDate = safeToDate(t.completedAt);
         return compDate && compDate >= weekStart;
       });
 
-      const sortedActive = [...activeTasks].sort((a, b) => 
+      const sortedActive = [...activeTasks].sort((a: Task, b: Task) => 
         new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
       );
 
       return {
-        uid,
-        name: userData.name || userData.email || 'Unnamed User',
-        avatarUrl: userData.avatarUrl || null,
+        uid: item.user.uid,
+        name: item.user.name || item.user.email || 'Unnamed User',
+        avatarUrl: item.user.avatarUrl || null,
         activeCount: activeTasks.length,
         overdueCount: overdueTasks.length,
         upcomingCount: upcomingTasks.length,
         completedThisWeek: completedThisWeek.length,
         nextDueTask: sortedActive[0] || null,
         tasks: userTasks,
+        user: item.user,
       } as UserSummary;
     })
     .filter(u => u.activeCount > 0 || u.tasks.length > 0 || u.completedThisWeek > 0)
     .sort((a, b) => b.overdueCount - a.overdueCount || b.activeCount - a.activeCount);
-  }, [tasks, selectedWorkspace]);
+  }, [reportData]);
 
   return (
     <>
@@ -95,7 +107,7 @@ export function TeamOverview({ tasks }: { tasks: Task[] }) {
           <Card 
             key={summary.uid}
             className="group hover:border-primary/50 transition-all cursor-pointer active:scale-[0.98] relative overflow-hidden"
-            onClick={() => setSelectedUserId(summary.uid)}
+            onClick={() => setSelectedUser(summary.user)}
           >
             <CardHeader className="flex flex-row items-center gap-4 pb-2">
               <Avatar className="h-12 w-12 border-2 group-hover:border-primary transition-colors">
@@ -151,11 +163,11 @@ export function TeamOverview({ tasks }: { tasks: Task[] }) {
         ))}
       </div>
 
-      {selectedUserId && (
+      {selectedUser && (
         <UserDetailSheet 
-          userId={selectedUserId}
-          onClose={() => setSelectedUserId(null)}
-          tasks={tasks.filter(t => t.assigneeId === selectedUserId)}
+          user={selectedUser}
+          onClose={() => setSelectedUser(null)}
+          tasks={reportData.find(item => item.user.uid === selectedUser.uid)?.tasks || []}
         />
       )}
     </>

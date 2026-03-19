@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useFirebase, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection } from 'firebase/firestore';
-import type { Task, Company, Project } from '@/lib/types';
+import type { Task, Company, Project, UserProfile } from '@/lib/types';
 import { TeamOverview } from './team-overview';
 import { TeamBreakdownFilters } from './team-breakdown-filters';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -12,6 +12,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Info } from 'lucide-react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useToast } from '@/hooks/use-toast';
+
+interface ReportDataItem {
+  user: UserProfile;
+  tasks: Task[];
+}
 
 export function TeamBreakdownView() {
   const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
@@ -24,7 +29,7 @@ export function TeamBreakdownView() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
   
   // Data state
-  const [allTasks, setAllTasks] = useState<Task[]>([]);
+  const [reportData, setReportData] = useState<ReportDataItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // 1. Fetch Companies for filters
@@ -63,10 +68,7 @@ export function TeamBreakdownView() {
             });
 
             // result.data is an array of { user: Profile, tasks: Task[] }
-            const reportData = result.data as any[];
-            const aggregatedTasks = reportData.flatMap(u => u.tasks);
-            
-            setAllTasks(aggregatedTasks);
+            setReportData(result.data as ReportDataItem[]);
         } catch (error: any) {
             console.error("Failed to fetch team breakdown:", error);
             toast({
@@ -82,15 +84,22 @@ export function TeamBreakdownView() {
     fetchTeamData();
   }, [selectedWorkspace, firebaseApp, isUserAdmin, toast]);
 
-  // Filter tasks based on selections
-  const filteredTasks = useMemo(() => {
-    if (!allTasks) return [];
-    return allTasks.filter(task => {
-      const companyMatch = selectedCompanyId === 'all' || task.companyId === selectedCompanyId;
-      const projectMatch = selectedProjectId === 'all' || task.projectId === selectedProjectId;
-      return companyMatch && projectMatch;
+  // Filter report data based on selections
+  const filteredReportData = useMemo(() => {
+    if (!reportData) return [];
+    if (selectedCompanyId === 'all' && selectedProjectId === 'all') {
+      return reportData;
+    }
+
+    return reportData.map(item => {
+      const filteredTasks = item.tasks.filter(task => {
+        const companyMatch = selectedCompanyId === 'all' || task.companyId === selectedCompanyId;
+        const projectMatch = selectedProjectId === 'all' || task.projectId === selectedProjectId;
+        return companyMatch && projectMatch;
+      });
+      return { ...item, tasks: filteredTasks };
     });
-  }, [allTasks, selectedCompanyId, selectedProjectId]);
+  }, [reportData, selectedCompanyId, selectedProjectId]);
 
   if (!isUserAdmin) {
       return (
@@ -134,7 +143,7 @@ export function TeamBreakdownView() {
         setSelectedProjectId={setSelectedProjectId}
       />
 
-      {filteredTasks.length === 0 ? (
+      {filteredReportData.length === 0 ? (
         <Alert>
           <Info className="h-4 w-4" />
           <AlertTitle>No Active Workload</AlertTitle>
@@ -143,7 +152,7 @@ export function TeamBreakdownView() {
           </AlertDescription>
         </Alert>
       ) : (
-        <TeamOverview tasks={filteredTasks} />
+        <TeamOverview reportData={filteredReportData} />
       )}
     </div>
   );

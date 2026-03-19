@@ -301,7 +301,7 @@ exports.onTaskWrite = functions.firestore
         }
     }
     if (beforeData && afterData && beforeData.completed === false && afterData.completed === true) {
-        const actorUid = afterData.assigneeId;
+        const actorUid = afterData.updatedBy || afterData.assigneeId;
         const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
         if (!actorName)
             return;
@@ -774,18 +774,29 @@ exports.getUserActivity = functions.https.onCall(async (data, context) => {
     const { workspaceId, targetUserId } = data;
     if (!workspaceId || !targetUserId)
         throw new functions.https.HttpsError('invalid-argument', 'Missing parameters.');
-    // Secure verify: is caller a member?
     const workspaceSnap = await db.doc(`workspaces/${workspaceId}`).get();
     if (!workspaceSnap.exists)
         throw new functions.https.HttpsError('not-found', 'Workspace not found.');
     const wsData = workspaceSnap.data();
     if (!((_a = wsData === null || wsData === void 0 ? void 0 : wsData.memberIds) === null || _a === void 0 ? void 0 : _a.includes(context.auth.uid)))
         throw new functions.https.HttpsError('permission-denied', 'Membership required.');
-    // Query for activities where this user is the Actor OR the Assignee
     const activitiesRef = db.collection(`notifications/${workspaceId}/activities`);
-    const q = activitiesRef.where(admin.firestore.Filter.or(admin.firestore.Filter.where('actorUid', '==', targetUserId), admin.firestore.Filter.where('assignee.uid', '==', targetUserId))).orderBy('timestamp', 'desc').limit(20);
-    const snapshot = await q.get();
-    return snapshot.docs.map(doc => (Object.assign({ id: doc.id }, doc.data())));
+    const actorQuery = activitiesRef.where('actorUid', '==', targetUserId);
+    const assigneeQuery = activitiesRef.where('assignee.uid', '==', targetUserId);
+    const [actorSnap, assigneeSnap] = await Promise.all([
+        actorQuery.get(),
+        assigneeQuery.get()
+    ]);
+    const activities = new Map();
+    actorSnap.forEach(doc => activities.set(doc.id, Object.assign({ id: doc.id }, doc.data())));
+    assigneeSnap.forEach(doc => activities.set(doc.id, Object.assign({ id: doc.id }, doc.data())));
+    const allActivities = Array.from(activities.values());
+    allActivities.sort((a, b) => {
+        const dateA = a.timestamp && typeof a.timestamp.toMillis === 'function' ? a.timestamp.toMillis() : 0;
+        const dateB = b.timestamp && typeof b.timestamp.toMillis === 'function' ? b.timestamp.toMillis() : 0;
+        return dateB - dateA;
+    });
+    return allActivities.slice(0, 20).map(activity => (Object.assign(Object.assign({}, activity), { timestamp: activity.timestamp && typeof activity.timestamp.toDate === 'function' ? activity.timestamp.toDate().toISOString() : activity.timestamp })));
 });
 exports.finalizeFileUpload = functions.https.onCall(async (data, context) => {
     var _a;

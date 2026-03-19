@@ -54,7 +54,7 @@ export function AddWorkspaceDialog({ open, onOpenChange }: AddWorkspaceDialogPro
         users: { 
           [user.uid]: {
             role: 'admin',
-            name: user.displayName,
+            name: user.displayName || user.email,
             email: user.email,
             avatarUrl: user.photoURL,
           }
