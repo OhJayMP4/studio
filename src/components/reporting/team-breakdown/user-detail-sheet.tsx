@@ -14,6 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { isPast, isToday, addDays, isWithinInterval, startOfDay, endOfDay, differenceInDays, startOfWeek, formatDistanceToNow } from 'date-fns';
 import { UserActivityFeed } from './user-activity-feed';
 import { ClipboardCheck, Clock, AlertCircle, CalendarRange, CheckCircle2, TrendingUp } from 'lucide-react';
+import { TaskDetailsDialog } from '@/components/common/task-details-dialog';
+import type { UserTask } from '@/lib/types';
 
 interface UserDetailSheetProps {
   user: UserProfile;
@@ -122,13 +124,20 @@ export function UserDetailSheet({ user, onClose, tasks }: UserDetailSheetProps) 
                             <div className="space-y-2">
                                 {stats.overdue.map(task => {
                                 const days = differenceInDays(now, new Date(task.dueDate));
+                                const ut = task as any as UserTask;
+                                const originalTaskPath = `workspaces/${ut.workspaceId}/companies/${ut.companyId}/projects/${ut.projectId}/silos/${ut.siloId}/tasks/${ut.originalTaskId || ut.id}`;
+                                
                                 return (
-                                    <div key={task.id} className="p-3 bg-destructive/5 border border-destructive/10 rounded-lg flex justify-between items-center text-sm">
-                                    <span className="font-semibold truncate pr-4">{task.title}</span>
-                                    <span className="text-[10px] font-black text-destructive whitespace-nowrap bg-white px-2 py-0.5 rounded shadow-sm">
-                                        {days} DAYS LATE
-                                    </span>
-                                    </div>
+                                    <TaskDetailsDialog key={task.id} task={task} path={originalTaskPath}>
+                                        <button className="w-full text-left group">
+                                            <div className="p-3 bg-destructive/5 border border-destructive/10 rounded-lg flex justify-between items-center text-sm group-hover:border-destructive/30 transition-colors">
+                                                <span className="font-semibold truncate pr-4 group-hover:underline">{task.title}</span>
+                                                <span className="text-[10px] font-black text-destructive whitespace-nowrap bg-white px-2 py-0.5 rounded shadow-sm">
+                                                    {days} DAYS LATE
+                                                </span>
+                                            </div>
+                                        </button>
+                                    </TaskDetailsDialog>
                                 );
                                 })}
                             </div>
@@ -143,16 +152,23 @@ export function UserDetailSheet({ user, onClose, tasks }: UserDetailSheetProps) 
                                 <div className="space-y-2">
                                     {stats.finishedThisWeek.map(task => {
                                         const compDate = safeToDate(task.completedAt);
+                                        const ut = task as any as UserTask;
+                                        const originalTaskPath = `workspaces/${ut.workspaceId}/companies/${ut.companyId}/projects/${ut.projectId}/silos/${ut.siloId}/tasks/${ut.originalTaskId || ut.id}`;
+                                        
                                         return (
-                                            <div key={task.id} className="p-3 bg-green-500/5 border border-green-500/10 rounded-lg flex justify-between items-center text-sm">
-                                                <div className="flex items-center gap-2 truncate pr-4">
-                                                    <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
-                                                    <span className="font-medium truncate line-through opacity-70">{task.title}</span>
-                                                </div>
-                                                <span className="text-[10px] font-bold text-green-600 whitespace-nowrap">
-                                                    {compDate ? formatDistanceToNow(compDate, { addSuffix: true }) : 'Completed'}
-                                                </span>
-                                            </div>
+                                            <TaskDetailsDialog key={task.id} task={task} path={originalTaskPath}>
+                                                <button className="w-full text-left group">
+                                                    <div className="p-3 bg-green-500/5 border border-green-500/10 rounded-lg flex justify-between items-center text-sm group-hover:border-green-500/30 transition-colors">
+                                                        <div className="flex items-center gap-2 truncate pr-4">
+                                                            <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                                                            <span className="font-medium truncate line-through opacity-70 group-hover:underline">{task.title}</span>
+                                                        </div>
+                                                        <span className="text-[10px] font-bold text-green-600 whitespace-nowrap">
+                                                            {compDate ? formatDistanceToNow(compDate, { addSuffix: true }) : 'Completed'}
+                                                        </span>
+                                                    </div>
+                                                </button>
+                                            </TaskDetailsDialog>
                                         );
                                     })}
                                 </div>
@@ -167,14 +183,23 @@ export function UserDetailSheet({ user, onClose, tasks }: UserDetailSheetProps) 
                             </p>
                             {stats.upcoming.length > 0 ? (
                             <div className="space-y-2">
-                                {stats.upcoming.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).map(task => (
-                                <div key={task.id} className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-lg flex justify-between items-center text-sm">
-                                    <span className="font-medium truncate pr-4">{task.title}</span>
-                                    <span className="text-[10px] font-bold text-blue-600 whitespace-nowrap">
-                                    {new Date(task.dueDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-                                    </span>
-                                </div>
-                                ))}
+                                {stats.upcoming.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()).map(task => {
+                                    const ut = task as any as UserTask;
+                                    const originalTaskPath = `workspaces/${ut.workspaceId}/companies/${ut.companyId}/projects/${ut.projectId}/silos/${ut.siloId}/tasks/${ut.originalTaskId || ut.id}`;
+                                    
+                                    return (
+                                        <TaskDetailsDialog key={task.id} task={task} path={originalTaskPath}>
+                                            <button className="w-full text-left group">
+                                                <div className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-lg flex justify-between items-center text-sm group-hover:border-blue-500/30 transition-colors">
+                                                    <span className="font-medium truncate pr-4 group-hover:underline">{task.title}</span>
+                                                    <span className="text-[10px] font-bold text-blue-600 whitespace-nowrap">
+                                                        {new Date(task.dueDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                                                    </span>
+                                                </div>
+                                            </button>
+                                        </TaskDetailsDialog>
+                                    );
+                                })}
                             </div>
                             ) : (
                             <p className="text-xs text-muted-foreground italic pl-5">No upcoming tasks due in the next 7 days.</p>
@@ -184,7 +209,7 @@ export function UserDetailSheet({ user, onClose, tasks }: UserDetailSheetProps) 
                 </TabsContent>
 
                 <TabsContent value="activity">
-                    <UserActivityFeed userId={user.uid} />
+                    <UserActivityFeed userId={user.uid} tasks={tasks as any} />
                 </TabsContent>
             </Tabs>
           </div>

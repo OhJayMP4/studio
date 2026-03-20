@@ -7,6 +7,9 @@ import type { Notification } from '@/lib/types';
 import { format } from 'date-fns';
 import { UserPlus, CheckCircle2, MessageSquare, Trash2, Bell, Sparkles } from 'lucide-react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
+import { TaskDetailsDialog } from '@/components/common/task-details-dialog';
+import type { UserTask } from '@/lib/types';
+import Link from 'next/link';
 
 // Helper function to convert Firestore Timestamp to JavaScript Date
 const convertFirestoreTimestampToDate = (timestamp: any): Date | null => {
@@ -85,7 +88,7 @@ const getSimplifiedActionText = (n: Notification, currentUserId: string) => {
   }
 };
 
-export function UserActivityFeed({ userId }: { userId: string }) {
+export function UserActivityFeed({ userId, tasks }: { userId: string, tasks?: UserTask[] }) {
   const { firebaseApp } = useFirebase();
   const { selectedWorkspace } = useSelectedWorkspace();
   const [activities, setActivities] = useState<Notification[]>([]);
@@ -133,16 +136,20 @@ export function UserActivityFeed({ userId }: { userId: string }) {
     <div className="space-y-4">
       {activities.map((activity) => {
         const dateToDisplay = convertFirestoreTimestampToDate(activity.timestamp);
-
-        return (
-          <div key={activity.id} className="flex items-start gap-3 group">
-            <div className="mt-1 bg-background border rounded-full p-1.5 shadow-sm">
+        
+        // Find corresponding task for task-related activities
+        const isTaskActivity = ['task_assigned', 'task_completed', 'comment_added', 'task_deleted'].includes(activity.type);
+        const task = isTaskActivity && tasks ? tasks.find(t => t.id === activity.target.id || (t as any).originalTaskId === activity.target.id) : null;
+        
+        const activityContent = (
+          <div className="flex items-start gap-3 group cursor-pointer">
+            <div className="mt-1 bg-background border rounded-full p-1.5 shadow-sm group-hover:border-primary/50 transition-colors">
               {getIcon(activity.type)}
             </div>
             <div className="flex-1 space-y-0.5">
               <p className="text-xs leading-relaxed">
                 <span className="font-bold">{activity.actorName}</span>
-                {' '}{getSimplifiedActionText(activity, userId)}
+                {' '}<span className="group-hover:text-primary transition-colors">{getSimplifiedActionText(activity, userId)}</span>
               </p>
               <div className="flex flex-wrap gap-1 mt-1">
                 {dateToDisplay && (
@@ -172,6 +179,29 @@ export function UserActivityFeed({ userId }: { userId: string }) {
                 )}
               </div>
             </div>
+          </div>
+        );
+
+        if (task) {
+          const originalTaskPath = `workspaces/${task.workspaceId}/companies/${task.companyId}/projects/${task.projectId}/silos/${task.siloId}/tasks/${task.originalTaskId || task.id}`;
+          return (
+            <TaskDetailsDialog key={activity.id} task={task as any} path={originalTaskPath}>
+              {activityContent}
+            </TaskDetailsDialog>
+          );
+        }
+
+        if (activity.target.path) {
+          return (
+            <Link key={activity.id} href={activity.target.path} className="block">
+              {activityContent}
+            </Link>
+          );
+        }
+
+        return (
+          <div key={activity.id}>
+            {activityContent}
           </div>
         );
       })}

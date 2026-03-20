@@ -82,6 +82,7 @@ export type Task = {
     updatedBy?: string;
     timeSpentMinutes?: number;
     createdAt?: any; // Firestore Timestamp
+    completedAt?: any; // Firestore Timestamp
 };
 
 export type ChatMessage = {
@@ -124,6 +125,7 @@ export type UserTask = {
     siloName: string;
     timeSpentMinutes?: number;
     createdAt?: any;
+    completedAt?: any;
 }
 
 export type Sale = {

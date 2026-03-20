@@ -28,6 +28,28 @@ import { updateTaskCompletion, deleteTask } from '@/lib/tasks';
 import { useToast } from '@/hooks/use-toast';
 import { EditTaskDialog } from './edit-task-dialog';
 import { DeleteDialog } from './delete-dialog';
+import { Timestamp } from 'firebase/firestore';
+
+const safeToDate = (val: any): Date | null => {
+    if (!val) return null;
+    if (val instanceof Date) return val;
+    if (val instanceof Timestamp) return val.toDate();
+    if (typeof val.toDate === 'function') return val.toDate();
+    
+    // Handle serialized Timestamp from Cloud Functions (Callable)
+    const seconds = val.seconds ?? val._seconds;
+    if (seconds !== undefined) {
+        return new Date(seconds * 1000);
+    }
+    
+    // Handle strings (ISO format)
+    if (typeof val === 'string') {
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? null : d;
+    }
+    
+    return null;
+};
 
 function CommentItem({ comment, path, level = 0 }: { comment: Comment; path: string; level?: number }) {
   const [showReply, setShowReply] = useState(false);
@@ -66,7 +88,10 @@ function CommentItem({ comment, path, level = 0 }: { comment: Comment; path: str
           <div className="flex items-center gap-2 text-sm">
             <span className="font-semibold">{comment.author?.name}</span>
             <span className="text-xs text-muted-foreground">
-              {comment.createdAt ? formatDistanceToNow(comment.createdAt.toDate(), { addSuffix: true }) : 'just now'}
+              {(() => {
+                const date = safeToDate(comment.createdAt);
+                return date ? formatDistanceToNow(date, { addSuffix: true }) : 'just now';
+              })()}
             </span>
           </div>
           <p className="text-sm mt-1">{comment.text}</p>
@@ -467,7 +492,10 @@ export function TaskDetailsDialog({ task, path, children }: { task: Task; path: 
                                 label="Created"
                                 value={
                                     <span className="text-xs text-muted-foreground">
-                                        {task.createdAt ? format(task.createdAt.toDate(), 'PP p') : 'Unknown'}
+                                        {(() => {
+                                            const date = safeToDate(task.createdAt);
+                                            return date ? format(date, 'PP p') : 'Unknown';
+                                        })()}
                                     </span>
                                 }
                             />
