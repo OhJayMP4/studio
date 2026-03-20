@@ -236,9 +236,12 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="space-y-4">
+            <div className="space-y-4">
             <div className="flex items-center justify-between">
-                <Label className="text-base font-bold uppercase tracking-wider text-muted-foreground">Accent Color</Label>
+                <div>
+                  <Label className="text-base font-bold uppercase tracking-wider text-muted-foreground">Accent Color</Label>
+                  <p className="text-xs text-muted-foreground mt-1">Choose a color to personalize your workspace experience.</p>
+                </div>
                 <div className="flex items-center gap-1 text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase">
                     <Sparkles className="h-3 w-3" />
                     Workspace Theming
