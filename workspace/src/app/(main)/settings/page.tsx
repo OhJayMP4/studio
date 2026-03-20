@@ -52,6 +52,7 @@ const ACCENT_COLORS = [
   { name: 'Golden Amber', value: '38 92% 50%' },
   { name: 'Slate Gray', value: '215 25% 27%' },
   { name: 'Deep Indigo', value: '239 84% 67%' },
+  { name: 'Dark Green', value: '142 71% 25%' },
 ];
 
 export default function SettingsPage() {
@@ -237,7 +238,10 @@ export default function SettingsPage() {
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-                <Label className="text-base font-bold uppercase tracking-wider text-muted-foreground">Accent Color</Label>
+                <div>
+                  <Label className="text-base font-bold uppercase tracking-wider text-muted-foreground">Accent Color</Label>
+                  <p className="text-xs text-muted-foreground mt-1">Choose a color to personalize your workspace experience.</p>
+                </div>
                 <div className="flex items-center gap-1 text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded-full uppercase">
                     <Sparkles className="h-3 w-3" />
                     Workspace Theming
@@ -268,10 +272,6 @@ export default function SettingsPage() {
                 </button>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground italic leading-relaxed pt-2">
-              The accent color affects buttons, active sidebar menus, and highlights across the entire app. 
-              Changes are saved instantly to your workspace profile.
-            </p>
           </div>
         </CardContent>
       </Card>
