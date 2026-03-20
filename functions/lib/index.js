@@ -52,15 +52,20 @@ const updateProjectProgress = async (workspaceId, companyId, projectId) => {
     }
 };
 const getActorAndRelevantUsers = async (workspaceId, actorUid) => {
-    var _a;
-    const workspaceSnap = await db.doc(`workspaces/${workspaceId}`).get();
+    var _a, _b;
+    // Fetch fresh actor data from the users collection instead of relying on workspace map
+    const [workspaceSnap, userSnap] = await Promise.all([
+        db.doc(`workspaces/${workspaceId}`).get(),
+        db.doc(`users/${actorUid}`).get()
+    ]);
     if (!workspaceSnap.exists) {
         console.error(`Workspace ${workspaceId} not found.`);
         return { actorName: null, isRelevantTo: [] };
     }
+    const userData = userSnap.data();
     const workspaceData = workspaceSnap.data();
-    const actor = (_a = workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) === null || _a === void 0 ? void 0 : _a[actorUid];
-    const actorName = (actor === null || actor === void 0 ? void 0 : actor.name) || (actor === null || actor === void 0 ? void 0 : actor.email) || 'A user';
+    // Prioritize Fresh Name -> Fresh Email -> Stale Workspace Name -> Generic
+    const actorName = (userData === null || userData === void 0 ? void 0 : userData.name) || (userData === null || userData === void 0 ? void 0 : userData.email) || ((_b = (_a = workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) === null || _a === void 0 ? void 0 : _a[actorUid]) === null || _b === void 0 ? void 0 : _b.name) || 'A user';
     // Everyone in the workspace is relevant, including the actor
     const isRelevantTo = Object.keys((workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) || {});
     return { actorName, isRelevantTo };
@@ -191,7 +196,7 @@ exports.onSiloCreate = functions.firestore
     var _a, _b;
     const { workspaceId, companyId, projectId } = context.params;
     const siloData = snap.data();
-    const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, siloData.createdBy);
+    const { actorName, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, siloData.createdBy);
     if (!actorName)
         return;
     const companySnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get();
@@ -214,7 +219,7 @@ exports.onSiloDelete = functions.firestore
     const { workspaceId, companyId, projectId } = context.params;
     const siloData = snap.data();
     const actorUid = siloData.updatedBy || siloData.createdBy;
-    const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+    const { actorName, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
     if (!actorName)
         return;
     const companySnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get();
@@ -236,7 +241,7 @@ exports.onSaleCreate = functions.firestore
     var _a, _b;
     const { workspaceId, companyId, projectId } = context.params;
     const saleData = snap.data();
-    const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, saleData.createdBy);
+    const { actorName, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, saleData.createdBy);
     if (!actorName)
         return;
     const companySnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get();
@@ -256,14 +261,14 @@ exports.onSaleCreate = functions.firestore
 exports.onTaskWrite = functions.firestore
     .document('workspaces/{workspaceId}/companies/{companyId}/projects/{projectId}/silos/{siloId}/tasks/{taskId}')
     .onWrite(async (change, context) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
     const { workspaceId, companyId, projectId, siloId, taskId } = context.params;
     const beforeData = change.before.data();
     const afterData = change.after.data();
     // 1. Handle Notifications & Emails
     if (afterData && (!beforeData || beforeData.assigneeId !== afterData.assigneeId)) {
         const actorUid = afterData.updatedBy || afterData.createdBy;
-        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+        const { actorName, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
         if (!actorName)
             return;
         const [companySnap, projectSnap, siloSnap, assigneeSnap] = await Promise.all([
@@ -275,7 +280,8 @@ exports.onTaskWrite = functions.firestore
         const companyName = ((_a = companySnap.data()) === null || _a === void 0 ? void 0 : _a.name) || '';
         const projectName = ((_b = projectSnap.data()) === null || _b === void 0 ? void 0 : _b.name) || '';
         const siloName = ((_c = siloSnap.data()) === null || _c === void 0 ? void 0 : _c.name) || '';
-        const assigneeName = assigneeSnap.exists ? (((_d = assigneeSnap.data()) === null || _d === void 0 ? void 0 : _d.name) || ((_e = assigneeSnap.data()) === null || _e === void 0 ? void 0 : _e.email)) : 'an unknown user';
+        const assigneeData = assigneeSnap.exists ? assigneeSnap.data() : null;
+        const assigneeName = (assigneeData === null || assigneeData === void 0 ? void 0 : assigneeData.name) || (assigneeData === null || assigneeData === void 0 ? void 0 : assigneeData.email) || 'an unknown user';
         await createNotification(workspaceId, {
             type: 'task_assigned',
             actorUid,
@@ -286,7 +292,6 @@ exports.onTaskWrite = functions.firestore
             isRelevantTo,
         });
         if (assigneeSnap.exists) {
-            const assigneeData = assigneeSnap.data();
             const isEmailEnabled = (assigneeData === null || assigneeData === void 0 ? void 0 : assigneeData.emailNotificationsEnabled) !== false;
             const email = assigneeData === null || assigneeData === void 0 ? void 0 : assigneeData.email;
             if (isEmailEnabled && email) {
@@ -302,7 +307,7 @@ exports.onTaskWrite = functions.firestore
     }
     if (beforeData && afterData && beforeData.completed === false && afterData.completed === true) {
         const actorUid = afterData.updatedBy || afterData.assigneeId;
-        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+        const { actorName, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
         if (!actorName)
             return;
         const [companySnap, projectSnap, siloSnap] = await Promise.all([
@@ -310,9 +315,9 @@ exports.onTaskWrite = functions.firestore
             db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
             db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}`).get()
         ]);
-        const companyName = ((_f = companySnap.data()) === null || _f === void 0 ? void 0 : _f.name) || '';
-        const projectName = ((_g = projectSnap.data()) === null || _g === void 0 ? void 0 : _g.name) || '';
-        const siloName = ((_h = siloSnap.data()) === null || _h === void 0 ? void 0 : _h.name) || '';
+        const companyName = ((_d = companySnap.data()) === null || _d === void 0 ? void 0 : _d.name) || '';
+        const projectName = ((_e = projectSnap.data()) === null || _e === void 0 ? void 0 : _e.name) || '';
+        const siloName = ((_f = siloSnap.data()) === null || _f === void 0 ? void 0 : _f.name) || '';
         await createNotification(workspaceId, {
             type: 'task_completed',
             actorUid,
@@ -345,9 +350,9 @@ exports.onTaskWrite = functions.firestore
             priority: afterData.priority,
             assigneeId: afterData.assigneeId,
             createdBy: afterData.createdBy,
-            companyName: ((_j = companySnap.data()) === null || _j === void 0 ? void 0 : _j.name) || 'Unknown Company',
-            projectName: ((_k = projectSnap.data()) === null || _k === void 0 ? void 0 : _k.name) || 'Unknown Project',
-            siloName: ((_l = siloSnap.data()) === null || _l === void 0 ? void 0 : _l.name) || 'Inbox',
+            companyName: ((_g = companySnap.data()) === null || _g === void 0 ? void 0 : _g.name) || 'Unknown Company',
+            projectName: ((_h = projectSnap.data()) === null || _h === void 0 ? void 0 : _h.name) || 'Unknown Project',
+            siloName: ((_j = siloSnap.data()) === null || _j === void 0 ? void 0 : _j.name) || 'Inbox',
             timeSpentMinutes: afterData.timeSpentMinutes || 0,
             createdAt: afterData.createdAt || admin.firestore.FieldValue.serverTimestamp(),
             type: 'denormalized'
@@ -367,7 +372,7 @@ exports.onCompanyDelete = functions.firestore
     const { workspaceId } = context.params;
     const companyData = snap.data();
     const actorUid = companyData.updatedBy || companyData.createdBy;
-    const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+    const { actorName, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
     if (!actorName)
         return;
     await createNotification(workspaceId, {
@@ -385,7 +390,7 @@ exports.onProjectDelete = functions.firestore
     const { workspaceId, companyId } = context.params;
     const projectData = snap.data();
     const actorUid = projectData.updatedBy || projectData.createdBy;
-    const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+    const { actorName, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
     if (!actorName)
         return;
     const companySnap = await db.doc(`workspaces/${workspaceId}/companies/${companyId}`).get();
@@ -416,7 +421,7 @@ exports.onTaskDelete = functions.firestore
         userTasksSnap.docs.forEach(doc => batch.delete(doc.ref));
         await batch.commit();
     }
-    const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+    const { actorName, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
     if (!actorName)
         return;
     const [companySnap, projectSnap, siloSnap] = await Promise.all([
@@ -724,7 +729,7 @@ exports.deleteWorkspace = functions.https.onCall(async (data, context) => {
     }
 });
 exports.generateTeamReport = functions.https.onCall(async (data, context) => {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'You must be signed in to generate reports.');
     }
@@ -755,7 +760,10 @@ exports.generateTeamReport = functions.https.onCall(async (data, context) => {
             userRef.get(),
             tasksQuery.get(),
         ]);
-        const userProfile = userSnap.exists ? Object.assign({ id: userSnap.id }, userSnap.data()) : { uid: userId, name: 'Unnamed User' };
+        const userData = userSnap.data();
+        // Resolve display name prioritizing Fresh Name -> Fresh Email -> Stale Workspace Name
+        const resolvedName = (userData === null || userData === void 0 ? void 0 : userData.name) || (userData === null || userData === void 0 ? void 0 : userData.email) || ((_e = (_d = workspaceData === null || workspaceData === void 0 ? void 0 : workspaceData.users) === null || _d === void 0 ? void 0 : _d[userId]) === null || _e === void 0 ? void 0 : _e.name) || 'Unnamed User';
+        const userProfile = userSnap.exists ? Object.assign(Object.assign({ id: userSnap.id }, userData), { name: resolvedName }) : { uid: userId, name: resolvedName };
         const tasks = tasksSnap.docs.map(doc => {
             const taskData = doc.data();
             return Object.assign(Object.assign({}, taskData), { id: doc.id });
@@ -933,7 +941,7 @@ exports.backfillAllProjects = functions
                 const projectId = segments[5];
                 const siloId = segments[7];
                 // Update source task with correct IDs
-                await taskDoc.ref.update({ workspaceId, companyId, projectId, type: 'original' });
+                await taskDoc.ref.update({ workspaceId, companyId, projectId });
                 updatedCount++;
                 // Synchronize with user-tasks collection
                 if (taskData.assigneeId) {

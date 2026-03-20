@@ -1,15 +1,6 @@
 {
   "indexes": [
-    {
-      "collectionGroup": "companies",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        {
-          "fieldPath": "workspaceId",
-          "order": "ASCENDING"
-        }
-      ]
-    },
+
     {
       "collectionGroup": "projects",
       "queryScope": "COLLECTION_GROUP",
@@ -56,23 +47,14 @@
         }
       ]
     },
-    {
-      "collectionGroup": "tasks",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        {
-          "fieldPath": "projectId",
-          "order": "ASCENDING"
-        }
-      ]
-    },
+
     {
       "collectionGroup": "activities",
       "queryScope": "COLLECTION",
       "fields": [
         {
           "fieldPath": "isRelevantTo",
-          "order": "ARRAY_CONTAINS"
+          "arrayConfig": "CONTAINS"
         },
         {
           "fieldPath": "timestamp",
@@ -86,7 +68,7 @@
       "fields": [
         {
           "fieldPath": "isRelevantTo",
-          "order": "ARRAY_CONTAINS"
+          "arrayConfig": "CONTAINS"
         },
         {
           "fieldPath": "timestamp",

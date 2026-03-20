@@ -52,6 +52,7 @@ const ACCENT_COLORS = [
   { name: 'Golden Amber', value: '38 92% 50%' },
   { name: 'Slate Gray', value: '215 25% 27%' },
   { name: 'Deep Indigo', value: '239 84% 67%' },
+  { name: 'Dark Green', value: '142 71% 25%' },
 ];
 
 export default function SettingsPage() {
