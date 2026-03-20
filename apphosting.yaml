@@ -59,6 +59,10 @@ env:
     availability:
       - BUILD
       - RUNTIME
+  - variable: GOOGLE_GENAI_API_KEY
+    secret: GOOGLE_GENAI_API_KEY
+    availability:
+      - RUNTIME
 
 # The build command for the Next.js app.
 # This is used to build the production version of the app.
