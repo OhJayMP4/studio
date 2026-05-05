@@ -1,97 +1,22 @@
+
 'use client';
 
 import { useSelectedWorkspace } from "@/app/(main)/layout";
-import { useUser, useFirestore, useFirebase } from "@/firebase";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
-import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Button } from "../ui/button";
+import { useUser, useFirestore } from "@/firebase";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, arrayRemove, getDoc, writeBatch } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { DeleteDialog } from "../common/delete-dialog";
-import { getFunctions, httpsCallable } from "firebase/functions";
-import { useDoc, useMemoFirebase } from "@/firebase";
-import { UserProfile } from "@/lib/types";
+import { DeleteDialog } from "@/components/common/delete-dialog";
 
-function TeamMemberRow({ uid, role, email, isOwner, canBeRemoved, onRoleChange, onRemove }: { 
-    uid: string; 
-    role: 'admin' | 'contributor' | 'viewer'; 
-    email: string | null;
-    isOwner: boolean;
-    canBeRemoved: boolean;
-    onRoleChange: (uid: string, role: any) => void;
-    onRemove: (uid: string, name: string | null) => void;
-}) {
-    const firestore = useFirestore();
-    const { user: currentUser } = useUser();
-    
-    const userRef = useMemoFirebase(() => doc(firestore, 'users', uid), [firestore, uid]);
-    const { data: profile } = useDoc<UserProfile>(userRef);
-
-    const isCurrentUser = uid === currentUser?.uid;
-
-    const primaryDisplay = profile?.name || email || 'Unnamed User';
-    const secondaryDisplay = (profile?.name && email) ? email : null; // Show email only if a name exists AND email exists
-
-    const avatarUrl = profile?.avatarUrl || null;
-    const fallback = primaryDisplay.charAt(0).toUpperCase();
-
-    return (
-        <TableRow>
-            <TableCell>
-                <div className="flex items-center gap-3">
-                    <Avatar className="h-9 w-9">
-                        <AvatarImage src={avatarUrl ?? undefined} className="object-cover" />
-                        <AvatarFallback>{fallback}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex flex-col">
-                        <span className="font-medium">{primaryDisplay} {isCurrentUser && '(You)'}</span>
-                        {secondaryDisplay && <span className="text-xs text-muted-foreground">{secondaryDisplay}</span>}
-                        {isOwner && <span className="text-[10px] mt-1 bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold uppercase tracking-wider w-fit">Owner</span>}
-                    </div>
-                </div>
-            </TableCell>
-            <TableCell>
-                <Select
-                    defaultValue={role}
-                    onValueChange={(value) => onRoleChange(uid, value)}
-                    disabled={isOwner}
-                >
-                    <SelectTrigger className="w-[140px] h-8 text-xs">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="contributor">Contributor</SelectItem>
-                        <SelectItem value="viewer">Viewer</SelectItem>
-                    </SelectContent>
-                </Select>
-            </TableCell>
-            <TableCell className="text-right">
-                <DeleteDialog
-                    onConfirm={() => onRemove(uid, primaryDisplay)}
-                    itemName={primaryDisplay}
-                >
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={!canBeRemoved}
-                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                    >
-                        <Trash2 className="h-4 w-4" />
-                    </Button>
-                </DeleteDialog>
-            </TableCell>
-        </TableRow>
-    );
-}
 
 export function TeamMemberTable() {
-    const { selectedWorkspace } = useSelectedWorkspace();
+    const { selectedWorkspace, setSelectedWorkspace } = useSelectedWorkspace();
     const { user: currentUser } = useUser();
     const firestore = useFirestore();
-    const { firebaseApp } = useFirebase();
     const { toast } = useToast();
 
     if (!selectedWorkspace || !currentUser) return null;
@@ -104,9 +29,10 @@ export function TeamMemberTable() {
     const handleRoleChange = async (targetUid: string, newRole: 'admin' | 'contributor' | 'viewer') => {
         if (!selectedWorkspace) return;
 
+        // Prevent admin from accidentally demoting themselves if they are the only admin
         const adminCount = members.filter(m => m.role === 'admin').length;
         if (targetUid === currentUser.uid && members.find(m => m.uid === targetUid)?.role === 'admin' && adminCount <= 1) {
-            toast({ variant: 'destructive', title: "Action Not Allowed", description: "You cannot demote the only admin." });
+            toast({ variant: 'destructive', title: "Action Not Allowed", description: "You cannot demote the only admin in the workspace." });
             return;
         }
 
@@ -115,68 +41,114 @@ export function TeamMemberTable() {
             await updateDoc(workspaceRef, {
                 [`users.${targetUid}.role`]: newRole,
             });
-            toast({ title: "Role Updated" });
+            toast({ title: "Role Updated", description: `Role for ${members.find(m => m.uid === targetUid)?.name} has been changed to ${newRole}.` });
         } catch (error: any) {
             toast({ variant: 'destructive', title: "Update Failed", description: error.message });
         }
     };
 
-    const handleRemoveUser = async (userIdToRemove: string, targetName: string | null) => {
-        if (!selectedWorkspace || !firebaseApp) return;
-
-        toast({ title: "Removing member..." });
-
+    const handleRemoveUser = async (targetUid: string, targetName: string | null) => {
+        if (!selectedWorkspace) return;
+        
         try {
-            const functions = getFunctions(firebaseApp);
-            const removeUserFromWorkspace = httpsCallable(functions, 'removeUserFromWorkspace');
-            
-            await removeUserFromWorkspace({
-              workspaceId: selectedWorkspace.id,
-              userIdToRemove: userIdToRemove
-            });
+            const workspaceRef = doc(firestore, 'workspaces', selectedWorkspace.id);
+            const userRef = doc(firestore, 'users', targetUid);
 
-            toast({
-              title: "Member Removed",
-              description: `${targetName || 'User'} is no longer part of the workspace.`
-            });
+            const batch = writeBatch(firestore);
+
+            const workspaceDoc = await getDoc(workspaceRef);
+            const workspaceData = workspaceDoc.data();
+
+            if (workspaceData) {
+                const newUsersMap = { ...workspaceData.users };
+                delete newUsersMap[targetUid];
+                const newMemberIds = workspaceData.memberIds.filter((id: string) => id !== targetUid);
+
+                batch.update(workspaceRef, {
+                    users: newUsersMap,
+                    memberIds: newMemberIds,
+                });
+
+                const userDoc = await getDoc(userRef);
+                const userData = userDoc.data();
+                if (userData && userData.workspaceIds) {
+                    const newWorkspaceIds = userData.workspaceIds.filter((id: string) => id !== selectedWorkspace.id);
+                    batch.update(userRef, { workspaceIds: newWorkspaceIds });
+                }
+            }
             
+            await batch.commit();
+
+            toast({ title: "User Removed", description: `${targetName || 'The user'} has been removed from the workspace.` });
+
         } catch (error: any) {
-            console.error('Error removing user:', error);
-            toast({
-              variant: "destructive",
-              title: "Removal Failed",
-              description: error.message || "An error occurred."
-            });
+             toast({ variant: 'destructive', title: "Removal Failed", description: error.message });
         }
     };
 
     return (
-        <div className="border rounded-md bg-card shadow-sm overflow-hidden">
+        <div className="border rounded-md">
             <Table>
-                <TableHeader className="bg-muted/50">
+                <TableHeader>
                     <TableRow>
-                        <TableHead className="font-bold">Member</TableHead>
-                        <TableHead className="font-bold">Role</TableHead>
-                        <TableHead className="text-right font-bold">Actions</TableHead>
+                        <TableHead>Member</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {members.map(({ uid, role, email }) => {
+                    {members.map(({ uid, name, avatarUrl, role }) => {
+                        const fallback = name ? name.charAt(0).toUpperCase() : '?';
                         const isCurrentUser = uid === currentUser.uid;
+                        const isLastAdmin = role === 'admin' && members.filter(m => m.role === 'admin').length <= 1;
                         const isOwner = uid === selectedWorkspace.ownerId;
-                        const canBeRemoved = !isCurrentUser && !isOwner;
 
                         return (
-                            <TeamMemberRow 
-                                key={uid}
-                                uid={uid}
-                                role={role as any}
-                                email={email || null}
-                                isOwner={isOwner}
-                                canBeRemoved={canBeRemoved}
-                                onRoleChange={handleRoleChange}
-                                onRemove={handleRemoveUser}
-                            />
+                            <TableRow key={uid}>
+                                <TableCell>
+                                    <div className="flex items-center gap-3">
+                                        <Avatar>
+                                            <AvatarImage src={avatarUrl ?? undefined} />
+                                            <AvatarFallback>{fallback}</AvatarFallback>
+                                        </Avatar>
+                                        <div className="flex flex-col">
+                                            <span className="font-medium">{name || 'Unnamed User'} {isCurrentUser && '(You)'}</span>
+                                            {isOwner && <span className="text-xs text-muted-foreground">Owner</span>}
+                                        </div>
+                                    </div>
+                                </TableCell>
+                                <TableCell>
+                                    <Select
+                                        defaultValue={role}
+                                        onValueChange={(value) => handleRoleChange(uid, value as 'admin' | 'contributor' | 'viewer')}
+                                        disabled={(isCurrentUser && isLastAdmin) || isOwner}
+                                    >
+                                        <SelectTrigger className="w-[180px]">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="admin">Admin</SelectItem>
+                                            <SelectItem value="contributor">Contributor</SelectItem>
+                                            <SelectItem value="viewer">Viewer</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                    <DeleteDialog
+                                        onConfirm={() => handleRemoveUser(uid, name)}
+                                        itemName={name || 'this user'}
+                                    >
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            disabled={isCurrentUser || isOwner}
+                                            aria-label={`Remove ${name}`}
+                                        >
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                    </DeleteDialog>
+                                </TableCell>
+                            </TableRow>
                         );
                     })}
                 </TableBody>
