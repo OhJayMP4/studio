@@ -2,28 +2,28 @@
 
 import { useState, useEffect } from 'react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../ui/card';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Button } from '../ui/button';
+import { Switch } from '../ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { useFirestore, useFirebase, useUser } from '@/firebase';
-import { doc, updateDoc, writeBatch, getDoc } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { TeamMemberTable } from '@/components/settings/team-member-table';
-import { DeleteDialog } from '@/components/common/delete-dialog';
+import { TeamMemberTable } from './team-member-table';
+import { DeleteDialog } from '../common/delete-dialog';
 import { useRouter } from 'next/navigation';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Pencil } from 'lucide-react';
-import { InviteMemberButton } from '@/components/common/invite-member-button';
+import { InviteMemberButton } from '../common/invite-member-button';
 
 export function WorkspaceManager() {
     const { selectedWorkspace, setSelectedWorkspace } = useSelectedWorkspace();
     const [workspaceName, setWorkspaceName] = useState(selectedWorkspace?.name || '');
     const [isTimeTrackingEnabled, setIsTimeTrackingEnabled] = useState(selectedWorkspace?.isTimeTrackingEnabled ?? false);
-    const [isSubmittingSettings, setIsSubmittingSettings] = useState(false);
+    const [isSubmittingName, setIsSubmittingName] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const { toast } = useToast();
@@ -45,7 +45,7 @@ export function WorkspaceManager() {
             return;
         }
 
-        setIsSubmittingSettings(true);
+        setIsSubmittingName(true);
         try {
             const workspaceRef = doc(firestore, 'workspaces', selectedWorkspace.id);
             await updateDoc(workspaceRef, { 
@@ -56,40 +56,21 @@ export function WorkspaceManager() {
         } catch (error: any) {
             toast({ variant: 'destructive', title: 'Failed to update workspace settings', description: error.message });
         } finally {
-            setIsSubmittingSettings(false);
+            setIsSubmittingName(false);
         }
     };
 
     const handleDeleteWorkspace = async () => {
-        if (!selectedWorkspace) return;
+        if (!selectedWorkspace || !firebaseApp) return;
 
         setIsDeleting(true);
         toast({ title: 'Deleting Workspace...', description: 'This may take a few moments.' });
 
         try {
-            const workspaceRef = doc(firestore, 'workspaces', selectedWorkspace.id);
-            
-            const batch = writeBatch(firestore);
+            const functions = getFunctions(firebaseApp);
+            const deleteWorkspaceFn = httpsCallable(functions, 'deleteWorkspace');
 
-            // Fetch user documents to update their workspace arrays
-            if (selectedWorkspace.memberIds) {
-                for (const memberId of selectedWorkspace.memberIds) {
-                    const userRef = doc(firestore, 'users', memberId);
-                    const userSnap = await getDoc(userRef);
-                    if (userSnap.exists()) {
-                        const userData = userSnap.data();
-                        if (userData && userData.workspaceIds) {
-                             batch.update(userRef, {
-                                workspaceIds: userData.workspaceIds.filter((id: string) => id !== selectedWorkspace.id)
-                            });
-                        }
-                    }
-                }
-            }
-            
-            batch.delete(workspaceRef);
-
-            await batch.commit();
+            await deleteWorkspaceFn({ workspaceId: selectedWorkspace.id });
 
             toast({
                 title: 'Workspace Deleted',
@@ -98,6 +79,7 @@ export function WorkspaceManager() {
 
             setSelectedWorkspace(null); 
             router.push('/dashboard');
+            router.refresh();
 
         } catch (error: any) {
             console.error("Error deleting workspace: ", error);
@@ -204,8 +186,8 @@ export function WorkspaceManager() {
                     </div>
                 </CardContent>
                 <CardFooter>
-                    <Button onClick={handleSaveWorkspaceSettings} disabled={isSubmittingSettings || !isChanged}>
-                        {isSubmittingSettings ? 'Saving...' : 'Save Settings'}
+                    <Button onClick={handleSaveWorkspaceSettings} disabled={isSubmittingName || !isChanged}>
+                        {isSubmittingName ? 'Saving...' : 'Save Settings'}
                     </Button>
                 </CardFooter>
             </Card>
