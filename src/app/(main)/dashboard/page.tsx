@@ -117,7 +117,8 @@ function DashboardView() {
     const [allWorkspaceProjects, setAllWorkspaceProjects] = useState<Project[]>([]);
     const [isProjectsLoading, setIsProjectsLoading] = useState(false);
 
-    const { tasks: userTaskGroups, isLoading: isTasksLoading } = useUserTasks(selectedWorkspace?.id);
+    const { tasks: rawUserTaskGroups, isLoading: isTasksLoading } = useUserTasks(selectedWorkspace?.id);
+    const userTaskGroups = rawUserTaskGroups ?? { active: [], inProgress: [], awaitingApproval: [], completed: [] };
 
     useEffect(() => {
         if (!selectedWorkspace?.id || !firestore) return;
@@ -165,7 +166,8 @@ function DashboardView() {
 
         const getStatus = (t: UserTask) => t.status || (t.completed ? 'completed' : 'todo');
 
-        const overdueTasksList = userTaskGroups.active.filter(t =>
+        const activeTasks = userTaskGroups.active ?? [];
+        const overdueTasksList = activeTasks.filter(t =>
             getStatus(t) !== 'awaiting_approval' &&
             isPast(new Date(t.dueDate)) &&
             !isToday(new Date(t.dueDate))
@@ -173,7 +175,7 @@ function DashboardView() {
 
         // Upcoming: not overdue, not awaiting approval, sorted by due date
         const now = new Date();
-        const upcomingList = userTaskGroups.active.filter(t => {
+        const upcomingList = activeTasks.filter(t => {
             const d = new Date(t.dueDate);
             return getStatus(t) !== 'awaiting_approval' && (isToday(d) || !isPast(d));
         });
@@ -200,8 +202,8 @@ function DashboardView() {
             activeProjects: activeProjectsList,
             completedProjects: completedProjectsList,
             overdueTasks: overdueTasksList,
-            awaitingApprovalTasks: userTaskGroups.awaitingApproval,
-            activeTasksCount: userTaskGroups.active.length,
+            awaitingApprovalTasks: userTaskGroups.awaitingApproval ?? [],
+            activeTasksCount: activeTasks.length,
             upcomingGrouped,
         };
     }, [allWorkspaceProjects, userTaskGroups]);
