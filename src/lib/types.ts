@@ -68,15 +68,18 @@ export type Silo = {
     workspaceId: string;
 };
 
+export type TaskStatus = 'todo' | 'in_progress' | 'awaiting_approval' | 'completed';
+
 export type Task = {
     id: string;
     title: string;
     description?: string;
     completed: boolean;
+    status?: TaskStatus;
     dueDate: string; // ISO 8601 date string
     priority: 'low' | 'medium' | 'high';
     assigneeId: string;
-    projectId: string; 
+    projectId: string;
     workspaceId: string;
     createdBy: string;
     updatedBy?: string;
@@ -116,6 +119,7 @@ export type UserTask = {
     title: string;
     description?: string;
     completed: boolean;
+    status?: TaskStatus;
     dueDate: string;
     priority: 'low' | 'medium' | 'high';
     assigneeId: string;

@@ -19,12 +19,13 @@ import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from '@
 import { collection, addDoc, serverTimestamp, query, orderBy, doc } from 'firebase/firestore';
 import { format, formatDistanceToNow, isPast, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { Sparkles, CheckCircle2, Clock, CalendarIcon, Building2, Folder, Layout, User as UserIcon, ShieldCheck, Settings2, Trash2 } from 'lucide-react';
+import { Sparkles, CheckCircle2, Clock, CalendarIcon, Building2, Folder, Layout, User as UserIcon, ShieldCheck, Settings2, Trash2, PlayCircle } from 'lucide-react';
 import { suggestTaskCompletion, type SuggestTaskCompletionOutput } from '@/ai/flows/suggest-task-completion-flow';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { Checkbox } from '../ui/checkbox';
 import { TaskCompletionDialog } from './task-completion-dialog';
-import { updateTaskCompletion, deleteTask } from '@/lib/tasks';
+import { updateTaskCompletion, deleteTask, updateTaskStatus } from '@/lib/tasks';
+import type { TaskStatus } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { EditTaskDialog } from './edit-task-dialog';
 import { DeleteDialog } from './delete-dialog';
@@ -302,8 +303,17 @@ export function TaskDetailsDialog({ task, path, children }: { task: Task; path: 
   const { data: creator } = useDoc<UserProfile>(creatorRef);
 
   const dueDate = new Date(task.dueDate);
-  const isOverdue = !task.completed && isPast(dueDate) && !isToday(dueDate);
-  
+  const effectiveStatus: TaskStatus = task.status || (task.completed ? 'completed' : 'todo');
+  const isOverdue = effectiveStatus !== 'awaiting_approval' && !task.completed && isPast(dueDate) && !isToday(dueDate);
+
+  const handleTaskStatusChange = async (status: TaskStatus) => {
+    try {
+        await updateTaskStatus(firestore, path, task.assigneeId, task.id, status);
+    } catch (error) {
+        console.error("Failed to update task status:", error);
+    }
+  };
+
   const priorityStyles = {
     low: 'bg-blue-500 hover:bg-blue-500',
     medium: 'bg-yellow-500 hover:bg-yellow-500',
@@ -344,7 +354,14 @@ export function TaskDetailsDialog({ task, path, children }: { task: Task; path: 
         <div className="flex items-center justify-between px-6 py-4 border-b bg-muted/10 shrink-0">
             <div>
                 <DialogTitle className="text-xl font-bold flex items-center gap-3">
-                    {task.completed ? <CheckCircle2 className="text-green-500 h-5 w-5" /> : <Clock className="text-blue-500 h-5 w-5" />}
+                    {task.completed
+                        ? <CheckCircle2 className="text-green-500 h-5 w-5" />
+                        : effectiveStatus === 'in_progress'
+                            ? <PlayCircle className="text-blue-500 h-5 w-5" />
+                            : effectiveStatus === 'awaiting_approval'
+                                ? <Clock className="text-amber-500 h-5 w-5" />
+                                : <Clock className="text-muted-foreground h-5 w-5" />
+                    }
                     {task.title}
                 </DialogTitle>
                 <DialogDescription className="mt-0.5">
@@ -395,9 +412,9 @@ export function TaskDetailsDialog({ task, path, children }: { task: Task; path: 
                     <div className="space-y-4">
                         <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">Task Control</h3>
                         <div className={cn("flex items-center gap-3 p-3 rounded-lg border transition-colors", task.completed ? "bg-green-500/5 border-green-500/20" : "bg-background border-border")}>
-                            <Checkbox 
-                                id="dialog-status" 
-                                checked={task.completed} 
+                            <Checkbox
+                                id="dialog-status"
+                                checked={task.completed}
                                 onCheckedChange={handleStatusToggle}
                                 className="h-5 w-5"
                             />
@@ -405,19 +422,57 @@ export function TaskDetailsDialog({ task, path, children }: { task: Task; path: 
                                 {task.completed ? "Completed" : "Mark as Complete"}
                             </label>
                         </div>
+                        {!task.completed && (
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    onClick={() => handleTaskStatusChange(effectiveStatus === 'in_progress' ? 'todo' : 'in_progress')}
+                                    className={cn(
+                                        "flex items-center justify-center gap-2 text-xs font-semibold px-3 py-2.5 rounded-lg border transition-colors",
+                                        effectiveStatus === 'in_progress'
+                                            ? "bg-blue-100 text-blue-700 border-blue-400 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-700"
+                                            : "text-muted-foreground border-border hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                                    )}
+                                >
+                                    <PlayCircle className="h-4 w-4" />
+                                    In Progress
+                                </button>
+                                <button
+                                    onClick={() => handleTaskStatusChange(effectiveStatus === 'awaiting_approval' ? 'todo' : 'awaiting_approval')}
+                                    className={cn(
+                                        "flex items-center justify-center gap-2 text-xs font-semibold px-3 py-2.5 rounded-lg border transition-colors",
+                                        effectiveStatus === 'awaiting_approval'
+                                            ? "bg-amber-100 text-amber-700 border-amber-400 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-700"
+                                            : "text-muted-foreground border-border hover:border-amber-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                                    )}
+                                >
+                                    <Clock className="h-4 w-4" />
+                                    Awaiting
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     <div className="space-y-6">
                         <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">Details & Properties</h3>
                         
                         <div className="space-y-5">
-                            <PropertyRow 
+                            <PropertyRow
                                 icon={<ShieldCheck className="h-3.5 w-3.5" />}
                                 label="Status"
                                 value={
-                                    <Badge variant={task.completed ? "secondary" : "outline"} className="capitalize">
-                                        {task.completed ? "Done" : "In Progress"}
-                                    </Badge>
+                                    effectiveStatus === 'completed' ? (
+                                        <Badge variant="secondary">Done</Badge>
+                                    ) : effectiveStatus === 'in_progress' ? (
+                                        <Badge className="bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-700 hover:bg-blue-100 gap-1">
+                                            <PlayCircle className="h-3 w-3" /> In Progress
+                                        </Badge>
+                                    ) : effectiveStatus === 'awaiting_approval' ? (
+                                        <Badge className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-700 hover:bg-amber-100 gap-1">
+                                            <Clock className="h-3 w-3" /> Awaiting Approval
+                                        </Badge>
+                                    ) : (
+                                        <Badge variant="outline">To Do</Badge>
+                                    )
                                 }
                             />
 

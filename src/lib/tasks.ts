@@ -1,6 +1,6 @@
 'use client';
 import { collection, doc, writeBatch, getDoc, setDoc, Firestore, query, where, getDocs, updateDoc, serverTimestamp } from "firebase/firestore";
-import type { Company, Project, Silo, Task, Workspace } from "./types";
+import type { Company, Project, Silo, Task, TaskStatus, Workspace } from "./types";
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
@@ -42,9 +42,10 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
     const projectName = projectId === 'general-tasks' ? 'Quick Tasks' : projectData.name;
 
     const originalTaskData = {
-        ...taskData, 
-        projectId, 
-        workspaceId, 
+        ...taskData,
+        projectId,
+        workspaceId,
+        status: 'todo' as TaskStatus,
         timeSpentMinutes: 0,
         createdAt: serverTimestamp(),
         type: 'original'
@@ -62,6 +63,7 @@ export async function addTask(firestore: Firestore, params: AddTaskParams) {
         title: taskData.title,
         description: taskData.description || '',
         completed: taskData.completed,
+        status: 'todo' as TaskStatus,
         completedAt: null,
         dueDate: taskData.dueDate,
         priority: taskData.priority,
@@ -374,4 +376,33 @@ export async function duplicateProject(
     }
 
     return batch.commit();
+}
+
+export async function updateTaskStatus(
+    firestore: Firestore,
+    originalTaskPath: string,
+    assigneeId: string,
+    originalTaskId: string,
+    status: TaskStatus
+) {
+    const originalTaskRef = doc(firestore, originalTaskPath);
+    const userTasksRef = collection(firestore, `user-tasks/${assigneeId}/tasks`);
+    const q = query(userTasksRef, where("originalTaskId", "==", originalTaskId));
+    const userTasksSnap = await getDocs(q);
+
+    const batch = writeBatch(firestore);
+    const ts = serverTimestamp();
+    const updateData = { status, updatedAt: ts };
+
+    batch.update(originalTaskRef, updateData);
+    userTasksSnap.forEach(d => batch.update(d.ref, updateData));
+
+    batch.commit().catch(async () => {
+        const permissionError = new FirestorePermissionError({
+            path: originalTaskRef.path,
+            operation: 'update',
+            requestResourceData: updateData,
+        } satisfies SecurityRuleContext);
+        errorEmitter.emit('permission-error', permissionError);
+    });
 }

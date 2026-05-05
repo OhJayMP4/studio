@@ -14,16 +14,18 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { Button } from "../ui/button";
-import { GripVertical, MoreHorizontal } from "lucide-react";
+import { GripVertical, MoreHorizontal, PlayCircle, Clock, RotateCcw } from "lucide-react";
 import { EditTaskDialog } from "./edit-task-dialog";
 import { DeleteDialog } from "./delete-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { updateTaskCompletion, deleteTask } from "@/lib/tasks";
+import { updateTaskCompletion, deleteTask, updateTaskStatus } from "@/lib/tasks";
 import { TaskDetailsDialog } from "./task-details-dialog";
 import { TaskCompletionDialog } from "./task-completion-dialog";
 import { useState } from "react";
+import type { TaskStatus } from "@/lib/types";
+import { DropdownMenuSeparator, DropdownMenuLabel } from "../ui/dropdown-menu";
 
 interface TaskItemProps {
     task: Task;
@@ -38,9 +40,10 @@ const priorityStyles = {
     high: 'bg-red-500',
 }
 
-function TaskActions({ task, path }: { task: Task, path: string }) {
+function TaskActions({ task, path, onStatusChange }: { task: Task, path: string, onStatusChange: (s: TaskStatus) => void }) {
     const { toast } = useToast();
     const firestore = useFirestore();
+    const effectiveStatus = task.status || (task.completed ? 'completed' : 'todo');
 
     const handleDelete = async () => {
         try {
@@ -57,7 +60,7 @@ function TaskActions({ task, path }: { task: Task, path: string }) {
             });
         }
     };
-    
+
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -66,6 +69,27 @@ function TaskActions({ task, path }: { task: Task, path: string }) {
                 </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
+                {!task.completed && (
+                    <>
+                        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground py-1">Set Status</DropdownMenuLabel>
+                        {effectiveStatus !== 'in_progress' && (
+                            <DropdownMenuItem onSelect={() => onStatusChange('in_progress')}>
+                                <PlayCircle className="mr-2 h-4 w-4 text-blue-500" /> In Progress
+                            </DropdownMenuItem>
+                        )}
+                        {effectiveStatus !== 'awaiting_approval' && (
+                            <DropdownMenuItem onSelect={() => onStatusChange('awaiting_approval')}>
+                                <Clock className="mr-2 h-4 w-4 text-amber-500" /> Awaiting Approval
+                            </DropdownMenuItem>
+                        )}
+                        {effectiveStatus !== 'todo' && (
+                            <DropdownMenuItem onSelect={() => onStatusChange('todo')}>
+                                <RotateCcw className="mr-2 h-4 w-4" /> Reset to To Do
+                            </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                    </>
+                )}
                 <EditTaskDialog task={task} path={path}>
                     <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                         Edit
@@ -132,13 +156,22 @@ export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
         await updateTaskCompletion(firestore, path, task.assigneeId, task.id, true, minutes);
     }
 
+    const handleStatusChange = async (status: TaskStatus) => {
+        try {
+            await updateTaskStatus(firestore, path, task.assigneeId, task.id, status);
+        } catch (error) {
+            console.error("Failed to update task status:", error);
+        }
+    };
+
     // Resolve Name prioritizing Profile Name -> Profile Email -> Stale Workspace Name
     const name = assignee?.name || assignee?.email || selectedWorkspace?.users?.[task.assigneeId]?.name || 'Unassigned';
     const avatarUrl = assignee?.avatarUrl || '';
     const fallback = name.charAt(0).toUpperCase();
 
     const dueDate = new Date(task.dueDate);
-    const isOverdue = !task.completed && isPast(dueDate) && !isToday(dueDate);
+    const effectiveStatus = task.status || (task.completed ? 'completed' : 'todo');
+    const isOverdue = effectiveStatus !== 'awaiting_approval' && !task.completed && isPast(dueDate) && !isToday(dueDate);
 
     const style = {
         transform: CSS.Transform.toString(transform),
@@ -172,7 +205,17 @@ export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
                 </TaskDetailsDialog>
             </div>
             <div className="flex items-center gap-3">
-                 <Badge variant={isOverdue ? "destructive" : (task.completed ? "secondary" : "outline")} className="hidden sm:inline-flex">
+                {!task.completed && effectiveStatus === 'in_progress' && (
+                    <Badge className="hidden sm:inline-flex gap-1 bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-700 hover:bg-blue-100">
+                        <PlayCircle className="h-3 w-3" /> In Progress
+                    </Badge>
+                )}
+                {!task.completed && effectiveStatus === 'awaiting_approval' && (
+                    <Badge className="hidden sm:inline-flex gap-1 bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-700 hover:bg-amber-100">
+                        <Clock className="h-3 w-3" /> Awaiting
+                    </Badge>
+                )}
+                <Badge variant={isOverdue ? "destructive" : (task.completed ? "secondary" : "outline")} className="hidden sm:inline-flex">
                     Due: {format(dueDate, 'MMM d')}
                 </Badge>
                 <TooltipProvider>
@@ -198,7 +241,7 @@ export function TaskItem({ task, siloId, path, isOverlay }: TaskItemProps) {
                         </TooltipContent>
                     </Tooltip>
                 </TooltipProvider>
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity"><TaskActions task={task} path={path} /></div>
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity"><TaskActions task={task} path={path} onStatusChange={handleStatusChange} /></div>
             </div>
 
             <TaskCompletionDialog 

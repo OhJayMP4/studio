@@ -8,8 +8,8 @@ import { collection, doc, deleteDoc, getDocs, query, where, Timestamp } from "fi
 import type { Company, Project } from "@/lib/types";
 import { AddCompanyDialog } from "@/components/common/add-company-dialog";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { MoreVertical, LayoutGrid, List, Building, SortAsc, Pin } from "lucide-react";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { MoreVertical, LayoutGrid, List, Building, SortAsc, Pin, Filter } from "lucide-react";
 import { EditCompanyDialog } from "@/components/common/edit-company-dialog";
 import { DeleteDialog } from "@/components/common/delete-dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -104,15 +104,37 @@ function WorkspaceView() {
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<SortOption>('progress');
+  const [selectedFilter, setSelectedFilter] = useState<string[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [isProjectsLoading, setIsProjectsLoading] = useState(false);
 
-  // Load default view from prefs
+  // Load default view and filter from prefs
   useEffect(() => {
     if (prefs?.viewPrefs?.companies) {
         setViewMode(prefs.viewPrefs.companies as 'grid' | 'list');
     }
-  }, [prefs?.viewPrefs?.companies]);
+    if (prefs?.viewPrefs?.companyFilter) {
+        try {
+            setSelectedFilter(JSON.parse(prefs.viewPrefs.companyFilter));
+        } catch {
+            setSelectedFilter([]);
+        }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefs?.viewPrefs?.companies, prefs?.viewPrefs?.companyFilter]);
+
+  const handleFilterChange = (id: string, checked: boolean) => {
+    setSelectedFilter(prev => {
+        const next = checked ? [...prev, id] : prev.filter(x => x !== id);
+        setViewPref('companyFilter', JSON.stringify(next)).catch(() => {});
+        return next;
+    });
+  };
+
+  const handleClearFilter = () => {
+    setSelectedFilter([]);
+    setViewPref('companyFilter', JSON.stringify([])).catch(() => {});
+  };
 
   const handleSetDefaultView = async () => {
     try {
@@ -180,7 +202,11 @@ function WorkspaceView() {
         };
     });
 
-    return enriched.sort((a, b) => {
+    const filtered = selectedFilter.length > 0
+        ? enriched.filter(c => selectedFilter.includes(c.id))
+        : enriched;
+
+    return filtered.sort((a, b) => {
         switch (sortBy) {
             case 'alphabetical':
                 return a.name.localeCompare(b.name);
@@ -194,7 +220,7 @@ function WorkspaceView() {
                 return b.averageProgress - a.averageProgress;
         }
     });
-  }, [companies, allProjects, sortBy]);
+  }, [companies, allProjects, sortBy, selectedFilter]);
 
   const isLoading = isCompaniesLoading || (companies && companies.length > 0 && isProjectsLoading && allProjects.length === 0);
 
@@ -213,7 +239,7 @@ function WorkspaceView() {
     );
   }
 
-  if (!sortedEnrichedCompanies || sortedEnrichedCompanies.length === 0) {
+  if (!companies || companies.length === 0) {
     return (
       <Card className="w-full max-w-md text-center mx-auto mt-12">
         <CardHeader>
@@ -237,6 +263,46 @@ function WorkspaceView() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <h1 className="text-3xl font-headline">Companies</h1>
             <div className="flex flex-wrap items-center gap-2">
+                {companies && companies.length > 0 && (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-9 gap-1.5">
+                                <Filter className="h-3.5 w-3.5" />
+                                Filter
+                                {selectedFilter.length > 0 && (
+                                    <span className="ml-0.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 leading-none">
+                                        {selectedFilter.length}
+                                    </span>
+                                )}
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuLabel>Show companies</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {companies.map(c => (
+                                <DropdownMenuCheckboxItem
+                                    key={c.id}
+                                    checked={selectedFilter.includes(c.id)}
+                                    onSelect={(e) => e.preventDefault()}
+                                    onCheckedChange={(checked) => handleFilterChange(c.id, checked)}
+                                >
+                                    {c.name}
+                                </DropdownMenuCheckboxItem>
+                            ))}
+                            {selectedFilter.length > 0 && (
+                                <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                        className="text-muted-foreground text-xs justify-center"
+                                        onSelect={(e) => { e.preventDefault(); handleClearFilter(); }}
+                                    >
+                                        Clear filter
+                                    </DropdownMenuItem>
+                                </>
+                            )}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
                 <div className="flex items-center gap-2 mr-2">
                     <SortAsc className="h-4 w-4 text-muted-foreground" />
                     <Select value={sortBy} onValueChange={(val) => setSortBy(val as SortOption)}>
@@ -289,7 +355,13 @@ function WorkspaceView() {
             </div>
         </div>
 
-        {viewMode === 'grid' ? (
+        {sortedEnrichedCompanies.length === 0 && selectedFilter.length > 0 ? (
+            <div className="py-16 text-center text-muted-foreground text-sm">
+                <Filter className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                No companies match the active filter.{' '}
+                <button className="underline" onClick={handleClearFilter}>Clear filter</button>
+            </div>
+        ) : viewMode === 'grid' ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {sortedEnrichedCompanies.map((company) => (
                     <CompanyProgressCard 

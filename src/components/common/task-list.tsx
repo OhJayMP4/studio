@@ -19,6 +19,7 @@ export function TaskList({ tasks }: TaskListProps) {
                         <TableHead>Task</TableHead>
                         <TableHead>Hierarchy</TableHead>
                         <TableHead>Due Date</TableHead>
+                        <TableHead>Status</TableHead>
                         <TableHead>Assignee</TableHead>
                     </TableRow>
                 </TableHeader>

@@ -11,7 +11,9 @@ import { Badge } from "../ui/badge";
 import { format, isPast, isToday } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-import { updateTaskCompletion } from "@/lib/tasks";
+import { updateTaskCompletion, updateTaskStatus } from "@/lib/tasks";
+import type { TaskStatus } from "@/lib/types";
+import { PlayCircle, Clock } from "lucide-react";
 import Link from "next/link";
 import { TableCell, TableRow } from "../ui/table";
 import {
@@ -74,8 +76,18 @@ export function TaskListItem({ userTask }: TaskListItemProps) {
     const avatarUrl = assignee?.avatarUrl || '';
     const fallback = name.charAt(0).toUpperCase();
 
+    const handleStatusChange = async (status: TaskStatus) => {
+        const originalTaskPath = `workspaces/${userTask.workspaceId}/companies/${userTask.companyId}/projects/${userTask.projectId}/silos/${userTask.siloId}/tasks/${userTask.originalTaskId}`;
+        try {
+            await updateTaskStatus(firestore, originalTaskPath, userTask.assigneeId, userTask.originalTaskId, status);
+        } catch (error) {
+            console.error("Failed to update task status:", error);
+        }
+    };
+
     const dueDate = new Date(userTask.dueDate);
-    const isOverdue = !userTask.completed && isPast(dueDate) && !isToday(dueDate);
+    const effectiveStatus = userTask.status || (userTask.completed ? 'completed' : 'todo');
+    const isOverdue = effectiveStatus !== 'awaiting_approval' && !userTask.completed && isPast(dueDate) && !isToday(dueDate);
 
     const originalTaskPath = `workspaces/${userTask.workspaceId}/companies/${userTask.companyId}/projects/${userTask.projectId}/silos/${userTask.siloId}/tasks/${userTask.originalTaskId}`;
     
@@ -132,10 +144,38 @@ export function TaskListItem({ userTask }: TaskListItemProps) {
                     </BreadcrumbList>
                 </Breadcrumb>
             </TableCell>
-             <TableCell>
+            <TableCell>
                  <Badge variant={isOverdue ? "destructive" : (userTask.completed ? "secondary" : "outline")}>
                     {format(dueDate, 'MMM d')}
                 </Badge>
+            </TableCell>
+            <TableCell>
+                {!userTask.completed && (
+                    <div className="flex gap-1">
+                        <button
+                            onClick={() => handleStatusChange(effectiveStatus === 'in_progress' ? 'todo' : 'in_progress')}
+                            className={cn(
+                                "flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-full border transition-colors",
+                                effectiveStatus === 'in_progress'
+                                    ? "bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-700"
+                                    : "text-muted-foreground border-muted-foreground/30 hover:border-blue-400 hover:text-blue-600"
+                            )}
+                        >
+                            <PlayCircle className="h-3 w-3" /> In Progress
+                        </button>
+                        <button
+                            onClick={() => handleStatusChange(effectiveStatus === 'awaiting_approval' ? 'todo' : 'awaiting_approval')}
+                            className={cn(
+                                "flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-full border transition-colors",
+                                effectiveStatus === 'awaiting_approval'
+                                    ? "bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-700"
+                                    : "text-muted-foreground border-muted-foreground/30 hover:border-amber-400 hover:text-amber-600"
+                            )}
+                        >
+                            <Clock className="h-3 w-3" /> Awaiting
+                        </button>
+                    </div>
+                )}
             </TableCell>
             <TableCell>
                 <TooltipProvider>

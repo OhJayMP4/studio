@@ -30,18 +30,27 @@ export function useUserTasks(workspaceId?: string | null) {
     const { data, isLoading, error } = useCollection<UserTask>(tasksQuery);
     
     const tasks = useMemo(() => {
-        // If there's no data (or no query because workspaceId is missing), return empty arrays.
-        if (!data) return { active: [], completed: [] };
+        if (!data) return { active: [], inProgress: [], awaitingApproval: [], completed: [] };
+
+        const byDueAsc = (a: UserTask, b: UserTask) =>
+            new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+
+        const effectiveStatus = (t: UserTask) =>
+            t.status || (t.completed ? 'completed' : 'todo');
 
         const active = data
-            .filter(t => !t.completed)
-            .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
-        
+            .filter(t => !t.completed && effectiveStatus(t) !== 'completed')
+            .sort(byDueAsc);
+
+        const inProgress = active.filter(t => effectiveStatus(t) === 'in_progress');
+
+        const awaitingApproval = active.filter(t => effectiveStatus(t) === 'awaiting_approval');
+
         const completed = data
-            .filter(t => t.completed)
+            .filter(t => t.completed || effectiveStatus(t) === 'completed')
             .sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime());
 
-        return { active, completed };
+        return { active, inProgress, awaitingApproval, completed };
     }, [data]);
 
     return { tasks, isLoading, error: error?.message || null };

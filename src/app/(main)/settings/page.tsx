@@ -18,7 +18,7 @@ import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { WorkspaceManager } from '@/components/settings/workspace-manager';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { Pencil, KeyRound, User, Palette, Monitor, Sun, Moon, Check, Sparkles, Bell } from 'lucide-react';
+import { Pencil, KeyRound, User, Palette, Monitor, Sun, Moon, Check, Sparkles, Bell, Home } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { useUserPrefs } from '@/hooks/use-sidebar-prefs';
 import { Label } from '@/components/ui/label';
@@ -62,7 +62,7 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const user = auth.currentUser;
   const { selectedWorkspace, isUserAdmin } = useSelectedWorkspace();
-  const { prefs, setTheme: saveThemeToPrefs, setAccentColor } = useUserPrefs();
+  const { prefs, setTheme: saveThemeToPrefs, setAccentColor, setViewPref } = useUserPrefs();
   const { theme, setTheme } = useTheme();
   const [isUploading, setIsUploading] = useState(false);
 
@@ -271,6 +271,48 @@ export default function SettingsPage() {
                   )}
                 </button>
               ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-none shadow-sm bg-card/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-2xl">
+            <Home className="h-6 w-6 text-primary" />
+            Navigation
+          </CardTitle>
+          <CardDescription>Choose which page opens when you first sign in.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <Label className="text-base font-bold uppercase tracking-wider text-muted-foreground">Home Page</Label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {(prefs?.sidebarModules ?? [
+                { id: 'dashboard', label: 'Dashboard', route: '/dashboard' },
+                { id: 'my-tasks', label: 'My Tasks', route: '/my-tasks' },
+                { id: 'companies', label: 'Companies', route: '/companies' },
+                { id: 'reporting', label: 'Reporting', route: '/reporting' },
+              ]).filter((m: any) => !m.hidden).map((m: any) => {
+                const currentHome = prefs?.viewPrefs?.homePage ?? '/dashboard';
+                const isSelected = currentHome === m.route;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setViewPref('homePage', m.route)}
+                    className={cn(
+                      "flex items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all font-semibold",
+                      isSelected
+                        ? "border-primary bg-primary/5 shadow-md text-foreground"
+                        : "border-muted bg-background hover:border-muted-foreground/30 text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {isSelected && <Check className="h-4 w-4 text-primary shrink-0" />}
+                    {m.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </CardContent>
