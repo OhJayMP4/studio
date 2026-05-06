@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useFirestore } from '@/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell } from 'recharts';
@@ -229,6 +229,8 @@ export function TeamWorkloadChart({ workspaceId, members }: TeamWorkloadChartPro
     const [isLoading, setIsLoading] = useState(true);
     const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
     const [sheetOpen, setSheetOpen] = useState(false);
+    // Resolved member objects (includes users not in workspace.users map)
+    const [resolvedMembers, setResolvedMembers] = useState<Record<string, TeamMember>>({});
 
     const memberMap = useMemo(() => {
         const map: Record<string, TeamMember> = {};
@@ -267,10 +269,45 @@ export function TeamWorkloadChart({ workspaceId, members }: TeamWorkloadChartPro
                     })
                 );
 
+                // For any uid not resolved from the workspace map, fetch /users/{uid}
+                const resolvedNames: Record<string, string> = {};
+                await Promise.all(
+                    Object.keys(counts).map(async (uid) => {
+                        if (memberMap[uid]) {
+                            resolvedNames[uid] = displayName(memberMap[uid]);
+                        } else {
+                            try {
+                                const userSnap = await getDoc(doc(firestore, 'users', uid));
+                                if (userSnap.exists()) {
+                                    const d = userSnap.data() as { name?: string | null; email?: string | null };
+                                    resolvedNames[uid] = d.name && !d.name.includes('@')
+                                        ? d.name
+                                        : d.email?.split('@')[0] ?? uid.slice(0, 8);
+                                } else {
+                                    resolvedNames[uid] = uid.slice(0, 8);
+                                }
+                            } catch {
+                                resolvedNames[uid] = uid.slice(0, 8);
+                            }
+                        }
+                    })
+                );
+
+                // Build resolved member objects for the sheet
+                const resolved: Record<string, TeamMember> = {};
+                Object.keys(counts).forEach(uid => {
+                    resolved[uid] = memberMap[uid] ?? {
+                        uid,
+                        name: resolvedNames[uid],
+                        email: null,
+                    };
+                });
+                setResolvedMembers(resolved);
+
                 const result = Object.entries(counts)
                     .map(([uid, tasks]) => ({
                         uid,
-                        name: memberMap[uid] ? displayName(memberMap[uid]) : uid.slice(0, 8),
+                        name: resolvedNames[uid] ?? uid.slice(0, 8),
                         tasks,
                     }))
                     .sort((a, b) => b.tasks - a.tasks);
@@ -288,7 +325,7 @@ export function TeamWorkloadChart({ workspaceId, members }: TeamWorkloadChartPro
     }, [workspaceId, firestore, members, memberMap]);
 
     const handleBarClick = (data: { uid: string; name: string; tasks: number }) => {
-        const member = memberMap[data.uid];
+        const member = resolvedMembers[data.uid] ?? memberMap[data.uid];
         if (member) {
             setSelectedMember(member);
             setSheetOpen(true);
