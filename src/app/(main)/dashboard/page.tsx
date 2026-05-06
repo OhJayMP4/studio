@@ -149,6 +149,7 @@ function DashboardView() {
         return Object.entries(selectedWorkspace?.users || {}).map(([uid, u]) => ({
             uid,
             name: u.name,
+            email: u.email,
         }));
     }, [selectedWorkspace?.users]);
 
