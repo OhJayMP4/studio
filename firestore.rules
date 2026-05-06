@@ -84,7 +84,8 @@ service cloud.firestore {
     }
     
      match /user-tasks/{userId}/tasks/{taskId} {
-        allow get, list: if isSignedIn() && (isOwner(userId) || isMemberOfWorkspace(request.query.workspaceId));
+        allow get: if isSignedIn() && (isOwner(userId) || isMemberOfWorkspace(resource.data.workspaceId));
+        allow list: if isSignedIn();
         allow create: if isSignedIn() && isMemberOfWorkspace(request.resource.data.workspaceId);
         allow update, delete: if isSignedIn() && (isOwner(userId) || isWorkspaceAdmin(resource.data.workspaceId));
     }
