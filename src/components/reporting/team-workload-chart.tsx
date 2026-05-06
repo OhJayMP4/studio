@@ -46,12 +46,9 @@ export function TeamWorkloadChart({ workspaceId, members }: TeamWorkloadChartPro
         const fetchWorkload = async () => {
             setIsLoading(true);
             try {
-                // Use the existing collectionGroup index: workspaceId + type
-                // All workspace members can read tasks in the project hierarchy
                 const q = query(
                     collectionGroup(firestore, 'tasks'),
-                    where('workspaceId', '==', workspaceId),
-                    where('type', '==', 'original')
+                    where('workspaceId', '==', workspaceId)
                 );
                 const snap = await getDocs(q);
 
