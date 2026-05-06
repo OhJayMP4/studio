@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useFirestore } from '@/firebase';
-import { collectionGroup, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
@@ -28,7 +28,6 @@ export function TeamWorkloadChart({ workspaceId, members }: TeamWorkloadChartPro
     const [chartData, setChartData] = useState<{ name: string; tasks: number }[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Stable uid → first name lookup
     const memberMap = useMemo(() => {
         const map: Record<string, string> = {};
         members.forEach(m => {
@@ -38,7 +37,7 @@ export function TeamWorkloadChart({ workspaceId, members }: TeamWorkloadChartPro
     }, [members]);
 
     useEffect(() => {
-        if (!workspaceId || !firestore) {
+        if (!workspaceId || !firestore || members.length === 0) {
             setIsLoading(false);
             return;
         }
@@ -46,20 +45,23 @@ export function TeamWorkloadChart({ workspaceId, members }: TeamWorkloadChartPro
         const fetchWorkload = async () => {
             setIsLoading(true);
             try {
-                const q = query(
-                    collectionGroup(firestore, 'tasks'),
-                    where('workspaceId', '==', workspaceId)
-                );
-                const snap = await getDocs(q);
-
-                // Count active tasks per assignee in JS (avoids needing a 3-field index)
+                // Query each member's denormalized user-tasks collection — no composite index needed
                 const counts: Record<string, number> = {};
-                snap.forEach(doc => {
-                    const data = doc.data();
-                    if (!data.completed && data.assigneeId) {
-                        counts[data.assigneeId] = (counts[data.assigneeId] || 0) + 1;
-                    }
-                });
+
+                await Promise.all(
+                    members.map(async (member) => {
+                        const tasksRef = collection(firestore, `user-tasks/${member.uid}/tasks`);
+                        const q = query(
+                            tasksRef,
+                            where('workspaceId', '==', workspaceId),
+                            where('completed', '==', false)
+                        );
+                        const snap = await getDocs(q);
+                        if (snap.size > 0) {
+                            counts[member.uid] = snap.size;
+                        }
+                    })
+                );
 
                 const result = Object.entries(counts)
                     .map(([uid, tasks]) => ({
@@ -78,7 +80,7 @@ export function TeamWorkloadChart({ workspaceId, members }: TeamWorkloadChartPro
         };
 
         fetchWorkload();
-    }, [workspaceId, firestore, memberMap]);
+    }, [workspaceId, firestore, members, memberMap]);
 
     if (isLoading) {
         return (
