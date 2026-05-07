@@ -12,8 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Users, AlertCircle, Clock, CheckCircle2 } from 'lucide-react';
 import { format, isPast, isToday } from 'date-fns';
-import type { UserTask } from '@/lib/types';
+import type { UserTask, Task } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { TaskDetailsDialog } from '@/components/common/task-details-dialog';
 
 export interface TeamMember {
     uid: string;
@@ -50,32 +51,53 @@ function TaskItem({ task }: { task: UserTask }) {
     const overdue = isPast(due) && !isToday(due) && !task.completed;
     const dueToday = isToday(due) && !task.completed;
 
+    // Build a Task + path so TaskDetailsDialog can open it
+    const taskForDialog: Task = {
+        id: task.originalTaskId,
+        title: task.title,
+        description: task.description,
+        completed: task.completed,
+        status: task.status,
+        dueDate: task.dueDate,
+        priority: task.priority,
+        assigneeId: task.assigneeId,
+        projectId: task.projectId,
+        workspaceId: task.workspaceId,
+        createdBy: task.createdBy,
+        timeSpentMinutes: task.timeSpentMinutes,
+        createdAt: task.createdAt,
+        completedAt: task.completedAt,
+    };
+    const taskPath = `workspaces/${task.workspaceId}/companies/${task.companyId}/projects/${task.projectId}/silos/${task.siloId}/tasks/${task.originalTaskId}`;
+
     return (
-        <div className="flex items-start gap-3 py-3 border-b last:border-0">
-            <div className={cn('w-2 h-2 rounded-full mt-1.5 shrink-0', PRIORITY_COLORS[task.priority])} />
-            <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium leading-snug">{task.title}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                    {task.companyName}{task.projectId !== 'general-tasks' ? ` · ${task.projectName}` : ''}
-                </p>
+        <TaskDetailsDialog task={taskForDialog} path={taskPath}>
+            <div className="flex items-start gap-3 py-3 border-b last:border-0 cursor-pointer hover:bg-muted/40 -mx-6 px-6 transition-colors rounded-sm">
+                <div className={cn('w-2 h-2 rounded-full mt-1.5 shrink-0', PRIORITY_COLORS[task.priority])} />
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium leading-snug">{task.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                        {task.companyName}{task.projectId !== 'general-tasks' ? ` · ${task.projectName}` : ''}
+                    </p>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                    <Badge
+                        variant={task.priority === 'high' ? 'destructive' : 'secondary'}
+                        className="text-[10px] uppercase"
+                    >
+                        {task.priority}
+                    </Badge>
+                    <span className={cn(
+                        'text-xs font-medium',
+                        overdue && 'text-destructive',
+                        dueToday && 'text-amber-600',
+                        !overdue && !dueToday && 'text-muted-foreground'
+                    )}>
+                        {overdue ? 'Overdue · ' : dueToday ? 'Today · ' : ''}{format(due, 'MMM d')}
+                    </span>
+                </div>
             </div>
-            <div className="flex flex-col items-end gap-1 shrink-0">
-                <Badge
-                    variant={task.priority === 'high' ? 'destructive' : 'secondary'}
-                    className="text-[10px] uppercase"
-                >
-                    {task.priority}
-                </Badge>
-                <span className={cn(
-                    'text-xs font-medium',
-                    overdue && 'text-destructive',
-                    dueToday && 'text-amber-600',
-                    !overdue && !dueToday && 'text-muted-foreground'
-                )}>
-                    {overdue ? 'Overdue · ' : dueToday ? 'Today · ' : ''}{format(due, 'MMM d')}
-                </span>
-            </div>
-        </div>
+        </TaskDetailsDialog>
     );
 }
 
@@ -295,13 +317,15 @@ export function TeamWorkloadChart({ workspaceId, members }: TeamWorkloadChartPro
                     })
                 );
 
-                // Build resolved member objects for the sheet
+                // Build resolved member objects for the sheet.
+                // Always use resolvedNames (fetched from /users/{uid}) so the sheet
+                // title shows the real display name, not the stale workspace.users map.
                 const resolved: Record<string, TeamMember> = {};
                 Object.keys(counts).forEach(uid => {
-                    resolved[uid] = memberMap[uid] ?? {
+                    resolved[uid] = {
                         uid,
-                        name: resolvedNames[uid],
-                        email: null,
+                        name: resolvedNames[uid] ?? memberMap[uid]?.name ?? null,
+                        email: memberMap[uid]?.email ?? null,
                     };
                 });
                 setResolvedMembers(resolved);
