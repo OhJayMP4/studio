@@ -3,6 +3,7 @@
 import MainSidebar from "@/components/layout/main-sidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import Header from "@/components/layout/header";
+import { NotificationToasts } from "@/components/common/notification-toasts";
 import { useUser, useFirestore, FirebaseClientProvider } from "@/firebase";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, createContext, useContext } from "react";
@@ -118,6 +119,7 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
           <main className="p-4 lg:p-6">{children}</main>
         </SidebarInset>
       </SidebarProvider>
+      <NotificationToasts />
     </SelectedWorkspaceContext.Provider>
   );
 }

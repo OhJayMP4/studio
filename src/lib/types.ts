@@ -103,6 +103,7 @@ export type Comment = {
     createdBy: string;
     createdAt: any; // Can be a server timestamp
     parentCommentId?: string | null;
+    mentionedUids?: string[];
     author?: {
         name: string;
         avatarUrl?: string | null;
@@ -168,6 +169,7 @@ export type Notification = {
         companyName?: string;
         projectName?: string;
         siloName?: string;
+        siloId?: string;
         commentText?: string;
     };
     timestamp: {

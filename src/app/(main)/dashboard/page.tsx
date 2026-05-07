@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useUserTasks } from "@/hooks/use-user-tasks";
 import { TeamWorkloadChart } from "@/components/reporting/team-workload-chart";
 import { ProjectDeadlinesChart } from "@/components/reporting/project-deadlines-chart";
+import { TaskDetailsDialog } from "@/components/common/task-details-dialog";
 
 type DashboardDetailView = 'main' | 'active-projects' | 'completed-projects' | 'active-tasks' | 'overdue-tasks' | 'awaiting-tasks';
 
@@ -30,31 +31,48 @@ const PRIORITY_COLORS: Record<string, string> = {
 function TaskRow({ task, variant }: { task: UserTask; variant: 'overdue' | 'awaiting' | 'upcoming' }) {
     const dueDate = new Date(task.dueDate);
     const isQuickTask = task.projectId === 'general-tasks';
+    const originalTaskPath = `workspaces/${task.workspaceId}/companies/${task.companyId}/projects/${task.projectId}/silos/${task.siloId}/tasks/${task.originalTaskId}`;
+    const taskForDialog = {
+        id: task.originalTaskId,
+        title: task.title,
+        description: task.description,
+        completed: task.completed,
+        status: task.status,
+        dueDate: task.dueDate,
+        priority: task.priority,
+        assigneeId: task.assigneeId,
+        projectId: task.projectId,
+        workspaceId: task.workspaceId,
+        createdBy: task.createdBy || '',
+        createdAt: task.createdAt || null,
+    };
     return (
-        <div className="flex items-center gap-3 py-2.5 border-b last:border-0">
-            <div className={cn("w-2 h-2 rounded-full shrink-0", PRIORITY_COLORS[task.priority])} />
-            <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate leading-snug">{task.title}</p>
-                <p className="text-xs text-muted-foreground truncate">
-                    {task.companyName}{!isQuickTask ? ` · ${task.projectName}` : ''}
-                </p>
+        <TaskDetailsDialog task={taskForDialog as any} path={originalTaskPath}>
+            <div className="flex items-center gap-3 py-2.5 border-b last:border-0 cursor-pointer hover:bg-muted/40 transition-colors rounded px-1 -mx-1">
+                <div className={cn("w-2 h-2 rounded-full shrink-0", PRIORITY_COLORS[task.priority])} />
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate leading-snug">{task.title}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                        {task.companyName}{!isQuickTask ? ` · ${task.projectName}` : ''}
+                    </p>
+                </div>
+                {variant === 'overdue' && (
+                    <span className="text-xs text-destructive font-semibold shrink-0 whitespace-nowrap">
+                        {formatDistanceToNow(dueDate)} late
+                    </span>
+                )}
+                {variant === 'awaiting' && (
+                    <span className="text-xs text-amber-600 font-medium shrink-0 whitespace-nowrap">
+                        Due {format(dueDate, 'MMM d')}
+                    </span>
+                )}
+                {variant === 'upcoming' && (
+                    <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
+                        {format(dueDate, 'MMM d')}
+                    </span>
+                )}
             </div>
-            {variant === 'overdue' && (
-                <span className="text-xs text-destructive font-semibold shrink-0 whitespace-nowrap">
-                    {formatDistanceToNow(dueDate)} late
-                </span>
-            )}
-            {variant === 'awaiting' && (
-                <span className="text-xs text-amber-600 font-medium shrink-0 whitespace-nowrap">
-                    Due {format(dueDate, 'MMM d')}
-                </span>
-            )}
-            {variant === 'upcoming' && (
-                <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
-                    {format(dueDate, 'MMM d')}
-                </span>
-            )}
-        </div>
+        </TaskDetailsDialog>
     );
 }
 

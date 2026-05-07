@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -19,7 +19,7 @@ import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from '@
 import { collection, addDoc, serverTimestamp, query, orderBy, doc } from 'firebase/firestore';
 import { format, formatDistanceToNow, isPast, isToday } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { Sparkles, CheckCircle2, Clock, CalendarIcon, Building2, Folder, Layout, User as UserIcon, ShieldCheck, Settings2, Trash2, PlayCircle } from 'lucide-react';
+import { Sparkles, CheckCircle2, Clock, CalendarIcon, Building2, Folder, Layout, User as UserIcon, ShieldCheck, Settings2, Trash2, PlayCircle, AtSign } from 'lucide-react';
 import { suggestTaskCompletion, type SuggestTaskCompletionOutput } from '@/ai/flows/suggest-task-completion-flow';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { Checkbox } from '../ui/checkbox';
@@ -51,6 +51,115 @@ const safeToDate = (val: any): Date | null => {
     
     return null;
 };
+
+// ─── @mention-aware textarea ───────────────────────────────────────────────────
+
+type WorkspaceMember = { uid: string; name: string; avatarUrl?: string | null };
+
+interface MentionTextareaProps {
+  value: string;
+  onChange: (text: string) => void;
+  onMentionsChange: (uids: string[]) => void;
+  members: WorkspaceMember[];
+  placeholder?: string;
+  rows?: number;
+}
+
+function MentionTextarea({
+  value, onChange, onMentionsChange, members, placeholder, rows = 3,
+}: MentionTextareaProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionStart, setMentionStart] = useState(-1);
+  const [mentionedUids, setMentionedUids] = useState<string[]>([]);
+
+  const filtered = useMemo(() => {
+    if (mentionQuery === null) return [];
+    return members
+      .filter(m => m.name?.toLowerCase().includes(mentionQuery.toLowerCase()))
+      .slice(0, 6);
+  }, [mentionQuery, members]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const text = e.target.value;
+    const cursor = e.target.selectionStart ?? text.length;
+    onChange(text);
+
+    const before = text.slice(0, cursor);
+    const m = before.match(/@(\w*)$/);
+    if (m) {
+      setMentionQuery(m[1]);
+      setMentionStart(m.index!);
+    } else {
+      setMentionQuery(null);
+      setMentionStart(-1);
+    }
+  };
+
+  const selectMember = (member: WorkspaceMember) => {
+    if (mentionStart === -1) return;
+    const cursor = textareaRef.current?.selectionStart ?? value.length;
+    const before = value.slice(0, mentionStart);
+    const after = value.slice(cursor);
+    const newText = `${before}@${member.name} ${after}`;
+    onChange(newText);
+
+    const newUids = mentionedUids.includes(member.uid)
+      ? mentionedUids
+      : [...mentionedUids, member.uid];
+    setMentionedUids(newUids);
+    onMentionsChange(newUids);
+
+    setMentionQuery(null);
+    setMentionStart(-1);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape' && mentionQuery !== null) {
+      setMentionQuery(null);
+      e.preventDefault();
+    }
+  };
+
+  return (
+    <div className="relative">
+      <Textarea
+        ref={textareaRef}
+        value={value}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        rows={rows}
+      />
+      {mentionQuery !== null && filtered.length > 0 && (
+        <div className="absolute bottom-full left-0 mb-1 z-50 w-52 rounded-xl border bg-popover shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-1 duration-150">
+          {filtered.map(m => (
+            <button
+              key={m.uid}
+              type="button"
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent text-left transition-colors"
+              onMouseDown={e => { e.preventDefault(); selectMember(m); }}
+            >
+              <Avatar className="h-5 w-5 shrink-0">
+                <AvatarImage src={m.avatarUrl ?? undefined} />
+                <AvatarFallback className="text-[9px]">{m.name?.charAt(0).toUpperCase()}</AvatarFallback>
+              </Avatar>
+              <span className="truncate">{m.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {mentionQuery === null && (
+        <p className="absolute bottom-2 right-2 text-[10px] text-muted-foreground/50 pointer-events-none select-none">
+          <AtSign className="inline h-2.5 w-2.5 mr-0.5" />mention
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 
 function CommentItem({ comment, path, level = 0 }: { comment: Comment; path: string; level?: number }) {
   const [showReply, setShowReply] = useState(false);
@@ -191,12 +300,26 @@ function SuggestionsSection({ task }: { task: Task }) {
 
 function CommentsSection({ taskPath }: { taskPath: string }) {
   const [newComment, setNewComment] = useState('');
+  const [mentionedUids, setMentionedUids] = useState<string[]>([]);
   const firestore = useFirestore();
   const { user } = useUser();
-  
+  const { selectedWorkspace } = useSelectedWorkspace();
+
   const commentsPath = `${taskPath}/comments`;
-  const commentsQuery = useMemoFirebase(() => query(collection(firestore, commentsPath), orderBy('createdAt', 'desc')), [firestore, commentsPath]);
+  const commentsQuery = useMemoFirebase(
+    () => query(collection(firestore, commentsPath), orderBy('createdAt', 'desc')),
+    [firestore, commentsPath],
+  );
   const { data: comments } = useCollection<Comment>(commentsQuery);
+
+  const members: Array<{ uid: string; name: string; avatarUrl?: string | null }> = useMemo(() => {
+    if (!selectedWorkspace?.users) return [];
+    return Object.entries(selectedWorkspace.users).map(([uid, u]) => ({
+      uid,
+      name: u.name || u.email || uid,
+      avatarUrl: u.avatarUrl,
+    }));
+  }, [selectedWorkspace]);
 
   const handlePostComment = async () => {
     if (!newComment.trim() || !user) return;
@@ -205,22 +328,26 @@ function CommentsSection({ taskPath }: { taskPath: string }) {
       text: newComment,
       createdBy: user.uid,
       createdAt: serverTimestamp(),
+      mentionedUids,
       author: {
         name: user.displayName,
         avatarUrl: user.photoURL,
-      }
+      },
     });
     setNewComment('');
+    setMentionedUids([]);
   };
 
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold">Comments</h3>
       <div className="flex flex-col gap-2">
-        <Textarea
+        <MentionTextarea
           value={newComment}
-          onChange={(e) => setNewComment(e.target.value)}
-          placeholder="Add a comment..."
+          onChange={setNewComment}
+          onMentionsChange={setMentionedUids}
+          members={members}
+          placeholder="Add a comment… type @ to mention someone"
         />
         <Button onClick={handlePostComment} className="self-end">Post Comment</Button>
       </div>

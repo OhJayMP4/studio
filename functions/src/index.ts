@@ -177,8 +177,9 @@ exports.onCommentCreate = functions.firestore
     .onCreate(async (snap, context) => {
         const { workspaceId, companyId, projectId, siloId, taskId } = context.params;
         const commentData = snap.data();
-        
-        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, commentData.createdBy);
+        const actorUid = commentData.createdBy;
+
+        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
         if (!actorName) return;
 
         const [companySnap, projectSnap, taskSnap] = await Promise.all([
@@ -186,22 +187,35 @@ exports.onCommentCreate = functions.firestore
             db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}`).get(),
             db.doc(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks/${taskId}`).get()
         ]);
-        
+
         const companyName = companySnap.data()?.name || '';
         const projectName = projectSnap.data()?.name || '';
         const taskTitle = taskSnap.data()?.title || '';
+        const taskAssigneeId: string | undefined = taskSnap.data()?.assigneeId;
+
+        // Targeted audience: task assignee + explicitly @mentioned users (never the actor)
+        const mentionedUids: string[] = Array.isArray(commentData.mentionedUids) ? commentData.mentionedUids : [];
+        const targeted = new Set<string>();
+        if (taskAssigneeId && taskAssigneeId !== actorUid) targeted.add(taskAssigneeId);
+        mentionedUids.forEach((uid: string) => { if (uid !== actorUid) targeted.add(uid); });
+
+        // Fall back to all workspace members if no specific targets found
+        const relevantAudience = targeted.size > 0
+            ? Array.from(targeted).filter((uid: string) => isRelevantTo.includes(uid))
+            : isRelevantTo;
 
         await createNotification(workspaceId, {
             type: 'comment_added',
-            actorUid: commentData.createdBy,
+            actorUid,
             actorName,
-            target: { id: taskId, name: taskTitle, text: 'task', path: `/company/${companyId}/project/${projectId}` },
-            context: { 
-                companyName, 
+            target: { id: taskId, name: taskTitle, type: 'task', path: `/company/${companyId}/project/${projectId}` },
+            context: {
+                companyName,
                 projectName,
+                siloId,
                 commentText: commentData.text,
             },
-            isRelevantTo,
+            isRelevantTo: relevantAudience,
         });
     });
 
