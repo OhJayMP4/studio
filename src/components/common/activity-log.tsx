@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/popover';
 import { Button } from '../ui/button';
 import {
-  Activity, MessageSquare, UserPlus, CheckCircle2, Trash2,
+  Activity, UserPlus, CheckCircle2, Trash2,
   Folder, Box, Building2, FileText, ArrowRight,
 } from 'lucide-react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
@@ -24,7 +24,6 @@ import { ScrollArea } from '../ui/scroll-area';
 
 function getTypeIcon(type: Notification['type']) {
   switch (type) {
-    case 'comment_added':   return <MessageSquare className="h-3.5 w-3.5 text-blue-500" />;
     case 'task_assigned':   return <UserPlus      className="h-3.5 w-3.5 text-violet-500" />;
     case 'task_completed':  return <CheckCircle2  className="h-3.5 w-3.5 text-emerald-500" />;
     case 'task_deleted':
@@ -42,7 +41,6 @@ function getTypeIcon(type: Notification['type']) {
 function getActivityText(n: Notification): React.ReactNode {
   const bold = (s?: string) => <span className="font-semibold">{s}</span>;
   switch (n.type) {
-    case 'comment_added':   return <>{bold(n.actorName)} commented on {bold(n.target.name)}</>;
     case 'task_assigned':   return <>{bold(n.actorName)} assigned {bold(n.target.name)} to {bold(n.assignee?.name)}</>;
     case 'task_completed':  return <>{bold(n.actorName)} completed {bold(n.target.name)}</>;
     case 'task_deleted':    return <>{bold(n.actorName)} deleted task {bold(n.target.name)}</>;
@@ -93,11 +91,17 @@ export function ActivityLog() {
     );
   }, [firestore, selectedWorkspace, user]);
 
-  const { data: events, isLoading } = useCollection<Notification>(q);
+  const { data: rawEvents, isLoading } = useCollection<Notification>(q);
+
+  // Activity log shows workspace events only — no comment notifications (those go to the bell).
+  const events = useMemo(
+    () => rawEvents?.filter(e => e.type !== 'comment_added') ?? [],
+    [rawEvents],
+  );
 
   // group by day
   const grouped = useMemo(() => {
-    if (!events) return [];
+    if (!events.length) return [];
     const groups: Array<{ label: string; items: Notification[] }> = [];
     const todayItems: Notification[] = [];
     const yesterdayItems: Notification[] = [];
@@ -182,11 +186,6 @@ export function ActivityLog() {
                         <p className="text-[13px] leading-snug text-foreground truncate">
                           {getActivityText(event)}
                         </p>
-                        {event.type === 'comment_added' && event.context?.commentText && (
-                          <p className="text-[12px] text-muted-foreground italic truncate">
-                            "{event.context.commentText}"
-                          </p>
-                        )}
                         <p className="text-[11px] text-muted-foreground mt-0.5">
                           {event.timestamp
                             ? formatDistanceToNow(new Date(event.timestamp.seconds * 1000), { addSuffix: true })

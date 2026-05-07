@@ -272,13 +272,10 @@ function ToastCard({ notification: n, onDismiss }: ToastCardProps) {
 // ─── helper: personal relevance ───────────────────────────────────────────────
 
 function isPersonallyRelevant(notif: Notification, uid: string): boolean {
+  // Pop-up toasts are only for comments — direct user-to-user communication.
+  if (notif.type !== 'comment_added') return false;
   if (notif.actorUid === uid) return false;
-  switch (notif.type) {
-    case 'task_assigned':  return notif.assignee?.uid === uid;
-    case 'comment_added':  return Array.isArray(notif.isRelevantTo) && notif.isRelevantTo.includes(uid);
-    case 'task_completed': return Array.isArray(notif.isRelevantTo) && notif.isRelevantTo.includes(uid);
-    default:               return false;
-  }
+  return Array.isArray(notif.isRelevantTo) && notif.isRelevantTo.includes(uid);
 }
 
 // ─── toast stack manager ──────────────────────────────────────────────────────
