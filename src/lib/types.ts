@@ -155,6 +155,7 @@ export type Notification = {
     type: 'task_assigned' | 'task_completed' | 'silo_added' | 'project_added' | 'company_added' | 'sale_added' | 'task_deleted' | 'silo_deleted' | 'project_deleted' | 'company_deleted' | 'comment_added';
     actorUid: string;
     actorName: string;
+    actorAvatarUrl?: string | null;
     target: {
         id: string;
         name: string;

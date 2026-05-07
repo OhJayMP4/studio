@@ -99,10 +99,11 @@ const getActorAndRelevantUsers = async (workspaceId: string, actorUid: string) =
     
     // Prioritize Fresh Name -> Fresh Email -> Stale Workspace Name -> Generic
     const actorName = userData?.name || userData?.email || workspaceData?.users?.[actorUid]?.name || 'A user';
-    
+    const actorAvatarUrl = userData?.avatarUrl || workspaceData?.users?.[actorUid]?.avatarUrl || null;
+
     // Everyone in the workspace is relevant, including the actor
     const isRelevantTo = Object.keys(workspaceData?.users || {});
-    return { actorName, isRelevantTo };
+    return { actorName, actorAvatarUrl, isRelevantTo };
 };
 
 const createNotification = async (workspaceId: string, notificationData: any) => {
@@ -179,7 +180,7 @@ exports.onCommentCreate = functions.firestore
         const commentData = snap.data();
         const actorUid = commentData.createdBy;
 
-        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
+        const { actorName, actorAvatarUrl, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, actorUid);
         if (!actorName) return;
 
         const [companySnap, projectSnap, taskSnap] = await Promise.all([
@@ -219,6 +220,7 @@ exports.onCommentCreate = functions.firestore
             type: 'comment_added',
             actorUid,
             actorName,
+            actorAvatarUrl,
             target: { id: taskId, name: taskTitle, type: 'task', path: `/company/${companyId}/project/${projectId}` },
             context: {
                 companyName,
@@ -235,7 +237,7 @@ exports.onCompanyCreate = functions.firestore
     .onCreate(async (snap, context) => {
         const { workspaceId } = context.params;
         const companyData = snap.data();
-        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, companyData.createdBy);
+        const { actorName, actorAvatarUrl, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, companyData.createdBy);
 
         if (!actorName) return;
 
@@ -253,7 +255,7 @@ exports.onProjectCreate = functions.firestore
     .onCreate(async (snap, context) => {
         const { workspaceId, companyId } = context.params;
         const projectData = snap.data();
-        const { actorName, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, projectData.createdBy);
+        const { actorName, actorAvatarUrl, isRelevantTo } = await getActorAndRelevantUsers(workspaceId, projectData.createdBy);
         
         if (!actorName) return;
         
@@ -275,7 +277,7 @@ exports.onSiloCreate = functions.firestore
     .onCreate(async (snap, context) => {
         const { workspaceId, companyId, projectId } = context.params;
         const siloData = snap.data();
-        const { actorName, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, siloData.createdBy);
+        const { actorName, actorAvatarUrl, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, siloData.createdBy);
 
         if (!actorName) return;
 
@@ -300,7 +302,7 @@ exports.onSiloDelete = functions.firestore
         const { workspaceId, companyId, projectId } = context.params;
         const siloData = snap.data();
         const actorUid = siloData.updatedBy || siloData.createdBy;
-        const { actorName, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
+        const { actorName, actorAvatarUrl, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
 
         if (!actorName) return;
 
@@ -324,7 +326,7 @@ exports.onSaleCreate = functions.firestore
     .onCreate(async (snap, context) => {
         const { workspaceId, companyId, projectId } = context.params;
         const saleData = snap.data();
-        const { actorName, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, saleData.createdBy);
+        const { actorName, actorAvatarUrl, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, saleData.createdBy);
 
         if (!actorName) return;
 
@@ -357,7 +359,7 @@ exports.onTaskWrite = functions.firestore
         // 1. Handle Notifications & Emails
         if (afterData && (!beforeData || beforeData.assigneeId !== afterData.assigneeId)) {
             const actorUid = afterData.updatedBy || afterData.createdBy;
-            const { actorName, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
+            const { actorName, actorAvatarUrl, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
             if (!actorName) return;
 
             const [companySnap, projectSnap, siloSnap, assigneeSnap] = await Promise.all([
@@ -377,6 +379,7 @@ exports.onTaskWrite = functions.firestore
                 type: 'task_assigned',
                 actorUid,
                 actorName,
+                actorAvatarUrl,
                 target: { id: change.after.id, name: afterData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
                 assignee: { uid: afterData.assigneeId, name: assigneeName },
                 context: { companyName, projectName, siloName },
@@ -401,7 +404,7 @@ exports.onTaskWrite = functions.firestore
 
         if (beforeData && afterData && beforeData.completed === false && afterData.completed === true) {
             const actorUid = afterData.updatedBy || afterData.assigneeId; 
-            const { actorName, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
+            const { actorName, actorAvatarUrl, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
              if (!actorName) return;
 
             const [companySnap, projectSnap, siloSnap] = await Promise.all([
@@ -417,6 +420,7 @@ exports.onTaskWrite = functions.firestore
                 type: 'task_completed',
                 actorUid,
                 actorName,
+                actorAvatarUrl,
                 target: { id: change.after.id, name: afterData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
                 context: { companyName, projectName, siloName },
                 isRelevantTo,
@@ -472,7 +476,7 @@ exports.onCompanyDelete = functions.firestore
         const { workspaceId } = context.params;
         const companyData = snap.data();
         const actorUid = companyData.updatedBy || companyData.createdBy; 
-        const { actorName, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
+        const { actorName, actorAvatarUrl, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
 
         if (!actorName) return;
 
@@ -480,6 +484,7 @@ exports.onCompanyDelete = functions.firestore
             type: 'company_deleted',
             actorUid,
             actorName,
+            actorAvatarUrl,
             target: { id: snap.id, name: companyData.name, type: 'company', path: `/companies` },
             isRelevantTo,
         });
@@ -491,7 +496,7 @@ exports.onProjectDelete = functions.firestore
         const { workspaceId, companyId } = context.params;
         const projectData = snap.data();
         const actorUid = projectData.updatedBy || projectData.createdBy;
-        const { actorName, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
+        const { actorName, actorAvatarUrl, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
         
         if (!actorName) return;
         
@@ -502,6 +507,7 @@ exports.onProjectDelete = functions.firestore
             type: 'project_deleted',
             actorUid,
             actorName,
+            actorAvatarUrl,
             target: { id: snap.id, name: projectData.name, type: 'project', path: `/company/${companyId}` },
             context: { companyName },
             isRelevantTo,
@@ -526,7 +532,7 @@ exports.onTaskDelete = functions.firestore
             await batch.commit();
         }
 
-        const { actorName, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
+        const { actorName, actorAvatarUrl, isRelevantTo = [] } = await getActorAndRelevantUsers(workspaceId, actorUid);
         if (!actorName) return;
 
         const [companySnap, projectSnap, siloSnap] = await Promise.all([
@@ -543,6 +549,7 @@ exports.onTaskDelete = functions.firestore
             type: 'task_deleted',
             actorUid,
             actorName,
+            actorAvatarUrl,
             target: { id: snap.id, name: taskData.title, type: 'task', path: `/company/${companyId}/project/${projectId}` },
             context: { companyName, projectName, siloName },
             isRelevantTo,

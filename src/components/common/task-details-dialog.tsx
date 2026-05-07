@@ -505,8 +505,16 @@ function PropertyRow({ icon, label, value }: PropertyRowProps) {
     );
 }
 
-export function TaskDetailsDialog({ task, path, children }: { task: Task; path: string, children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
+export function TaskDetailsDialog({
+  task, path, children,
+  open: controlledOpen, onOpenChange: controlledSetOpen,
+}: {
+  task: Task; path: string; children: React.ReactNode;
+  open?: boolean; onOpenChange?: (v: boolean) => void;
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = controlledSetOpen ?? setInternalOpen;
   const firestore = useFirestore();
   const { selectedWorkspace } = useSelectedWorkspace();
   const [showCompletionDialog, setShowCompletionDialog] = useState(false);

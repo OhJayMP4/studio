@@ -8,12 +8,15 @@ import {
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useUser, useFirestore } from '@/firebase';
 import type { Notification as AppNotification } from '@/lib/types';
-import { X, MessageSquare, Send, ExternalLink } from 'lucide-react';
+import type { Task } from '@/lib/types';
+import { X, MessageSquare, Send, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
-import { useRouter } from 'next/navigation';
+import { ScrollArea } from '../ui/scroll-area';
+import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
+import { TaskDetailsDialog } from './task-details-dialog';
 
 // ─── type style config ────────────────────────────────────────────────────────
 
@@ -40,10 +43,12 @@ function ToastCard({ notification: n, onDismiss }: ToastCardProps) {
   const [replyText, setReplyText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
+  const [taskDialogData, setTaskDialogData] = useState<{ task: Task; path: string } | null>(null);
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [isLoadingTask, setIsLoadingTask] = useState(false);
   const { user } = useUser();
   const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
-  const router = useRouter();
 
   const color = avatarColor(n.actorUid || n.actorName || 'x');
   const initials = (n.actorName || '?').split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
@@ -52,11 +57,6 @@ function ToastCard({ notification: n, onDismiss }: ToastCardProps) {
     setIsExiting(true);
     setTimeout(() => onDismiss(n.id), 260);
   }, [n.id, onDismiss]);
-
-  // Clicking the card body navigates to the task
-  const handleNavigate = useCallback(() => {
-    if (n.target.path) router.push(n.target.path);
-  }, [n.target.path, router]);
 
   // Find siloId: first try notification context, then search silos in Firestore.
   // Old notifications (before cloud function redeployment) don't have siloId in
@@ -85,24 +85,42 @@ function ToastCard({ notification: n, onDismiss }: ToastCardProps) {
     return null;
   }, [n.context?.siloId, selectedWorkspace, firestore]);
 
+  const handleOpenTask = useCallback(async () => {
+    if (!selectedWorkspace) return;
+    const match = n.target.path.match(/\/company\/([^/]+)\/project\/([^/]+)/);
+    if (!match) return;
+    const [, companyId, projectId] = match;
+    const taskId = n.target.id;
+
+    setIsLoadingTask(true);
+    try {
+      const siloId = await resolveSiloId(companyId, projectId, taskId);
+      if (!siloId) return;
+      const taskPath = `workspaces/${selectedWorkspace.id}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks/${taskId}`;
+      const taskSnap = await getDoc(doc(firestore, taskPath));
+      if (!taskSnap.exists()) return;
+      const task = { id: taskSnap.id, ...taskSnap.data() } as Task;
+      setTaskDialogData({ task, path: taskPath });
+      setTaskDialogOpen(true);
+    } catch (e) {
+      console.error('Failed to open task:', e);
+    } finally {
+      setIsLoadingTask(false);
+    }
+  }, [n.target.path, n.target.id, selectedWorkspace, firestore, resolveSiloId]);
+
   const handleSendReply = async () => {
     if (!replyText.trim() || !user || !selectedWorkspace) return;
 
     const match = n.target.path.match(/\/company\/([^/]+)\/project\/([^/]+)/);
-    if (!match) { handleNavigate(); return; }
+    if (!match) return;
     const [, companyId, projectId] = match;
     const taskId = n.target.id;
 
     setIsSending(true);
     try {
       const siloId = await resolveSiloId(companyId, projectId, taskId);
-
-      if (!siloId) {
-        // Cannot locate the task in Firestore — navigate as fallback
-        handleNavigate();
-        handleDismiss();
-        return;
-      }
+      if (!siloId) return;
 
       const commentsPath = `workspaces/${selectedWorkspace.id}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks/${taskId}/comments`;
       await addDoc(collection(firestore, commentsPath), {
@@ -127,6 +145,17 @@ function ToastCard({ notification: n, onDismiss }: ToastCardProps) {
     : '';
 
   return (
+    <>
+    {taskDialogData && (
+      <TaskDetailsDialog
+        task={taskDialogData.task}
+        path={taskDialogData.path}
+        open={taskDialogOpen}
+        onOpenChange={v => { setTaskDialogOpen(v); if (!v) setTaskDialogData(null); }}
+      >
+        <span />
+      </TaskDetailsDialog>
+    )}
     <div
       className={cn(
         'w-[360px] rounded-2xl shadow-2xl overflow-hidden',
@@ -140,15 +169,15 @@ function ToastCard({ notification: n, onDismiss }: ToastCardProps) {
       {/* ── main content ── */}
       <div
         className="flex items-start gap-3 px-4 pt-4 pb-3 cursor-pointer group"
-        onClick={handleNavigate}
+        onClick={handleOpenTask}
       >
-        {/* colored avatar */}
-        <div className={cn(
-          'h-10 w-10 rounded-full flex items-center justify-center shrink-0 text-white text-xs font-bold',
-          color,
-        )}>
-          {initials}
-        </div>
+        {/* actor avatar */}
+        <Avatar className="h-10 w-10 shrink-0">
+          <AvatarImage src={n.actorAvatarUrl ?? undefined} />
+          <AvatarFallback className={cn('text-white text-xs font-bold', color)}>
+            {initials}
+          </AvatarFallback>
+        </Avatar>
 
         {/* 3-line hierarchy */}
         <div className="flex-1 min-w-0 pt-0.5">
@@ -217,15 +246,17 @@ function ToastCard({ notification: n, onDismiss }: ToastCardProps) {
           </button>
           <div className="w-px bg-border/40" />
           <button
-            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[12px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-            onClick={handleNavigate}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[12px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors disabled:opacity-40"
+            onClick={handleOpenTask}
+            disabled={isLoadingTask}
           >
             <ExternalLink className="h-3.5 w-3.5" />
-            Open
+            {isLoadingTask ? 'Opening…' : 'Open'}
           </button>
         </div>
       )}
     </div>
+    </>
   );
 }
 
@@ -333,50 +364,78 @@ export function NotificationToasts() {
     setToasts([]);
   }, []);
 
+  const [expanded, setExpanded] = useState(false);
+
   if (toasts.length === 0) return null;
 
-  // Show at most MAX_VISIBLE cards in the physical stack
-  const stack = toasts.slice(0, MAX_VISIBLE);
-  const overflow = toasts.length - stack.length;
-
-  // Each buried card peeks out by PEEK_PX below the card in front of it.
-  // Scale shrinks slightly with depth so the stack has clear perspective.
   const PEEK_PX = 10;
   const SCALE_STEP = 0.04;
   const OPACITY_STEP = 0.15;
+  const stack = toasts.slice(0, MAX_VISIBLE);
+  const overflow = toasts.length - stack.length;
 
+  // ── Expanded view: scrollable list of all toasts ──────────────────────────
+  if (expanded) {
+    return (
+      <div className="fixed bottom-6 right-6 z-[9999] w-[380px] pointer-events-auto">
+        <div className="rounded-2xl border border-border/60 shadow-2xl bg-background/97 backdrop-blur-xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 bg-muted/20">
+            <span className="text-sm font-semibold">
+              {toasts.length} notification{toasts.length !== 1 ? 's' : ''}
+            </span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleClearAll}
+                className="text-[11px] font-semibold text-muted-foreground hover:text-destructive transition-colors"
+              >
+                Clear all
+              </button>
+              <button
+                onClick={() => setExpanded(false)}
+                className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+                Collapse
+              </button>
+            </div>
+          </div>
+          <ScrollArea className="max-h-[520px]">
+            <div className="p-3 space-y-2">
+              {toasts.map(t => (
+                <ToastCard key={t.id} notification={t} onDismiss={handleDismiss} />
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Stacked view ──────────────────────────────────────────────────────────
   return (
     <div className="fixed bottom-6 right-6 z-[9999] pointer-events-none">
-      {/*
-        Physical stack: newest card is index 0 (front/top).
-        We render from back to front so the newest card is on top in the DOM.
-        Each card is absolutely positioned; the container height is sized by
-        the front card (relative flow) + peek offsets of the buried cards.
-      */}
+      {/* Physical stack — newest card at index 0 is on top */}
       <div
         className="relative"
         style={{ paddingBottom: `${(stack.length - 1) * PEEK_PX}px` }}
       >
-        {/* render back-to-front so newest (index 0) is on top */}
         {[...stack].reverse().map((t, revIdx) => {
-          const depth = stack.length - 1 - revIdx; // 0 = front, 1 = second, 2 = third
+          const depth = stack.length - 1 - revIdx; // 0 = front
           const isFront = depth === 0;
           return (
             <div
               key={t.id}
-              className="pointer-events-auto"
               style={{
                 position: isFront ? 'relative' : 'absolute',
                 top: isFront ? undefined : `${depth * PEEK_PX}px`,
-                left: 0,
-                right: 0,
+                left: 0, right: 0,
                 zIndex: MAX_VISIBLE - depth,
                 transform: `scale(${1 - depth * SCALE_STEP})`,
                 transformOrigin: 'top center',
                 opacity: 1 - depth * OPACITY_STEP,
-                // buried cards are non-interactive
                 pointerEvents: isFront ? 'auto' : 'none',
               }}
+              className="pointer-events-auto"
             >
               <ToastCard notification={t} onDismiss={handleDismiss} />
             </div>
@@ -384,15 +443,16 @@ export function NotificationToasts() {
         })}
       </div>
 
-      {/* overflow + clear-all pill below the stack */}
-      {(overflow > 0 || toasts.length > 1) && (
-        <div
-          className="pointer-events-auto flex items-center justify-between mt-2 px-4 py-2 rounded-xl bg-background/80 backdrop-blur border border-border/50 shadow-sm w-[360px]"
-        >
-          <span className="text-[11px] text-muted-foreground font-medium">
-            {toasts.length} message{toasts.length !== 1 ? 's' : ''}
-            {overflow > 0 && ` · +${overflow} more`}
-          </span>
+      {/* Bottom bar: count + expand + clear all */}
+      {toasts.length > 1 && (
+        <div className="pointer-events-auto flex items-center justify-between mt-2 px-4 py-2 rounded-xl bg-background/80 backdrop-blur border border-border/50 shadow-sm w-[360px]">
+          <button
+            onClick={() => setExpanded(true)}
+            className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronUp className="h-3.5 w-3.5" />
+            {toasts.length} messages{overflow > 0 ? ` · +${overflow} more` : ''}
+          </button>
           <button
             onClick={handleClearAll}
             className="text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors"

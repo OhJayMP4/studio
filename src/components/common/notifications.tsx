@@ -9,60 +9,31 @@ import {
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import {
-  Bell, X, CheckCircle2, Trash2, MessageSquare,
-  UserPlus, Folder, Box, Building2, FileText,
-  Send, ArrowRight, Inbox, CheckCheck,
+  Bell, X, MessageSquare,
+  Send, ArrowRight, Inbox, CheckCheck, ExternalLink,
 } from 'lucide-react';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import {
   collection, query, orderBy, limit, doc,
   arrayUnion, updateDoc, addDoc, serverTimestamp, writeBatch,
+  getDoc, getDocs,
 } from 'firebase/firestore';
-import type { Notification } from '@/lib/types';
+import type { Notification, Task } from '@/lib/types';
+import { TaskDetailsDialog } from './task-details-dialog';
 import { formatDistanceToNow, isToday, isYesterday } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { useRouter } from 'next/navigation';
 import { ScrollArea } from '../ui/scroll-area';
-import { Avatar, AvatarFallback } from '../ui/avatar';
+import { useRouter } from 'next/navigation';
+import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 
-// ─── type style config ────────────────────────────────────────────────────────
+// ─── type style config (comments only) ───────────────────────────────────────
 
-type TypeCfg = { icon: React.ReactNode; iconBg: string; iconColor: string; borderColor: string };
+type TypeCfg = { iconBg: string; iconColor: string; borderColor: string };
 
-const typeCfg: Record<Notification['type'], TypeCfg> = {
-  comment_added:   { icon: <MessageSquare className="h-3.5 w-3.5" />, iconBg: 'bg-blue-500/15',    iconColor: 'text-blue-500',    borderColor: 'border-l-blue-500/70' },
-  task_assigned:   { icon: <UserPlus      className="h-3.5 w-3.5" />, iconBg: 'bg-violet-500/15',  iconColor: 'text-violet-500',  borderColor: 'border-l-violet-500/70' },
-  task_completed:  { icon: <CheckCircle2  className="h-3.5 w-3.5" />, iconBg: 'bg-emerald-500/15', iconColor: 'text-emerald-500', borderColor: 'border-l-emerald-500/70' },
-  task_deleted:    { icon: <Trash2        className="h-3.5 w-3.5" />, iconBg: 'bg-red-500/15',     iconColor: 'text-red-500',     borderColor: 'border-l-red-500/70' },
-  silo_added:      { icon: <Box           className="h-3.5 w-3.5" />, iconBg: 'bg-amber-500/15',   iconColor: 'text-amber-500',   borderColor: 'border-l-amber-500/70' },
-  silo_deleted:    { icon: <Trash2        className="h-3.5 w-3.5" />, iconBg: 'bg-red-500/15',     iconColor: 'text-red-500',     borderColor: 'border-l-red-500/70' },
-  project_added:   { icon: <Folder        className="h-3.5 w-3.5" />, iconBg: 'bg-amber-500/15',   iconColor: 'text-amber-500',   borderColor: 'border-l-amber-500/70' },
-  project_deleted: { icon: <Trash2        className="h-3.5 w-3.5" />, iconBg: 'bg-red-500/15',     iconColor: 'text-red-500',     borderColor: 'border-l-red-500/70' },
-  company_added:   { icon: <Building2     className="h-3.5 w-3.5" />, iconBg: 'bg-amber-500/15',   iconColor: 'text-amber-500',   borderColor: 'border-l-amber-500/70' },
-  company_deleted: { icon: <Trash2        className="h-3.5 w-3.5" />, iconBg: 'bg-red-500/15',     iconColor: 'text-red-500',     borderColor: 'border-l-red-500/70' },
-  sale_added:      { icon: <FileText      className="h-3.5 w-3.5" />, iconBg: 'bg-teal-500/15',    iconColor: 'text-teal-500',    borderColor: 'border-l-teal-500/70' },
+const typeCfg: Partial<Record<Notification['type'], TypeCfg>> = {
+  comment_added: { iconBg: 'bg-blue-500', iconColor: 'text-blue-500', borderColor: 'border-l-blue-500/70' },
 };
-
-// ─── text ─────────────────────────────────────────────────────────────────────
-
-function getNotificationText(n: Notification): React.ReactNode {
-  const b = (s?: string) => <span className="font-semibold">{s}</span>;
-  switch (n.type) {
-    case 'comment_added':   return <>{b(n.actorName)} commented on {b(n.target.name)}</>;
-    case 'task_assigned':   return <>{b(n.actorName)} assigned {b(n.target.name)} to {b(n.assignee?.name)}</>;
-    case 'task_completed':  return <>{b(n.actorName)} completed {b(n.target.name)}</>;
-    case 'task_deleted':    return <>{b(n.actorName)} deleted task {b(n.target.name)}</>;
-    case 'project_added':   return <>{b(n.actorName)} created project {b(n.target.name)}</>;
-    case 'project_deleted': return <>{b(n.actorName)} deleted project {b(n.target.name)}</>;
-    case 'company_added':   return <>{b(n.actorName)} added company {b(n.target.name)}</>;
-    case 'company_deleted': return <>{b(n.actorName)} deleted company {b(n.target.name)}</>;
-    case 'silo_added':      return <>{b(n.actorName)} added silo {b(n.target.name)}</>;
-    case 'silo_deleted':    return <>{b(n.actorName)} deleted silo {b(n.target.name)}</>;
-    case 'sale_added':      return <>{b(n.actorName)} logged a sale: {b(n.target.name)}</>;
-    default:                return <>{b(n.actorName)} made a change</>;
-  }
-}
 
 function timeAgo(n: Notification) {
   if (!n.timestamp) return '';
@@ -121,7 +92,10 @@ interface CardProps {
   onDismiss: (n: Notification) => void;
   onToggleReply: (n: Notification) => void;
   onSendReply: (n: Notification) => void;
-  onBodyClick: (n: Notification) => void;
+  onOpenTask: (n: Notification) => void;
+  taskDialogData: { task: Task; path: string; notifId: string } | null;
+  taskDialogOpen: boolean;
+  onTaskDialogOpenChange: (v: boolean) => void;
 }
 
 function NotificationCard({
@@ -133,69 +107,63 @@ function NotificationCard({
   onDismiss,
   onToggleReply,
   onSendReply,
-  onBodyClick,
+  onOpenTask,
+  taskDialogData,
+  taskDialogOpen,
+  onTaskDialogOpenChange,
 }: CardProps) {
-  const cfg = typeCfg[n.type] ?? typeCfg.comment_added;
-
   return (
-    <div className={cn(
-      'mx-2 my-1 rounded-xl border-l-[3px]',
-      'bg-primary/[0.03] hover:bg-primary/[0.06] transition-colors',
-      cfg.borderColor,
-    )}>
+    <>
+    {taskDialogData?.notifId === n.id && (
+      <TaskDetailsDialog
+        task={taskDialogData.task}
+        path={taskDialogData.path}
+        open={taskDialogOpen}
+        onOpenChange={onTaskDialogOpenChange}
+      >
+        <span />
+      </TaskDetailsDialog>
+    )}
+    <div className="mx-2 my-1 rounded-xl border-l-[3px] border-l-blue-500/70 overflow-hidden bg-primary/[0.03] hover:bg-primary/[0.05] transition-colors">
       {/* main row */}
       <div className="flex items-start gap-3 px-3 pt-3 pb-2">
-        {/* actor avatar */}
-        <Avatar className="h-7 w-7 shrink-0 mt-0.5">
-          <AvatarFallback className={cn('text-[10px] font-bold', cfg.iconBg, cfg.iconColor)}>
+        <Avatar className="h-8 w-8 shrink-0 mt-0.5">
+          <AvatarImage src={n.actorAvatarUrl ?? undefined} />
+          <AvatarFallback className="text-[11px] font-bold text-white bg-blue-500">
             {initials(n.actorName || '?')}
           </AvatarFallback>
         </Avatar>
 
-        {/* content — clickable to navigate */}
-        <div
-          className="flex-1 min-w-0 cursor-pointer"
-          onClick={() => onBodyClick(n)}
-        >
-          <p className="text-[13px] leading-snug text-foreground">{getNotificationText(n)}</p>
-          {n.type === 'comment_added' && n.context?.commentText && (
-            <p className="mt-1 text-[12px] text-muted-foreground italic line-clamp-2 leading-relaxed">
-              "{n.context.commentText}"
-            </p>
-          )}
-          <div className="flex items-center gap-2 mt-1.5">
-            <span className={cn('inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full', cfg.iconBg, cfg.iconColor)}>
-              {cfg.icon}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <span className="text-[13px] font-bold leading-tight text-foreground truncate">
+              {n.actorName || 'Someone'}
             </span>
-            <span className="text-[11px] text-muted-foreground">{timeAgo(n)}</span>
-            {n.type === 'comment_added' && (
-              <button
-                className={cn(
-                  'text-[11px] font-medium transition-colors ml-1',
-                  isReplying ? 'text-primary' : 'text-muted-foreground hover:text-primary',
-                )}
-                onClick={e => { e.stopPropagation(); onToggleReply(n); }}
-              >
-                {isReplying ? 'Replying…' : '↩ Reply'}
-              </button>
-            )}
-            {/* unread dot */}
-            <span className="ml-auto h-2 w-2 rounded-full bg-blue-500 shrink-0" />
+            <span className="text-[11px] text-muted-foreground/70 shrink-0">{timeAgo(n)}</span>
           </div>
+          <p className="text-[12px] font-medium text-muted-foreground truncate mt-0.5">
+            {n.target.name}
+          </p>
+          {n.context?.commentText ? (
+            <p className="text-[13px] text-foreground/80 mt-1 line-clamp-2 leading-snug">
+              {n.context.commentText}
+            </p>
+          ) : (
+            <p className="text-[13px] text-muted-foreground/60 mt-1 italic">left a comment</p>
+          )}
         </div>
 
-        {/* X dismiss */}
         <button
           onClick={() => onDismiss(n)}
-          className="mt-0.5 h-6 w-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors shrink-0"
+          className="mt-0.5 h-6 w-6 rounded-full flex items-center justify-center text-muted-foreground/50 hover:text-foreground hover:bg-muted/60 transition-colors shrink-0"
           aria-label="Dismiss"
         >
-          <X className="h-3.5 w-3.5" />
+          <X className="h-3 w-3" />
         </button>
       </div>
 
-      {/* inline reply form */}
-      {isReplying && (
+      {/* action bar or reply form */}
+      {isReplying ? (
         <div className="px-3 pb-3" onClick={e => e.stopPropagation()}>
           <Textarea
             autoFocus
@@ -206,6 +174,7 @@ function NotificationCard({
             className="text-sm resize-none bg-background/60"
             onKeyDown={e => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); onSendReply(n); }
+              if (e.key === 'Escape') onToggleReply(n);
             }}
           />
           <div className="flex justify-end gap-2 mt-2">
@@ -218,8 +187,27 @@ function NotificationCard({
             </Button>
           </div>
         </div>
+      ) : (
+        <div className="flex border-t border-border/30">
+          <button
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[12px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+            onClick={e => { e.stopPropagation(); onToggleReply(n); }}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            Reply
+          </button>
+          <div className="w-px bg-border/30" />
+          <button
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[12px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+            onClick={e => { e.stopPropagation(); onOpenTask(n); }}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Open Task
+          </button>
+        </div>
       )}
     </div>
+    </>
   );
 }
 
@@ -261,6 +249,8 @@ export function Notifications() {
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [isSendingReply, setIsSendingReply] = useState(false);
+  const [taskDialogData, setTaskDialogData] = useState<{ task: Task; path: string; notifId: string } | null>(null);
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
 
   const { notifications, isLoading, unreadCount } = usePersonalNotifications();
   const { user } = useUser();
@@ -284,39 +274,70 @@ export function Notifications() {
     await batch.commit().catch(console.error);
   };
 
-  // X pressed — mark as read (removes from personal unread list)
+  // Resolve siloId: check context first, then scan silos in Firestore as fallback.
+  const resolveSiloId = useCallback(async (
+    n: Notification, companyId: string, projectId: string,
+  ): Promise<string | null> => {
+    if (n.context?.siloId) return n.context.siloId;
+    if (!selectedWorkspace) return null;
+    try {
+      const silosSnap = await getDocs(
+        collection(firestore, `workspaces/${selectedWorkspace.id}/companies/${companyId}/projects/${projectId}/silos`),
+      );
+      for (const siloDoc of silosSnap.docs) {
+        const taskSnap = await getDoc(
+          doc(firestore, `workspaces/${selectedWorkspace.id}/companies/${companyId}/projects/${projectId}/silos/${siloDoc.id}/tasks/${n.target.id}`),
+        );
+        if (taskSnap.exists()) return siloDoc.id;
+      }
+    } catch (e) {
+      console.error('Failed to resolve siloId:', e);
+    }
+    return null;
+  }, [selectedWorkspace, firestore]);
+
   const handleDismiss = useCallback((n: Notification) => {
     markRead(n.id);
     if (replyingTo === n.id) setReplyingTo(null);
   }, [markRead, replyingTo]);
-
-  // Body click — navigate; for comments, toggle reply form
-  const handleBodyClick = useCallback((n: Notification) => {
-    if (n.type === 'comment_added') {
-      setReplyingTo(prev => prev === n.id ? null : n.id);
-      setReplyText('');
-    } else if (n.target.path) {
-      router.push(n.target.path);
-    }
-  }, [router]);
 
   const handleToggleReply = useCallback((n: Notification) => {
     setReplyingTo(prev => prev === n.id ? null : n.id);
     setReplyText('');
   }, []);
 
+  const handleOpenTask = useCallback(async (n: Notification) => {
+    if (!selectedWorkspace) return;
+    const match = n.target.path.match(/\/company\/([^/]+)\/project\/([^/]+)/);
+    if (!match) return;
+    const [, companyId, projectId] = match;
+    try {
+      const siloId = await resolveSiloId(n, companyId, projectId);
+      if (!siloId) return;
+      const taskPath = `workspaces/${selectedWorkspace.id}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks/${n.target.id}`;
+      const taskSnap = await getDoc(doc(firestore, taskPath));
+      if (!taskSnap.exists()) return;
+      const task = { id: taskSnap.id, ...taskSnap.data() } as Task;
+      setTaskDialogData({ task, path: taskPath, notifId: n.id });
+      setTaskDialogOpen(true);
+      setIsOpen(false); // close the popover so the dialog has room
+    } catch (e) {
+      console.error('Failed to open task:', e);
+    }
+  }, [selectedWorkspace, firestore, resolveSiloId]);
+
   const handleSendReply = useCallback(async (n: Notification) => {
     if (!replyText.trim() || !user || !selectedWorkspace) return;
     const match = n.target.path.match(/\/company\/([^/]+)\/project\/([^/]+)/);
-    if (!match) { router.push(n.target.path); return; }
+    if (!match) return;
     const [, companyId, projectId] = match;
-    const siloId = n.context?.siloId;
-    if (!siloId) { router.push(n.target.path); return; }
 
     setIsSendingReply(true);
     try {
-      const path = `workspaces/${selectedWorkspace.id}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks/${n.target.id}/comments`;
-      await addDoc(collection(firestore, path), {
+      const siloId = await resolveSiloId(n, companyId, projectId);
+      if (!siloId) return;
+      const commentsPath = `workspaces/${selectedWorkspace.id}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks/${n.target.id}/comments`;
+      await addDoc(collection(firestore, commentsPath), {
         text: replyText,
         createdBy: user.uid,
         createdAt: serverTimestamp(),
@@ -330,7 +351,7 @@ export function Notifications() {
     } finally {
       setIsSendingReply(false);
     }
-  }, [replyText, user, selectedWorkspace, firestore, markRead, router]);
+  }, [replyText, user, selectedWorkspace, firestore, markRead, resolveSiloId]);
 
   // group by date label
   const grouped = useMemo(() => {
@@ -351,7 +372,10 @@ export function Notifications() {
     onDismiss: handleDismiss,
     onToggleReply: handleToggleReply,
     onSendReply: handleSendReply,
-    onBodyClick: handleBodyClick,
+    onOpenTask: handleOpenTask,
+    taskDialogData,
+    taskDialogOpen,
+    onTaskDialogOpenChange: (v: boolean) => { setTaskDialogOpen(v); if (!v) setTaskDialogData(null); },
   };
 
   return (
