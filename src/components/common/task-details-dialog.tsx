@@ -63,10 +63,12 @@ interface MentionTextareaProps {
   members: WorkspaceMember[];
   placeholder?: string;
   rows?: number;
+  onFocus?: () => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
 }
 
 function MentionTextarea({
-  value, onChange, onMentionsChange, members, placeholder, rows = 3,
+  value, onChange, onMentionsChange, members, placeholder, rows = 3, onFocus, onKeyDown: onKeyDownProp,
 }: MentionTextareaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -120,6 +122,7 @@ function MentionTextarea({
       setMentionQuery(null);
       e.preventDefault();
     }
+    onKeyDownProp?.(e);
   };
 
   return (
@@ -129,8 +132,10 @@ function MentionTextarea({
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
+        onFocus={onFocus}
         placeholder={placeholder}
         rows={rows}
+        className="resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 p-0 text-sm placeholder:text-muted-foreground/50"
       />
       {mentionQuery !== null && filtered.length > 0 && (
         <div className="absolute bottom-full left-0 mb-1 z-50 w-52 rounded-xl border bg-popover shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-1 duration-150">
@@ -161,74 +166,133 @@ function MentionTextarea({
 
 // ──────────────────────────────────────────────────────────────────────────────
 
-function CommentItem({ comment, path, level = 0 }: { comment: Comment; path: string; level?: number }) {
+const AVATAR_COLORS = [
+  'bg-violet-500', 'bg-blue-500', 'bg-emerald-500', 'bg-amber-500',
+  'bg-rose-500', 'bg-cyan-500', 'bg-indigo-500', 'bg-pink-500',
+];
+
+function getAvatarColor(uid: string): string {
+  let hash = 0;
+  for (let i = 0; i < uid.length; i++) hash = uid.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function CommentAvatar({ name, avatarUrl, uid, size = 'md' }: { name?: string | null; avatarUrl?: string | null; uid: string; size?: 'sm' | 'md' }) {
+  const initials = name?.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2) || '?';
+  const color = getAvatarColor(uid);
+  const sizeClass = size === 'sm' ? 'h-6 w-6 text-[9px]' : 'h-8 w-8 text-xs';
+  return (
+    <Avatar className={sizeClass}>
+      <AvatarImage src={avatarUrl ?? undefined} />
+      <AvatarFallback className={cn(color, 'text-white font-semibold')}>{initials}</AvatarFallback>
+    </Avatar>
+  );
+}
+
+function renderCommentText(text: string) {
+  const parts = text.split(/(@\w[\w\s]*)/g);
+  return parts.map((part, i) =>
+    part.startsWith('@') ? (
+      <span key={i} className="text-primary font-medium bg-primary/8 rounded px-0.5">{part}</span>
+    ) : part
+  );
+}
+
+function CommentItem({ comment, path, isReply = false }: { comment: Comment; path: string; isReply?: boolean }) {
   const [showReply, setShowReply] = useState(false);
   const firestore = useFirestore();
   const { user } = useUser();
   const [replyText, setReplyText] = useState('');
-  
+  const [posting, setPosting] = useState(false);
+
   const repliesPath = `${path}/${comment.id}/comments`;
   const repliesQuery = useMemoFirebase(() => query(collection(firestore, repliesPath), orderBy('createdAt', 'asc')), [firestore, repliesPath]);
   const { data: replies } = useCollection<Comment>(repliesQuery);
 
   const handlePostReply = async () => {
     if (!replyText.trim() || !user) return;
-    const repliesCol = collection(firestore, repliesPath);
-    await addDoc(repliesCol, {
-      text: replyText,
-      createdBy: user.uid,
-      createdAt: serverTimestamp(),
-      author: {
-        name: user.displayName,
-        avatarUrl: user.photoURL,
-      }
-    });
-    setReplyText('');
-    setShowReply(false);
+    setPosting(true);
+    try {
+      await addDoc(collection(firestore, repliesPath), {
+        text: replyText,
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+        author: { name: user.displayName, avatarUrl: user.photoURL },
+      });
+      setReplyText('');
+      setShowReply(false);
+    } finally {
+      setPosting(false);
+    }
   };
 
+  const date = safeToDate(comment.createdAt);
+  const uid = comment.createdBy || comment.author?.name || 'unknown';
+
   return (
-    <div style={{ marginLeft: `${level * 2}rem` }}>
+    <div className={cn('group', isReply && 'ml-10 mt-2')}>
       <div className="flex items-start gap-3">
-        <Avatar className="h-8 w-8">
-          <AvatarImage src={comment.author?.avatarUrl ?? undefined} />
-          <AvatarFallback>{comment.author?.name?.charAt(0).toUpperCase()}</AvatarFallback>
-        </Avatar>
-        <div className="flex-1">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="font-semibold">{comment.author?.name}</span>
-            <span className="text-xs text-muted-foreground">
-              {(() => {
-                const date = safeToDate(comment.createdAt);
-                return date ? formatDistanceToNow(date, { addSuffix: true }) : 'just now';
-              })()}
-            </span>
+        <CommentAvatar
+          name={comment.author?.name}
+          avatarUrl={comment.author?.avatarUrl}
+          uid={uid}
+          size={isReply ? 'sm' : 'md'}
+        />
+        <div className="flex-1 min-w-0">
+          <div className={cn(
+            'rounded-xl px-3.5 py-2.5 border transition-colors',
+            'bg-muted/40 border-border/60 hover:border-border',
+          )}>
+            <div className="flex items-baseline gap-2 mb-1">
+              <span className="text-sm font-semibold leading-none">{comment.author?.name || 'Unknown'}</span>
+              <span className="text-[11px] text-muted-foreground/70 leading-none">
+                {date ? formatDistanceToNow(date, { addSuffix: true }) : 'just now'}
+              </span>
+            </div>
+            <p className="text-sm leading-relaxed text-foreground/90 break-words">
+              {renderCommentText(comment.text)}
+            </p>
           </div>
-          <p className="text-sm mt-1">{comment.text}</p>
-          <Button variant="link" size="sm" className="p-0 h-auto" onClick={() => setShowReply(!showReply)}>
-            Reply
-          </Button>
+          {!isReply && (
+            <button
+              onClick={() => setShowReply(!showReply)}
+              className="mt-1 ml-1 text-[11px] text-muted-foreground/60 hover:text-primary transition-colors font-medium opacity-0 group-hover:opacity-100"
+            >
+              Reply
+            </button>
+          )}
         </div>
       </div>
+
       {showReply && (
-        <div className="mt-2 ml-11 flex flex-col gap-2">
+        <div className="ml-10 mt-2 flex flex-col gap-2 animate-in fade-in slide-in-from-top-1 duration-150">
           <Textarea
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
-            placeholder="Write a reply..."
+            placeholder="Write a reply…"
             rows={2}
+            className="text-sm resize-none bg-background/80"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handlePostReply();
+              if (e.key === 'Escape') setShowReply(false);
+            }}
           />
           <div className="flex justify-end gap-2">
-             <Button variant="ghost" size="sm" onClick={() => setShowReply(false)}>Cancel</Button>
-             <Button size="sm" onClick={handlePostReply}>Post Reply</Button>
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setShowReply(false)}>Cancel</Button>
+            <Button size="sm" className="h-7 text-xs" onClick={handlePostReply} disabled={posting || !replyText.trim()}>
+              {posting ? 'Posting…' : 'Reply'}
+            </Button>
           </div>
         </div>
       )}
-      <div className="mt-4 space-y-4">
-        {replies?.map(reply => (
-          <CommentItem key={reply.id} comment={reply} path={repliesPath} level={0} />
-        ))}
-      </div>
+
+      {replies && replies.length > 0 && (
+        <div className="mt-2 space-y-2 ml-1 border-l-2 border-border/40 pl-2">
+          {replies.map(reply => (
+            <CommentItem key={reply.id} comment={reply} path={repliesPath} isReply />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -301,6 +365,8 @@ function SuggestionsSection({ task }: { task: Task }) {
 function CommentsSection({ taskPath }: { taskPath: string }) {
   const [newComment, setNewComment] = useState('');
   const [mentionedUids, setMentionedUids] = useState<string[]>([]);
+  const [posting, setPosting] = useState(false);
+  const [focused, setFocused] = useState(false);
   const firestore = useFirestore();
   const { user } = useUser();
   const { selectedWorkspace } = useSelectedWorkspace();
@@ -323,42 +389,98 @@ function CommentsSection({ taskPath }: { taskPath: string }) {
 
   const handlePostComment = async () => {
     if (!newComment.trim() || !user) return;
-    const commentsCol = collection(firestore, commentsPath);
-    await addDoc(commentsCol, {
-      text: newComment,
-      createdBy: user.uid,
-      createdAt: serverTimestamp(),
-      mentionedUids,
-      author: {
-        name: user.displayName,
-        avatarUrl: user.photoURL,
-      },
-    });
-    setNewComment('');
-    setMentionedUids([]);
+    setPosting(true);
+    try {
+      await addDoc(collection(firestore, commentsPath), {
+        text: newComment,
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+        mentionedUids,
+        author: { name: user.displayName, avatarUrl: user.photoURL },
+      });
+      setNewComment('');
+      setMentionedUids([]);
+      setFocused(false);
+    } finally {
+      setPosting(false);
+    }
   };
 
   return (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold">Comments</h3>
-      <div className="flex flex-col gap-2">
-        <MentionTextarea
-          value={newComment}
-          onChange={setNewComment}
-          onMentionsChange={setMentionedUids}
-          members={members}
-          placeholder="Add a comment… type @ to mention someone"
-        />
-        <Button onClick={handlePostComment} className="self-end">Post Comment</Button>
-      </div>
-      <Separator />
-      <div className="space-y-6">
-        {comments && comments.length > 0 ? (
-          comments.map(comment => <CommentItem key={comment.id} comment={comment} path={commentsPath} />)
-        ) : (
-          <p className="text-sm text-center text-muted-foreground py-4">No comments yet. Start the conversation!</p>
+    <div className="space-y-5">
+      <div className="flex items-center gap-2">
+        <h3 className="text-base font-semibold">Discussion</h3>
+        {comments && comments.length > 0 && (
+          <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5 font-medium">
+            {comments.length}
+          </span>
         )}
       </div>
+
+      {/* Composer */}
+      <div className={cn(
+        'rounded-xl border transition-all duration-200',
+        focused ? 'border-primary/50 shadow-sm shadow-primary/10 bg-background' : 'border-border bg-muted/30',
+      )}>
+        <div className="flex items-start gap-3 p-3">
+          {user && (
+            <CommentAvatar
+              name={user.displayName}
+              avatarUrl={user.photoURL}
+              uid={user.uid}
+            />
+          )}
+          <div className="flex-1 min-w-0">
+            <MentionTextarea
+              value={newComment}
+              onChange={setNewComment}
+              onMentionsChange={setMentionedUids}
+              members={members}
+              placeholder="Add a comment… type @ to mention someone"
+              rows={focused ? 3 : 2}
+              onFocus={() => setFocused(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handlePostComment();
+                if (e.key === 'Escape') { setNewComment(''); setFocused(false); }
+              }}
+            />
+          </div>
+        </div>
+        {(focused || newComment.trim()) && (
+          <div className="flex items-center justify-between px-3 pb-3 animate-in fade-in slide-in-from-top-1 duration-150">
+            <p className="text-[11px] text-muted-foreground/50">⌘↵ to submit · Esc to cancel</p>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost" size="sm" className="h-7 text-xs"
+                onClick={() => { setNewComment(''); setFocused(false); }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm" className="h-7 text-xs"
+                onClick={handlePostComment}
+                disabled={posting || !newComment.trim()}
+              >
+                {posting ? 'Posting…' : 'Comment'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Comment list */}
+      {comments && comments.length > 0 ? (
+        <div className="space-y-4" onClick={() => setFocused(false)}>
+          {comments.map(comment => (
+            <CommentItem key={comment.id} comment={comment} path={commentsPath} />
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-8 space-y-1">
+          <p className="text-sm font-medium text-muted-foreground">No comments yet</p>
+          <p className="text-xs text-muted-foreground/60">Be the first to start the discussion</p>
+        </div>
+      )}
     </div>
   );
 }
