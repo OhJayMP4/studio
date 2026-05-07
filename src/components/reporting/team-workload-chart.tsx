@@ -269,26 +269,28 @@ export function TeamWorkloadChart({ workspaceId, members }: TeamWorkloadChartPro
                     })
                 );
 
-                // For any uid not resolved from the workspace map, fetch /users/{uid}
+                // Always fetch /users/{uid} profiles — the workspace.users map
+                // often has null name/email so it can't be relied on for display.
                 const resolvedNames: Record<string, string> = {};
                 await Promise.all(
                     Object.keys(counts).map(async (uid) => {
-                        if (memberMap[uid]) {
-                            resolvedNames[uid] = displayName(memberMap[uid]);
-                        } else {
-                            try {
-                                const userSnap = await getDoc(doc(firestore, 'users', uid));
-                                if (userSnap.exists()) {
-                                    const d = userSnap.data() as { name?: string | null; email?: string | null };
-                                    resolvedNames[uid] = d.name && !d.name.includes('@')
-                                        ? d.name
-                                        : d.email?.split('@')[0] ?? uid.slice(0, 8);
-                                } else {
-                                    resolvedNames[uid] = uid.slice(0, 8);
-                                }
-                            } catch {
-                                resolvedNames[uid] = uid.slice(0, 8);
+                        try {
+                            const userSnap = await getDoc(doc(firestore, 'users', uid));
+                            if (userSnap.exists()) {
+                                const d = userSnap.data() as { name?: string | null; email?: string | null };
+                                const name = d.name && !d.name.includes('@') ? d.name : null;
+                                const emailPrefix = d.email?.split('@')[0] ?? null;
+                                resolvedNames[uid] = name ?? emailPrefix ?? uid.slice(0, 8);
+                            } else {
+                                // Fall back to workspace map if user doc missing
+                                resolvedNames[uid] = memberMap[uid]
+                                    ? displayName(memberMap[uid])
+                                    : uid.slice(0, 8);
                             }
+                        } catch {
+                            resolvedNames[uid] = memberMap[uid]
+                                ? displayName(memberMap[uid])
+                                : uid.slice(0, 8);
                         }
                     })
                 );
