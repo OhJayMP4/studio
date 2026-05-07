@@ -198,50 +198,80 @@ function ToastCard({ notification: n, onDismiss }: ToastCardProps) {
   );
 }
 
+// ─── helper: should this notification toast for the given user? ───────────────
+
+function isPersonallyRelevant(notif: Notification, uid: string): boolean {
+  // Never toast for your own actions
+  if (notif.actorUid === uid) return false;
+
+  switch (notif.type) {
+    case 'task_assigned':
+      return notif.assignee?.uid === uid;
+    case 'comment_added':
+      // isRelevantTo includes the user (works for both old CF = everyone
+      // and new CF = targeted to assignee + mentions)
+      return Array.isArray(notif.isRelevantTo) && notif.isRelevantTo.includes(uid);
+    case 'task_completed':
+      return Array.isArray(notif.isRelevantTo) && notif.isRelevantTo.includes(uid);
+    default:
+      return false;
+  }
+}
+
 // ─── toast manager (exported — rendered in layout) ────────────────────────────
 
 export function NotificationToasts() {
   const [toasts, setToasts] = useState<Notification[]>([]);
+  // seenIds tracks docs already present when the listener started
   const seenIds = useRef<Set<string>>(new Set());
-  const initialLoadDone = useRef(false);
+  // currentUid ref so the onSnapshot closure always has the latest uid
+  const currentUid = useRef<string>('');
 
   const { selectedWorkspace } = useSelectedWorkspace();
   const { user } = useUser();
   const firestore = useFirestore();
 
+  // Keep the uid ref in sync with auth state
+  useEffect(() => {
+    currentUid.current = user?.uid ?? '';
+  }, [user?.uid]);
+
   useEffect(() => {
     if (!selectedWorkspace?.id || !user?.uid) return;
 
-    // Reset on workspace change
+    // Reset seen state when workspace changes
     seenIds.current = new Set();
-    initialLoadDone.current = false;
 
     const q = query(
       collection(firestore, `notifications/${selectedWorkspace.id}/activities`),
       orderBy('timestamp', 'desc'),
-      limit(20),
+      limit(30),
     );
 
+    let isFirstSnapshot = true;
+
     const unsubscribe = onSnapshot(q, snapshot => {
-      if (!initialLoadDone.current) {
+      if (isFirstSnapshot) {
+        // Record all currently-existing docs so we don't toast old notifications
         snapshot.docs.forEach(d => seenIds.current.add(d.id));
-        initialLoadDone.current = true;
+        isFirstSnapshot = false;
         return;
       }
 
+      const uid = currentUid.current;
+      if (!uid) return;
+
       const fresh: Notification[] = [];
-      snapshot.docs.forEach(d => {
-        if (!seenIds.current.has(d.id)) {
-          seenIds.current.add(d.id);
-          const notif = { id: d.id, ...d.data() } as Notification;
-          // Only toast for relevant events that weren't triggered by the current user
-          if (
-            Array.isArray(notif.isRelevantTo) &&
-            notif.isRelevantTo.includes(user.uid) &&
-            notif.actorUid !== user.uid
-          ) {
-            fresh.push(notif);
-          }
+      snapshot.docChanges().forEach(change => {
+        // Only care about newly-added documents
+        if (change.type !== 'added') return;
+        const d = change.doc;
+        if (seenIds.current.has(d.id)) return;
+        seenIds.current.add(d.id);
+
+        const notif = { id: d.id, ...d.data() } as Notification;
+        if (isPersonallyRelevant(notif, uid)) {
+          fresh.push(notif);
         }
       });
 
@@ -253,6 +283,7 @@ export function NotificationToasts() {
     return () => {
       unsubscribe();
       setToasts([]);
+      isFirstSnapshot = true;
     };
   }, [selectedWorkspace?.id, user?.uid, firestore]);
 

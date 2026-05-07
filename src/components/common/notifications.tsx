@@ -91,15 +91,37 @@ function usePersonalNotifications() {
 
   const { data, isLoading } = useCollection<Notification>(q);
 
-  // personal = relevant to me AND not sent by me AND unread
+  // Personal = notifications directed at ME that I haven't dismissed yet.
+  // We use type-specific rules so the bell works correctly for both
+  // single-user workspaces (where actorUid === user.uid for most events)
+  // and the intended multi-user case.
   const personal = useMemo(() => {
     if (!data || !user) return [];
-    return data.filter(n =>
-      Array.isArray(n.isRelevantTo) &&
-      n.isRelevantTo.includes(user.uid) &&
-      n.actorUid !== user.uid &&
-      !n.readBy.includes(user.uid),
-    );
+    return data.filter(n => {
+      // already dismissed (marked read) → hide
+      if (n.readBy.includes(user.uid)) return false;
+
+      switch (n.type) {
+        case 'task_assigned':
+          // Show when the task was assigned TO me (regardless of who assigned)
+          return n.assignee?.uid === user.uid;
+
+        case 'comment_added':
+          // Show when someone ELSE commented and I'm in the relevant audience
+          if (n.actorUid === user.uid) return false;
+          // isRelevantTo includes me (either old CF = everyone, or new CF = targeted)
+          return Array.isArray(n.isRelevantTo) && n.isRelevantTo.includes(user.uid);
+
+        case 'task_completed':
+          // Show if someone else completed a task and I'm relevant
+          return n.actorUid !== user.uid &&
+            Array.isArray(n.isRelevantTo) && n.isRelevantTo.includes(user.uid);
+
+        // Workspace-wide events live in Activity Log only, not personal bell
+        default:
+          return false;
+      }
+    });
   }, [data, user]);
 
   return { notifications: personal, isLoading, unreadCount: personal.length };
