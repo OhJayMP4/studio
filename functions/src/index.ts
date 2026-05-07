@@ -193,11 +193,22 @@ exports.onCommentCreate = functions.firestore
         const taskTitle = taskSnap.data()?.title || '';
         const taskAssigneeId: string | undefined = taskSnap.data()?.assigneeId;
 
-        // Targeted audience: task assignee + explicitly @mentioned users (never the actor)
+        // Targeted audience: task assignee + @mentioned users + anyone who has
+        // previously commented on this task (thread participants), minus the actor.
         const mentionedUids: string[] = Array.isArray(commentData.mentionedUids) ? commentData.mentionedUids : [];
+
+        // Fetch existing comments to collect thread participants
+        const existingCommentsSnap = await db
+            .collection(`workspaces/${workspaceId}/companies/${companyId}/projects/${projectId}/silos/${siloId}/tasks/${taskId}/comments`)
+            .get();
+        const threadParticipantUids: string[] = existingCommentsSnap.docs
+            .map(d => d.data().createdBy as string)
+            .filter(uid => uid && uid !== actorUid && uid !== snap.id); // exclude actor and the new comment itself
+
         const targeted = new Set<string>();
         if (taskAssigneeId && taskAssigneeId !== actorUid) targeted.add(taskAssigneeId);
         mentionedUids.forEach((uid: string) => { if (uid !== actorUid) targeted.add(uid); });
+        threadParticipantUids.forEach((uid: string) => targeted.add(uid));
 
         // Fall back to all workspace members if no specific targets found
         const relevantAudience = targeted.size > 0
