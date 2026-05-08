@@ -187,7 +187,8 @@ export default function SaturnPage() {
     if (!user) return null;
     return query(collection(firestore, `users/${user.uid}/saturn-chats`), orderBy('updatedAt', 'desc'));
   }, [firestore, user]);
-  const { data: chatHistory } = useCollection<SaturnChat>(chatsQuery);
+  const { data: allChatHistory } = useCollection<SaturnChat>(chatsQuery);
+  const chatHistory = allChatHistory?.filter(c => c.workspaceId === selectedWorkspace?.id);
 
   // ── user tasks ────────────────────────────────────────────────────────────
   const tasksQuery = useMemoFirebase(() => {
@@ -296,16 +297,16 @@ export default function SaturnPage() {
   // ── chat persistence ──────────────────────────────────────────────────────
 
   const saveChat = useCallback(async (msgs: SaturnMessage[], chatId: string | null): Promise<string> => {
-    if (!user) return chatId ?? '';
+    if (!user || !selectedWorkspace) return chatId ?? '';
     const title = msgs.find(m => m.role === 'user')?.content.slice(0, 60) || 'New chat';
     const chatsRef = collection(firestore, `users/${user.uid}/saturn-chats`);
     if (!chatId) {
-      const newDoc = await addDoc(chatsRef, { title, messages: msgs, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      const newDoc = await addDoc(chatsRef, { title, messages: msgs, workspaceId: selectedWorkspace.id, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
       return newDoc.id;
     }
     await updateDoc(doc(chatsRef, chatId), { messages: msgs, updatedAt: serverTimestamp() });
     return chatId;
-  }, [user, firestore]);
+  }, [user, firestore, selectedWorkspace]);
 
   const loadChat = (chat: SaturnChat) => {
     setCurrentChatId(chat.id);
@@ -321,6 +322,12 @@ export default function SaturnPage() {
     setInput('');
     setTimeout(() => textareaRef.current?.focus(), 100);
   };
+
+  // Reset conversation when switching workspaces
+  useEffect(() => {
+    newChat();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedWorkspace?.id]);
 
   const deleteChat = async (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation();

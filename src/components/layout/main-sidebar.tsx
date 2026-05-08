@@ -64,7 +64,7 @@ export default function MainSidebar() {
       return <LucideIcon {...props} />;
   };
 
-  const coreModuleIds = ['dashboard', 'companies', 'reporting', 'my-tasks'];
+  const coreModuleIds = ['dashboard', 'companies', 'reporting', 'my-tasks', 'saturn'];
 
   if (!mounted) return null;
 

@@ -229,6 +229,7 @@ export type SaturnChat = {
   id: string;
   title: string;
   messages: { role: 'user' | 'model'; content: string }[];
+  workspaceId?: string;
   createdAt: any;
   updatedAt: any;
 };
