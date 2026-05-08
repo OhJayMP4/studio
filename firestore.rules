@@ -35,6 +35,10 @@ service cloud.firestore {
       allow get: if isSignedIn();
       allow list: if false;
       allow create, update, delete: if isSignedIn() && isOwner(userId);
+
+      match /saturn-chats/{chatId} {
+        allow read, write: if isSignedIn() && isOwner(userId);
+      }
     }
 
     match /workspaces/{workspaceId} {
@@ -47,6 +51,28 @@ service cloud.firestore {
       match /chatMessages/{messageId} {
         allow read, create: if isMemberOfWorkspace(workspaceId);
         allow update, delete: if isMemberOfWorkspace(workspaceId) && isOwner(resource.data.senderId);
+      }
+
+      match /saturn-workspace-memory/{docId} {
+        allow read: if isMemberOfWorkspace(workspaceId);
+        allow write: if isMemberOfWorkspace(workspaceId);
+      }
+
+      match /saturn-user-memory/{userId} {
+        allow read: if isMemberOfWorkspace(workspaceId);
+        allow write: if isSignedIn() && isOwner(userId);
+      }
+
+      // Cloud storage connections (Google Drive, OneDrive) — scaffold for future integration
+      match /saturn-cloud-connections/{connectionId} {
+        allow read: if isMemberOfWorkspace(workspaceId);
+        allow write: if isWorkspaceAdmin(workspaceId);
+      }
+
+      // Indexed file metadata from connected cloud storage
+      match /saturn-indexed-files/{fileId} {
+        allow read: if isMemberOfWorkspace(workspaceId);
+        allow write: if isWorkspaceAdmin(workspaceId);
       }
 
       match /companies/{companyId} {

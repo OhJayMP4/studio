@@ -225,6 +225,43 @@ export type WorkspaceFile = {
     workspaceId: string;
 };
 
+export type SaturnChat = {
+  id: string;
+  title: string;
+  messages: { role: 'user' | 'model'; content: string }[];
+  createdAt: any;
+  updatedAt: any;
+};
+
+// Cloud storage integration — used when Google Drive / OneDrive is connected to a workspace
+export type SaturnCloudConnection = {
+  id: string;
+  workspaceId: string;
+  provider: 'google_drive' | 'onedrive';
+  accountEmail: string;
+  rootFolderId?: string;
+  connectedBy: string;
+  connectedAt: any;
+  lastSyncedAt?: any;
+  status: 'active' | 'expired' | 'error';
+};
+
+export type SaturnIndexedFile = {
+  id: string;
+  workspaceId: string;
+  connectionId: string;
+  provider: 'google_drive' | 'onedrive';
+  fileId: string;          // provider's file ID
+  fileName: string;
+  mimeType: string;
+  webViewUrl: string;      // link to open in browser
+  downloadUrl?: string;    // direct download link (time-limited for Drive)
+  filePath: string;        // folder path e.g. "Reports/Q3/..."
+  summary?: string;        // AI-generated summary stored after indexing
+  indexedAt: any;
+  updatedAt: any;
+};
+
 export const SocialPlatforms = ["facebook", "instagram", "linkedin", "x"] as const;
 export type SocialPlatform = typeof SocialPlatforms[number];
 

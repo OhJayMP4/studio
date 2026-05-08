@@ -4,6 +4,7 @@ import { GlobalSearch } from "../common/global-search";
 import { Notifications } from "../common/notifications";
 import { ActivityLog } from "../common/activity-log";
 import { PresenceAvatars } from "../common/presence-avatars";
+import { SaturnHeaderButton } from "../common/saturn-header-button";
 
 export default function Header() {
   return (
@@ -13,6 +14,7 @@ export default function Header() {
       <div className="ml-auto flex items-center gap-1">
         <GlobalSearch />
         <GlobalQuickAdd />
+        <SaturnHeaderButton />
         <div className="w-px h-5 bg-border mx-1" />
         <ActivityLog />
         <Notifications />

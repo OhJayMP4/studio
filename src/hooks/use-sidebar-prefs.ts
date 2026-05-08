@@ -13,13 +13,14 @@ export const availableModules: (Omit<SidebarModule, 'order' | 'hidden'> & {descr
     { id: 'social-accounts', label: 'Social Accounts', icon: 'Settings2', route: '/admin/social-accounts', description: 'Manage connected social media accounts.' },
 ];
 
-const coreModuleIds = ['dashboard', 'companies', 'reporting', 'my-tasks'];
+const coreModuleIds = ['dashboard', 'companies', 'reporting', 'my-tasks', 'saturn'];
 
 const defaultSidebarModules: SidebarModule[] = [
     { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', route: '/dashboard', hidden: false, order: 0 },
     { id: 'companies', label: 'Companies', icon: 'Building', route: '/companies', hidden: false, order: 1 },
     { id: 'reporting', label: 'Reporting', icon: 'BarChart', route: '/reporting', hidden: false, order: 2 },
     { id: 'my-tasks', label: 'My Tasks', icon: 'ClipboardCheck', route: '/my-tasks', hidden: false, order: 3 },
+    { id: 'saturn', label: 'Saturn AI', icon: 'Orbit', route: '/saturn', hidden: false, order: 4 },
 ]
 
 export const useUserPrefs = () => {
@@ -60,19 +61,27 @@ export const useUserPrefs = () => {
     if (!rawPrefs) return null;
     
     // Self-healing: Fix incorrect routes and ensure core modules are visible
-    const correctedModules = rawPrefs.sidebarModules.map(module => {
+    let correctedModules = rawPrefs.sidebarModules.map(module => {
         if (coreModuleIds.includes(module.id)) {
             return { ...module, hidden: false };
         }
-        
+
         const masterModule = availableModules.find(am => am.id === module.id);
         if (masterModule && masterModule.route !== module.route) {
             return { ...module, route: masterModule.route };
         }
-        
+
         return module;
     });
-    
+
+    // Inject Saturn AI for existing users who don't have it yet
+    if (!correctedModules.find(m => m.id === 'saturn')) {
+        correctedModules = [
+            ...correctedModules,
+            { id: 'saturn', label: 'Saturn AI', icon: 'Orbit', route: '/saturn', hidden: false, order: correctedModules.length },
+        ];
+    }
+
     return { ...rawPrefs, sidebarModules: correctedModules };
   }, [rawPrefs]);
 
