@@ -20,7 +20,8 @@ const defaultSidebarModules: SidebarModule[] = [
     { id: 'companies', label: 'Companies', icon: 'Building', route: '/companies', hidden: false, order: 1 },
     { id: 'reporting', label: 'Reporting', icon: 'BarChart', route: '/reporting', hidden: false, order: 2 },
     { id: 'my-tasks', label: 'My Tasks', icon: 'ClipboardCheck', route: '/my-tasks', hidden: false, order: 3 },
-    { id: 'saturn', label: 'Saturn AI', icon: 'Orbit', route: '/saturn', hidden: false, order: 4 },
+    { id: 'files', label: 'Files', icon: 'Folder', route: '/files', hidden: false, order: 4 },
+    { id: 'saturn', label: 'Saturn AI', icon: 'Orbit', route: '/saturn', hidden: false, order: 5 },
 ]
 
 export const useUserPrefs = () => {
@@ -79,6 +80,14 @@ export const useUserPrefs = () => {
         correctedModules = [
             ...correctedModules,
             { id: 'saturn', label: 'Saturn AI', icon: 'Orbit', route: '/saturn', hidden: false, order: correctedModules.length },
+        ];
+    }
+
+    // Inject Files for existing users who don't have it yet, defaulted to visible but still removable
+    if (!correctedModules.find(m => m.id === 'files')) {
+        correctedModules = [
+            ...correctedModules,
+            { id: 'files', label: 'Files', icon: 'Folder', route: '/files', hidden: false, order: correctedModules.length },
         ];
     }
 
