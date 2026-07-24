@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { Sheet, SheetContent } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Tooltip,
@@ -30,8 +29,6 @@ type SidebarContext = {
   state: "expanded" | "collapsed"
   open: boolean
   setOpen: (open: boolean) => void
-  openMobile: boolean
-  setOpenMobile: (open: boolean) => void
   isMobile: boolean
   toggleSidebar: () => void
 }
@@ -68,7 +65,6 @@ const SidebarProvider = React.forwardRef<
     ref
   ) => {
     const isMobile = useIsMobile()
-    const [openMobile, setOpenMobile] = React.useState(false)
 
     // This is the internal state of the sidebar.
     // We use openProp and setOpenProp for control from outside the component.
@@ -89,12 +85,23 @@ const SidebarProvider = React.forwardRef<
       [setOpenProp, open]
     )
 
+    // Default to the collapsed icon rail on mobile the first time it's detected,
+    // independent of the desktop-oriented `defaultOpen`. Only runs once so a
+    // user's subsequent toggle isn't fought on re-render.
+    const hasSetMobileDefault = React.useRef(false)
+    React.useEffect(() => {
+      if (isMobile && !hasSetMobileDefault.current) {
+        hasSetMobileDefault.current = true
+        if (openProp === undefined) {
+          _setOpen(false)
+        }
+      }
+    }, [isMobile, openProp])
+
     // Helper to toggle the sidebar.
     const toggleSidebar = React.useCallback(() => {
-      return isMobile
-        ? setOpenMobile((open) => !open)
-        : setOpen((open) => !open)
-    }, [isMobile, setOpen, setOpenMobile])
+      setOpen((open) => !open)
+    }, [setOpen])
 
     // Adds a keyboard shortcut to toggle the sidebar.
     React.useEffect(() => {
@@ -122,11 +129,9 @@ const SidebarProvider = React.forwardRef<
         open,
         setOpen,
         isMobile,
-        openMobile,
-        setOpenMobile,
         toggleSidebar,
       }),
-      [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+      [state, open, setOpen, isMobile, toggleSidebar]
     )
 
     return (
@@ -175,7 +180,7 @@ const Sidebar = React.forwardRef<
     },
     ref
   ) => {
-    const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+    const { isMobile, state, setOpen } = useSidebar()
 
     if (collapsible === "none") {
       return (
@@ -192,49 +197,52 @@ const Sidebar = React.forwardRef<
       )
     }
 
-    if (isMobile) {
-      return (
-        <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
-          <SheetContent
-            data-sidebar="sidebar"
-            data-mobile="true"
-            className="w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
-            style={
-              {
-                "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
-              } as React.CSSProperties
-            }
-            side={side}
-          >
-            <div className="flex h-full w-full flex-col">{children}</div>
-          </SheetContent>
-        </Sheet>
-      )
-    }
-
+    // On mobile the sidebar is a persistent icon-only rail by default. Expanding it
+    // (via SidebarTrigger) grows the same panel into a full-width overlay on top of
+    // the page content, dismissed by tapping the backdrop or the trigger again.
     return (
       <div
         ref={ref}
-        className="group peer hidden md:block text-sidebar-foreground"
+        className="group peer text-sidebar-foreground"
         data-state={state}
         data-collapsible={state === "collapsed" ? collapsible : ""}
         data-variant={variant}
         data-side={side}
       >
-        {/* This is what handles the sidebar gap on desktop */}
+        {isMobile && (
+          <div
+            className={cn(
+              "fixed inset-0 z-[15] bg-black/50 transition-opacity duration-200 ease-linear",
+              state === "expanded"
+                ? "opacity-100"
+                : "pointer-events-none opacity-0"
+            )}
+            onClick={() => setOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+
+        {/* This is what handles the sidebar gap so page content isn't hidden underneath it.
+            On mobile the expanded panel overlays content instead of pushing it, so the gap
+            always stays icon-width there regardless of expanded/collapsed state. */}
         <div
           className={cn(
-            "duration-200 relative h-svh w-[--sidebar-width] bg-transparent transition-[width] ease-linear",
-            "group-data-[collapsible=offcanvas]:w-0",
-            "group-data-[side=right]:rotate-180",
-            variant === "floating" || variant === "inset"
-              ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4))]"
-              : "group-data-[collapsible=icon]:w-[--sidebar-width-icon]"
+            "duration-200 relative h-svh bg-transparent transition-[width] ease-linear",
+            isMobile
+              ? "w-[--sidebar-width-icon]"
+              : cn(
+                  "w-[--sidebar-width]",
+                  "group-data-[collapsible=offcanvas]:w-0",
+                  "group-data-[side=right]:rotate-180",
+                  variant === "floating" || variant === "inset"
+                    ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4))]"
+                    : "group-data-[collapsible=icon]:w-[--sidebar-width-icon]"
+                )
           )}
         />
         <div
           className={cn(
-            "duration-200 fixed inset-y-0 z-10 hidden h-svh w-[--sidebar-width] transition-[left,right,width] ease-linear md:flex",
+            "duration-200 fixed inset-y-0 z-20 flex h-svh w-[--sidebar-width] transition-[left,right,width] ease-linear",
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
               : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
@@ -244,6 +252,11 @@ const Sidebar = React.forwardRef<
               : "group-data-[collapsible=icon]:w-[--sidebar-width-icon] group-data-[side=left]:border-r group-data-[side=right]:border-l",
             className
           )}
+          style={
+            isMobile
+              ? ({ "--sidebar-width": SIDEBAR_WIDTH_MOBILE } as React.CSSProperties)
+              : undefined
+          }
           {...props}
         >
           <div

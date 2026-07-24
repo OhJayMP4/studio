@@ -69,7 +69,7 @@ export default function MainSidebar() {
   if (!mounted) return null;
 
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon">
       <SidebarHeader>
         <WorkspaceSwitcher />
       </SidebarHeader>

@@ -93,12 +93,12 @@ export function FeedbackDialog() {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button 
-            variant="outline" 
-            className="w-full justify-center gap-2 font-medium bg-card hover:bg-accent transition-all active:scale-95 border-primary/20"
+        <Button
+            variant="outline"
+            className="w-full justify-center gap-2 font-medium bg-card hover:bg-accent transition-all active:scale-95 border-primary/20 group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2"
         >
-          <MessageSquare className="h-4 w-4 text-primary" />
-          Share Feedback
+          <MessageSquare className="h-4 w-4 text-primary shrink-0" />
+          <span className="group-data-[collapsible=icon]:hidden">Share Feedback</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md max-h-[90vh] flex flex-col p-0">

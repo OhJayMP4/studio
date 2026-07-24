@@ -187,17 +187,19 @@ export function WorkspaceSwitcher() {
           variant="outline"
           role="combobox"
           aria-expanded={popoverOpen}
-          className="w-full justify-between"
+          className="w-full justify-between group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!justify-center group-data-[collapsible=icon]:!p-2"
         >
-          <div className="flex items-center gap-2 overflow-hidden">
-            {renderWorkspaceAvatar(selectedWorkspace)}
-            <span className="truncate">
+          <div className="flex items-center gap-2 overflow-hidden group-data-[collapsible=icon]:gap-0">
+            <div className="group-data-[collapsible=icon]:[&>*]:!size-4">
+              {renderWorkspaceAvatar(selectedWorkspace)}
+            </div>
+            <span className="truncate group-data-[collapsible=icon]:hidden">
               {selectedWorkspace
                 ? selectedWorkspace.name
                 : 'Select a workspace'}
             </span>
           </div>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50 group-data-[collapsible=icon]:hidden" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--sidebar-width] p-0">
