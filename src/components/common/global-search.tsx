@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   CommandDialog,
   CommandEmpty,
@@ -12,26 +12,60 @@ import {
 import { VisuallyHidden } from '@/components/ui/visually-hidden';
 import { useSelectedWorkspace } from '@/app/(main)/layout';
 import { useFirestore, errorEmitter, FirestorePermissionError } from '@/firebase';
-import { collection, query, where, getDocs, DocumentData } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import type { Company, Project, Silo, Task } from '@/lib/types';
 import { Search, Building, Folder, Box, CheckSquare } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { DialogTitle } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
+
+type ResultType = 'company' | 'project' | 'silo' | 'task';
 
 type SearchResult =
-  | { type: 'company'; item: Company & { path: string } }
-  | { type: 'project'; item: Project & { path: string; companyName: string } }
-  | { type: 'silo'; item: Silo & { path: string; companyName: string; projectName: string } }
-  | { type: 'task'; item: Task & { path: string; companyName: string; projectName: string; siloName: string } };
+  | { type: 'company'; id: string; label: string; sublabel: null; path: string }
+  | { type: 'project'; id: string; label: string; sublabel: string; path: string }
+  | { type: 'silo'; id: string; label: string; sublabel: string; path: string }
+  | { type: 'task'; id: string; label: string; sublabel: string; path: string };
 
+// How many matches to actually render per group before summarizing the rest.
+// Large workspaces can easily have 100+ matching tasks for a common term, and
+// dumping all of them into the dropdown makes it unreadable, so we show the
+// strongest matches and let the heading count communicate the full scale.
+const MAX_VISIBLE_PER_GROUP = 6;
+
+const GROUP_CONFIG: { type: ResultType; heading: string; icon: typeof Building }[] = [
+  { type: 'company', heading: 'Companies', icon: Building },
+  { type: 'project', heading: 'Projects', icon: Folder },
+  { type: 'silo', heading: 'Silos', icon: Box },
+  { type: 'task', heading: 'Tasks', icon: CheckSquare },
+];
+
+// Ranks a candidate string against the typed query: exact match first, then
+// "starts with", then "contains anywhere". Returns -1 for no match at all.
+function matchRank(candidate: string, needle: string): number {
+  const c = candidate.toLowerCase();
+  const n = needle.toLowerCase();
+  if (!n) return 0;
+  if (c === n) return 3;
+  if (c.startsWith(n)) return 2;
+  if (c.includes(n)) return 1;
+  return -1;
+}
 
 export function GlobalSearch() {
   const [open, setOpen] = useState(false);
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [rawQuery, setRawQuery] = useState('');
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [silos, setSilos] = useState<(Silo & { projectId: string; companyId: string })[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const { selectedWorkspace } = useSelectedWorkspace();
   const firestore = useFirestore();
   const router = useRouter();
+
+  const fetchedForWorkspaceRef = useRef<string | null>(null);
 
   // Open on Cmd+K
   useEffect(() => {
@@ -45,100 +79,167 @@ export function GlobalSearch() {
     return () => document.removeEventListener('keydown', down);
   }, []);
 
-
   useEffect(() => {
+    if (!open || !selectedWorkspace || !firestore) return;
+
+    // Only refetch when this workspace's data hasn't been loaded yet for this
+    // session, or the user switched workspaces. Avoids re-running on every
+    // keystroke and avoids showing stale data from a previously selected workspace.
+    if (fetchedForWorkspaceRef.current === selectedWorkspace.id) return;
+
+    let cancelled = false;
+
     const fetchSearchData = async () => {
-        if (!open || !selectedWorkspace || !firestore) {
-            setResults([]);
-            return;
-        };
+      setLoading(true);
+      setLoadError(false);
+      try {
+        const workspaceId = selectedWorkspace.id;
 
-        setLoading(true);
-        try {
-            const companiesRef = collection(firestore, 'workspaces', selectedWorkspace.id, 'companies');
-            const companiesSnap = await getDocs(companiesRef);
-            const companies = companiesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Company));
+        // Firestore can't validate collection-group `list` queries when the rule
+        // needs a get() call for membership (confirmed empirically — it denies the
+        // request outright regardless of whether the check is keyed by path or by
+        // field). So this stays as nested queries scoped by the real, known
+        // workspace path, which Firestore can always prove — just run in parallel
+        // "waves" per tree depth instead of the old fully-sequential N+1 walk.
+        const companiesRef = collection(firestore, 'workspaces', workspaceId, 'companies');
+        const companiesSnap = await getDocs(companiesRef);
+        const fetchedCompanies = companiesSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Company));
 
-            const allProjects: Project[] = [];
-            const allSilos: (Silo & { path: string })[] = [];
-            const allTasks: (Task & { path: string })[] = [];
+        const projectsPerCompany = await Promise.all(
+          fetchedCompanies.map(async (company) => {
+            const projectsRef = collection(companiesRef, company.id, 'projects');
+            const snap = await getDocs(projectsRef);
+            return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Project));
+          })
+        );
+        const fetchedProjects = projectsPerCompany.flat();
 
-            for (const company of companies) {
-                const projectsRef = collection(companiesRef, company.id, 'projects');
-                const projectsSnap = await getDocs(projectsRef);
-                const projects = projectsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
-                allProjects.push(...projects);
+        const silosPerProject = await Promise.all(
+          fetchedProjects.map(async (project) => {
+            const silosRef = collection(
+              firestore,
+              'workspaces', workspaceId,
+              'companies', project.companyId,
+              'projects', project.id,
+              'silos'
+            );
+            const snap = await getDocs(silosRef);
+            return snap.docs.map((d) => ({
+              ...(d.data() as Silo),
+              id: d.id,
+              projectId: project.id,
+              companyId: project.companyId,
+            }));
+          })
+        );
+        const fetchedSilos = silosPerProject.flat();
 
-                for (const project of projects) {
-                    const silosRef = collection(projectsRef, project.id, 'silos');
-                    const silosSnap = await getDocs(silosRef);
-                    const silos = silosSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), path: doc.ref.path } as Silo & { path: string }));
-                    allSilos.push(...silos);
+        const tasksPerSilo = await Promise.all(
+          fetchedSilos.map(async (silo) => {
+            const tasksRef = collection(
+              firestore,
+              'workspaces', workspaceId,
+              'companies', silo.companyId,
+              'projects', silo.projectId,
+              'silos', silo.id,
+              'tasks'
+            );
+            const snap = await getDocs(tasksRef);
+            return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Task));
+          })
+        );
+        const fetchedTasks = tasksPerSilo.flat();
 
-                    for (const silo of silos) {
-                        const tasksRef = collection(silosRef, silo.id, 'tasks');
-                        const tasksSnap = await getDocs(tasksRef);
-                        const tasks = tasksSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), path: doc.ref.path } as Task & { path: string }));
-                        allTasks.push(...tasks);
-                    }
-                }
-            }
-            
-            const searchData: SearchResult[] = [];
+        if (cancelled) return;
 
-            companies.forEach(c => searchData.push({ type: 'company', item: { ...c, path: `company/${c.id}` } }));
-            
-            allProjects.forEach(p => {
-                const company = companies.find(c => c.id === p.companyId);
-                searchData.push({ type: 'project', item: { ...p, path: `company/${p.companyId}/project/${p.id}`, companyName: company?.name || '' } })
-            });
-
-            allSilos.forEach(s => {
-                const pathParts = s.path.split('/');
-                const companyId = pathParts[3];
-                const projectId = pathParts[5];
-                const company = companies.find(c => c.id === companyId);
-                const project = allProjects.find(p => p.id === projectId);
-                if (company && project) {
-                    searchData.push({ type: 'silo', item: { ...s, path: `company/${companyId}/project/${projectId}`, companyName: company.name, projectName: project.name } })
-                }
-            });
-
-            allTasks.forEach(t => {
-                const project = allProjects.find(p => p.id === t.projectId);
-                if (project) {
-                    const company = companies.find(c => c.id === project.companyId);
-                    const pathParts = t.path.split('/');
-                    const siloId = pathParts[7];
-                    const silo = allSilos.find(silo => silo.id === siloId);
-
-                    if (company && project && silo) {
-                        searchData.push({ type: 'task', item: { ...t, path: `company/${project.companyId}/project/${project.id}`, companyName: company.name, projectName: project.name, siloName: silo.name } })
-                    }
-                }
-            });
-            
-            setResults(searchData);
-        } catch (error) {
-            console.error("Global search failed:", error);
-            if (error instanceof Error && error.message.includes('permission-denied')) {
-                 errorEmitter.emit('permission-error', new FirestorePermissionError({ operation: 'list', path: 'documents in workspace' }));
-            }
-        } finally {
-            setLoading(false);
+        fetchedForWorkspaceRef.current = workspaceId;
+        setCompanies(fetchedCompanies);
+        setProjects(fetchedProjects);
+        setSilos(fetchedSilos);
+        setTasks(fetchedTasks);
+      } catch (error: any) {
+        console.error('Global search failed:', error);
+        setLoadError(true);
+        if (error?.code === 'permission-denied') {
+          errorEmitter.emit(
+            'permission-error',
+            new FirestorePermissionError({ operation: 'list', path: `workspaces/${selectedWorkspace.id}` })
+          );
         }
-    }
-    
-    if (open && results.length === 0 && !loading) {
-      fetchSearchData();
-    }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
 
-  }, [open, selectedWorkspace, firestore, loading, results.length]);
+    fetchSearchData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, selectedWorkspace, firestore]);
+
+  const groupedResults = useMemo(() => {
+    const q = rawQuery.trim();
+
+    const companyById = new Map(companies.map((c) => [c.id, c]));
+    const projectById = new Map(projects.map((p) => [p.id, p]));
+
+    const rank = <T,>(items: T[], text: (item: T) => string) =>
+      items
+        .map((item) => ({ item, rank: matchRank(text(item), q) }))
+        .filter((x) => x.rank >= 0)
+        .sort((a, b) => b.rank - a.rank);
+
+    const companyResults: SearchResult[] = rank(companies, (c) => c.name).map(({ item }) => ({
+      type: 'company',
+      id: item.id,
+      label: item.name,
+      sublabel: null,
+      path: `company/${item.id}`,
+    }));
+
+    const projectResults: SearchResult[] = rank(projects, (p) => p.name).map(({ item }) => ({
+      type: 'project',
+      id: item.id,
+      label: item.name,
+      sublabel: companyById.get(item.companyId)?.name ?? 'Unknown company',
+      path: `company/${item.companyId}/project/${item.id}`,
+    }));
+
+    const siloResults: SearchResult[] = rank(silos, (s) => s.name).map(({ item }) => ({
+      type: 'silo',
+      id: item.id,
+      label: item.name,
+      sublabel: projectById.get(item.projectId)?.name ?? 'Unknown project',
+      path: `company/${item.companyId}/project/${item.projectId}`,
+    }));
+
+    const taskResults: SearchResult[] = rank(tasks, (t) => t.title).map(({ item }) => {
+      const project = projectById.get(item.projectId);
+      return {
+        type: 'task',
+        id: item.id,
+        label: item.title,
+        sublabel: project ? `in ${project.name}` : 'Unknown project',
+        path: project ? `company/${project.companyId}/project/${project.id}` : '',
+      };
+    });
+
+    return {
+      company: companyResults,
+      project: projectResults,
+      silo: siloResults,
+      task: taskResults,
+    } as Record<ResultType, SearchResult[]>;
+  }, [rawQuery, companies, projects, silos, tasks]);
+
+  const totalMatches = Object.values(groupedResults).reduce((sum, list) => sum + list.length, 0);
 
   const onSelect = (path: string) => {
+    if (!path) return;
     router.push(`/${path}`);
     setOpen(false);
-  }
+  };
 
   return (
     <>
@@ -152,60 +253,56 @@ export function GlobalSearch() {
             <span className="text-xs">⌘</span>K
         </kbd>
       </button>
-      <CommandDialog open={open} onOpenChange={setOpen}>
+      <CommandDialog open={open} onOpenChange={setOpen} shouldFilter={false}>
         <DialogTitle>
           <VisuallyHidden>Global Search</VisuallyHidden>
         </DialogTitle>
-        <CommandInput placeholder="Search for companies, projects, tasks..." />
+        <CommandInput
+          placeholder="Search for companies, projects, silos, tasks..."
+          value={rawQuery}
+          onValueChange={setRawQuery}
+        />
         <CommandList>
           {loading ? (
             <div className="p-4 text-center text-sm text-muted-foreground">Loading...</div>
+          ) : loadError ? (
+            <div className="p-4 text-center text-sm text-destructive">
+              Couldn't load search data. Try reopening search.
+            </div>
           ) : (
             <>
-              {results.length === 0 && !loading ? <CommandEmpty>No results found.</CommandEmpty> : null}
-              {results.some(r => r.type === 'company') && (
-                <CommandGroup heading="Companies">
-                  {results.filter(r => r.type === 'company').map(({ item }) => (
-                    <CommandItem key={item.id} onSelect={() => onSelect(item.path)} value={`company-${item.name}`}>
-                      <Building className="mr-2 h-4 w-4" />
-                      <span>{item.name}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              )}
-              {results.some(r => r.type === 'project') && (
-                <CommandGroup heading="Projects">
-                  {results.filter(r => r.type === 'project').map(({ item }) => (
-                    <CommandItem key={item.id} onSelect={() => onSelect(item.path)} value={`project-${item.name}`}>
-                      <Folder className="mr-2 h-4 w-4" />
-                      <span>{item.name}</span>
-                      <span className='text-xs text-muted-foreground ml-2'>in {item.companyName}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              )}
-              {results.some(r => r.type === 'silo') && (
-                <CommandGroup heading="Silos">
-                  {results.filter(r => r.type === 'silo').map(({ item }) => (
-                    <CommandItem key={item.id} onSelect={() => onSelect(item.path)} value={`silo-${item.name}`}>
-                      <Box className="mr-2 h-4 w-4" />
-                      <span>{item.name}</span>
-                      <span className='text-xs text-muted-foreground ml-2'>in {item.projectName}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              )}
-              {results.some(r => r.type === 'task') && (
-                <CommandGroup heading="Tasks">
-                  {results.filter(r => r.type === 'task').map(({ item }) => (
-                    <CommandItem key={item.id} onSelect={() => onSelect(item.path)} value={`task-${item.title}`}>
-                      <CheckSquare className="mr-2 h-4 w-4" />
-                      <span>{item.title}</span>
-                      <span className='text-xs text-muted-foreground ml-2'>in {item.siloName}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              )}
+              {totalMatches === 0 && <CommandEmpty>No results found.</CommandEmpty>}
+              {GROUP_CONFIG.map(({ type, heading, icon: Icon }) => {
+                const items = groupedResults[type];
+                if (items.length === 0) return null;
+                const visible = items.slice(0, MAX_VISIBLE_PER_GROUP);
+                const hiddenCount = items.length - visible.length;
+
+                return (
+                  <CommandGroup key={type} heading={`${heading} (${items.length})`}>
+                    {visible.map((result) => (
+                      <CommandItem
+                        key={result.id}
+                        onSelect={() => onSelect(result.path)}
+                        value={`${type}-${result.id}`}
+                      >
+                        <Icon className="mr-2 h-4 w-4 shrink-0" />
+                        <span className="truncate">{result.label}</span>
+                        {result.sublabel && (
+                          <span className="text-xs text-muted-foreground ml-2 truncate">
+                            {result.sublabel}
+                          </span>
+                        )}
+                      </CommandItem>
+                    ))}
+                    {hiddenCount > 0 && (
+                      <div className={cn('px-2 py-1.5 text-xs text-muted-foreground')}>
+                        +{hiddenCount} more {heading.toLowerCase()} matched — refine your search to narrow down
+                      </div>
+                    )}
+                  </CommandGroup>
+                );
+              })}
             </>
           )}
         </CommandList>
